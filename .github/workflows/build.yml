@@ -64,7 +64,7 @@ jobs:
             site/firmware/otadata-blank.bin
 
   pages:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.repository == 'BamBam1121/inw-mesh' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: firmware
     runs-on: ubuntu-latest
     environment:
