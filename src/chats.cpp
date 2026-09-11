@@ -3,6 +3,7 @@
 #include "app.h"
 #include "node.h"
 #include "history.h"
+#include "notify.h"
 
 ConvKey g_openConv;                 // the thread on screen, for notification muting
 
@@ -43,6 +44,9 @@ class ThreadView : public View {
 public:
   explicit ThreadView(const ConvKey& k) : _key(k) {
     g_openConv = k;
+    // Where "new" starts. Captured before marking read, and kept while the
+    // thread stays open, so the line doesn't vanish the moment you look.
+    if (history.unread(k)) _newAfter = history.readMark(k);
     history.markRead(k);
     refresh();
     // A room server only talks to logged-in clients; try the guest login once.
@@ -192,6 +196,10 @@ public:
       if (!m) continue;
       y -= ui_settings.compactChat ? drawCompact(g, *m, y, i == _sel) : drawBubble(g, *m, y, i == _sel);
       y -= 4;
+      // Red line above the first message that was unread when the thread opened.
+      if (_newAfter != NO_DIVIDER && _ids[i] > _newAfter && (i == 0 || _ids[i - 1] <= _newAfter)) {
+        y -= drawNewDivider(g, y);
+      }
     }
     g.clearClipRect();
     if (_sel >= 0 && _sel < _n - 1) {
@@ -203,6 +211,26 @@ public:
   }
 
 private:
+  static constexpr uint32_t NO_DIVIDER = 0xFFFFFFFF;
+  uint32_t _newAfter = NO_DIVIDER;
+
+  int drawNewDivider(Canvas& g, int bottomY) {
+    const Theme& t = nav.theme();
+    const int h = 16, y = bottomY - h / 2 - 2;
+    g.setFont(&fonts::Font0);
+    const char* label = "NEW";
+    const int lw = g.textWidth(label) + 10, cx = L::W / 2;
+    g.drawFastHLine(8, y, cx - lw / 2 - 12, t.red);
+    g.drawFastHLine(8, y + 1, cx - lw / 2 - 12, t.red);
+    g.drawFastHLine(cx + lw / 2 + 4, y, L::W - 8 - (cx + lw / 2 + 4), t.red);
+    g.drawFastHLine(cx + lw / 2 + 4, y + 1, L::W - 8 - (cx + lw / 2 + 4), t.red);
+    g.fillRoundRect(cx - lw / 2 - 4, y - 5, lw + 4, 12, 5, t.red);
+    g.setTextColor(t.white, t.red);
+    g.drawString(label, cx - lw / 2 + 3, y - 3);
+    g.setFont(&fonts::Font2);
+    return h;
+  }
+
   // Returns the height used; draws with its bottom edge at `bottomY`.
   int drawBubble(Canvas& g, const HistMsg& m, int bottomY, bool selected) {
     const Theme& t = nav.theme();
@@ -443,6 +471,9 @@ static void openMessageActions(ThreadView* tv, uint32_t id) {
   m->action("quote into reply", [tv, text] { nav.pop(); tv->setCompose("\"" + text.substring(0, 60) + "\" "); });
   if (out && (msg->status == ST_FAILED || tv->key().type == CONV_CHANNEL))
     m->action("send again", [tv, id] { nav.pop(); tv->resend(id); });
+  const ConvKey ck = tv->key();
+  m->value("notifications for this chat", [ck]() -> String { return notifyModeName(notifyMode(ck)); },
+           [ck] { setNotifyMode(ck, (notifyMode(ck) + 1) % NM_COUNT); });
   m->header("details");
   m->info("time", [id]() -> String { HistMsg* x = history.find(id); return String(x && x->ts ? clockText(x->ts, true) : "unknown"); });
   if (!out) {
@@ -563,11 +594,17 @@ public:
       richFit(g, pv, L::W - 110);
       g.setTextColor(t.dim, bg);
       drawRich(g, pv, 52, y + 23);
+      const uint8_t nm_ = notifyMode(e.key);
       if (e.unread) {
         char b[8];
         snprintf(b, sizeof(b), "%u", min<uint16_t>(e.unread, 99));
         const int bw = max(20, (int)g.textWidth(b) + 10);
-        drawPill(g, L::W - 12 - bw, y + 23, bw, 17, e.mention ? t.amber : t.green, t.bg, b);
+        // Muted chats still count unread, but quietly.
+        drawPill(g, L::W - 12 - bw, y + 23, bw, 17, nm_ == NM_MUTED ? t.line : e.mention ? t.amber : t.green,
+                 nm_ == NM_MUTED ? t.dim : t.bg, b);
+      } else if (nm_ == NM_MUTED || nm_ == NM_SILENT) {
+        g.setTextColor(t.dim, bg);
+        g.drawString(nm_ == NM_MUTED ? "muted" : "silent", L::W - 12 - g.textWidth(nm_ == NM_MUTED ? "muted" : "silent"), y + 23);
       } else if (e.mention) {
         g.setTextColor(t.amber, bg);
         g.drawString("@", L::W - 24, y + 23);

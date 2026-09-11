@@ -4,6 +4,7 @@
 #include <Wire.h>
 #include <SPIFFS.h>
 #include "power.h"
+#include "notify.h"
 #include <SD.h>
 #include <time.h>
 #include "board_pins.h"
@@ -220,13 +221,13 @@ static bool quietHours() {
 
 enum class AlertKind : uint8_t { Msg, Dm, Mention };
 
-static void alert(const char* title, const char* text, AlertKind kind) {
+static void alert(const char* title, const char* text, AlertKind kind, bool silent = false) {
   const ThemeSpec& th = app::themeSpec();
   const Jingle* sound = kind == AlertKind::Dm ? th.dm : kind == AlertKind::Mention ? th.mention : th.msg;
   const VibePattern& vibe = kind == AlertKind::Dm ? th.vibeDm : kind == AlertKind::Mention ? th.vibeMention : th.vibeMsg;
-  if (ui_settings.wakeOnMessage) dimmer.wake();
+  if (ui_settings.wakeOnMessage && !silent) dimmer.wake();
   nav.banner(title, text);
-  if (quietHours()) return;
+  if (silent || quietHours()) return;
   if (ui_settings.vibrate) haptic.pattern(vibe.seq, vibe.n);
   if (ui_settings.sound) jingle.play(sound);
   if (ui_settings.kbFlash) { keyboard.setBacklight(255); s_kbFlashUntil = millis() + 2500; }
@@ -243,11 +244,14 @@ static void onNodeEvent(NodeEvent e, const void* arg) {
       const bool open = g_openConv == k && !dimmer.asleep();
       if (open) { history.markRead(k); if (ui_settings.keyHaptics) haptic.tick(); return; }
       const bool room = e == NodeEvent::RoomMsg;
-      if (room ? !ui_settings.notifyRoom : !ui_settings.notifyDM) return;
+      const uint8_t mode = notifyMode(k);
+      if (mode == NM_MUTED) return;
+      if (mode == NM_MENTIONS && !(m->flags & HF_MENTION)) return;
+      if (mode == NM_DEFAULT && (room ? !ui_settings.notifyRoom : !ui_settings.notifyDM)) return;
       char text[200];
       if (room) snprintf(text, sizeof(text), "%s: %s", m->sender, m->text);
       else strlcpy(text, m->text, sizeof(text));
-      alert(c->name, text, room ? AlertKind::Msg : AlertKind::Dm);
+      alert(c->name, text, room ? AlertKind::Msg : AlertKind::Dm, mode == NM_SILENT);
       break;
     }
     case NodeEvent::ChannelMsg: {
@@ -260,12 +264,17 @@ static void onNodeEvent(NodeEvent e, const void* arg) {
       if (ui_settings.ignoreOneChar && strlen(m->text) <= 1) { if (g_openConv == k) history.markRead(k); return; }
       if (g_openConv == k && !dimmer.asleep()) { history.markRead(k); return; }
       const bool mention = m->flags & HF_MENTION;
-      if (!ui_settings.notifyChannel && !mention) return;
-      if (ui_settings.channelMentionsOnly && !mention) return;
+      const uint8_t mode = notifyMode(k);
+      if (mode == NM_MUTED) return;
+      if (mode == NM_MENTIONS && !mention) return;
+      if (mode == NM_DEFAULT) {                     // the global channel settings
+        if (!ui_settings.notifyChannel && !mention) return;
+        if (ui_settings.channelMentionsOnly && !mention) return;
+      }
       char title[48], text[200];
       snprintf(title, sizeof(title), "%s%s", ch.name, mention ? "  @you" : "");
       snprintf(text, sizeof(text), "%s: %s", m->sender, m->text);
-      alert(title, text, mention ? AlertKind::Mention : AlertKind::Msg);
+      alert(title, text, mention ? AlertKind::Mention : AlertKind::Msg, mode == NM_SILENT);
       break;
     }
     case NodeEvent::NewContact:

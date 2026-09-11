@@ -1,6 +1,7 @@
 #include "app.h"
 #include "node.h"
 #include "history.h"
+#include "notify.h"
 #include <esp_heap_caps.h>
 #include <algorithm>
 
@@ -348,6 +349,11 @@ static void buildContact(MenuView& m, const uint8_t* pubIn) {
   }
   m.action("telemetry", [pub] { telemetryPage(pub); });
   m.action("trace route", [pub] { tracePage(pub); });
+  if (type != ADV_TYPE_REPEATER)
+    m.value("notifications", [pub]() -> String { return notifyModeName(notifyMode(ConvKey::contact(pub))); }, [pub] {
+      const ConvKey k = ConvKey::contact(pub);
+      setNotifyMode(k, (notifyMode(k) + 1) % NM_COUNT);
+    });
   m.toggle("favourite", [pub] { ContactInfo* x = g_node->contact(pub); return x && (x->flags & 1); },
            [pub] { g_node->toggleFavourite(pub); });
   m.header("details");

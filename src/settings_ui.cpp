@@ -11,6 +11,7 @@
 #include "netwifi.h"
 #include "power.h"
 #include "battery.h"
+#include "notify.h"
 #include <SPIFFS.h>
 #include <SD.h>
 
@@ -142,6 +143,10 @@ static void channelMenu(int idx) {
   uint8_t secret[16];
   memcpy(secret, ch.channel.secret, 16);
   m->action("open chat", [idx] { app::openThreadForChannel(idx); });
+  m->value("notifications", [secret]() -> String { return notifyModeName(notifyMode(ConvKey::channel(secret))); }, [secret] {
+    const ConvKey k = ConvKey::channel(secret);
+    setNotifyMode(k, (notifyMode(k) + 1) % NM_COUNT);      // press to cycle
+  });
   m->info("key", [secret]() -> String { char h[40]; mesh::Utils::toHex(h, secret, 16); return String(h); });
   m->info("messages", [secret]() -> String { return String(history.count(ConvKey::channel(secret))); });
   m->action("mark all read", [secret] { history.markRead(ConvKey::channel(secret)); nav.toast("done"); });
@@ -441,6 +446,7 @@ static void notifyMenu() {
   tg(*m, "channel messages", &ui_settings.notifyChannel);
   tg(*m, "  only when @mentioned", &ui_settings.channelMentionsOnly);
   tg(*m, "room messages", &ui_settings.notifyRoom);
+  m->info("per chat", []() -> String { return String("a channel or contact's menu overrides these"); });
   tg(*m, "new contacts", &ui_settings.notifyNewContact);
   tg(*m, "light keyboard on message", &ui_settings.kbFlash);
   m->header("quiet hours");

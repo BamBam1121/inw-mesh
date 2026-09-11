@@ -57,6 +57,7 @@ public:
   uint16_t totalUnread();
   bool     hasMention(const ConvKey& k);
   void markRead(const ConvKey& k);
+  uint32_t readMark(const ConvKey& k);   // id of the newest message seen in k (0 = none)
   void clearConv(const ConvKey& k);
   void clearAll();
 
@@ -72,7 +73,6 @@ private:
   void writeStatus(const HistMsg& m);
   void loadLog();
   void compact();
-  uint32_t readMark(const ConvKey& k);
   void saveReads();
   void loadReads();
 
