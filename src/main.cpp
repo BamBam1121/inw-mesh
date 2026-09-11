@@ -404,6 +404,10 @@ void setup() {
   keyboard.setBacklight(ui_settings.kbBacklight);
   bootStep("battery gauge", battery.begin(Wire));
   battery.tick(millis());
+  if (battery.present())
+    logs.add(battery.configured() ? LOG_WARN : LOG_INFO, "battery %u%% %umV, pack %umAh%s", battery.percent(),
+             battery.millivolts(), battery.designNow(),
+             battery.configured() ? " (was set wrong, fixed)" : "");
   const bool audioOk = codec.begin(Wire);
   jingle.begin(&codec);
   // The amp is powered only while a sound plays (it hisses and drains otherwise).
