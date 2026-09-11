@@ -599,6 +599,10 @@ static void systemMenu() {
   }
   m->toggle("check on start (wi-fi)", [] { return ui_settings.autoUpdateCheck; },
             [] { ui_settings.autoUpdateCheck = !ui_settings.autoUpdateCheck; markUiDirty(); });
+  m->toggle("beta updates (every build)", [] { return ui_settings.betaUpdates; }, [] {
+    ui_settings.betaUpdates = !ui_settings.betaUpdates; markUiDirty();
+    nav.toast(ui_settings.betaUpdates ? "beta: you get builds before release" : "stable releases only", 3000);
+  });
   m->header("device");
   m->action("device info", [] { deviceInfoPage(); });
   m->action("log", [] { logsPage(); });

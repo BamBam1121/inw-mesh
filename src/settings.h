@@ -78,6 +78,7 @@ struct UiSettings {
   uint16_t unplugMin[UNPLUG_N] = {};  // local minute-of-day of recent unplugs (0 = empty slot)
   uint8_t  unplugPos     = 0;
   bool     autoUpdateCheck = true;    // look for a new release once per boot on Wi-Fi
+  bool     betaUpdates   = false;     // follow every build, not only tagged releases
 
   void load();
   void save();

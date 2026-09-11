@@ -59,7 +59,8 @@ Info check() {
   tls.setInsecure();                     // authenticity comes from the signature, not TLS
   HTTPClient http;
   http.setTimeout(8000);
-  String url = String(SITE) + "ota.json";
+  info.beta = ui_settings.betaUpdates;
+  String url = String(SITE) + (info.beta ? "ota-beta.json" : "ota.json");
   if (!http.begin(tls, url)) { strlcpy(info.error, "couldn't reach the update site", sizeof(info.error)); return info; }
   const int code = http.GET();
   if (code != 200) {
@@ -96,7 +97,7 @@ const char* install(const Info& info) {
   tls.setInsecure();
   HTTPClient http;
   http.setTimeout(15000);
-  if (!http.begin(tls, String(SITE) + "firmware.bin")) return "couldn't reach the update site";
+  if (!http.begin(tls, String(SITE) + (info.beta ? "firmware-beta.bin" : "firmware.bin"))) return "couldn't reach the update site";
   const int code = http.GET();
   if (code != 200) { http.end(); snprintf(msg, sizeof(msg), "download failed (%d)", code); return msg; }
   const int len = http.getSize();

@@ -1,5 +1,9 @@
 // Updates over Wi-Fi from the project's release site.
 //
+// Two channels: stable (ota.json / firmware.bin, tagged releases only) and beta
+// (ota-beta.json / firmware-beta.bin, every build of main), picked by the
+// "beta updates" setting.
+//
 // ota.json on the site names the latest version with the firmware's size,
 // SHA-256 and an Ed25519 signature of that hash, made by the release build with
 // a key only the project holds. The pager checks the signature against the key
@@ -14,6 +18,7 @@ namespace ota {
   struct Info {
     bool ok = false;           // the check itself worked
     bool newer = false;
+    bool beta = false;         // which channel this came from
     char version[16] = "";
     char notes[120] = "";
     uint32_t size = 0;

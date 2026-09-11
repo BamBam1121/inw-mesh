@@ -1,7 +1,13 @@
 name: build
 
-# Every push to main rebuilds the release firmware and republishes the installer
-# site with it. A v* tag also attaches the binaries to a GitHub release.
+# Two update channels.
+#   beta:   every push to main -> firmware-beta.bin + ota-beta.json. Only pagers
+#           with "beta updates" on see it.
+#   stable: a v* tag -> a GitHub release. The site's firmware.bin, ota.json and
+#           the web installer's files always come from the latest release, so a
+#           beta build never replaces stable.
+# A tag run creates the release and then re-runs this workflow on main, which
+# deploys the site with the new release as stable.
 on:
   push:
     branches: [main]
@@ -13,6 +19,7 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  actions: write
 
 concurrency:
   group: pages
@@ -36,31 +43,51 @@ jobs:
           key: pio-${{ hashFiles('platformio.ini') }}
 
       # Release builds include NFC. To ship without it (ST RFAL licence), build
-      # t-lora-pager-public here and in the copy step below instead.
+      # t-lora-pager-public here instead.
       - name: Build
         run: |
-          pip install platformio
+          pip install platformio cryptography
           pio run -e t-lora-pager
 
+      # Signing needs OTA_SIGNING_KEY, which only the real repo has; without it
+      # sign_ota.py writes nothing and pagers see no update.
       - name: Assemble site
-        run: |
-          mkdir -p site/firmware
-          cp .pio/build/t-lora-pager/firmware.bin site/firmware/
-          cp .pio/build/t-lora-pager/partitions.bin site/firmware/
-          # 0xFF over otadata makes the bootloader start app0 on a first install.
-          python -c "open('site/firmware/otadata-blank.bin','wb').write(bytes([255])*8192)"
-          echo "${GITHUB_REF_NAME} ${GITHUB_SHA::7}" > site/firmware/version.txt
-
-      # Signed update info for Wi-Fi updates. Only the real repo has the key.
-      - name: Sign update
-        if: github.event_name != 'pull_request'
         env:
+          GH_TOKEN: ${{ github.token }}
           OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
         run: |
-          pip install cryptography
+          set -e
+          F=site/firmware
+          B=.pio/build/t-lora-pager
+          mkdir -p "$F"
           VERSION=$(grep -oP 'FW_VERSION=\\"\K[0-9.]+' platformio.ini)
           NOTES=$(git log -1 --format=%s)
-          python tools/sign_ota.py site/firmware/firmware.bin site/firmware/ota.json "$VERSION" "$NOTES"
+          # 0xFF over otadata makes the bootloader start app0 after a USB install.
+          python -c "open('$F/otadata-blank.bin','wb').write(bytes([255])*8192)"
+
+          # beta: this build
+          cp "$B/firmware.bin" "$F/firmware-beta.bin"
+          python tools/sign_ota.py "$F/firmware-beta.bin" "$F/ota-beta.json" "$VERSION" "$NOTES"
+
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # stable: this build, for the release assets
+            cp "$B/firmware.bin" "$B/partitions.bin" "$F/"
+            python tools/sign_ota.py "$F/firmware.bin" "$F/ota.json" "$VERSION" "$NOTES"
+            echo "${GITHUB_REF_NAME} ${GITHUB_SHA::7}" > "$F/version.txt"
+          else
+            # stable: the latest release, carried along
+            TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)
+            if [ -n "$TAG" ]; then
+              gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$F" \
+                --pattern firmware.bin --pattern partitions.bin --clobber
+              python tools/sign_ota.py "$F/firmware.bin" "$F/ota.json" "${TAG#v}" "$TAG"
+              echo "$TAG" > "$F/version.txt"
+            else
+              cp "$B/firmware.bin" "$B/partitions.bin" "$F/"
+              echo "dev ${GITHUB_SHA::7}" > "$F/version.txt"
+            fi
+          fi
+          ls -la "$F"
 
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
@@ -75,6 +102,14 @@ jobs:
             site/firmware/firmware.bin
             site/firmware/partitions.bin
             site/firmware/otadata-blank.bin
+
+      # Pages only deploys from main, so hand over to a main run, which picks up
+      # this release as stable.
+      - name: Publish the release to the site
+        if: startsWith(github.ref, 'refs/tags/v') && github.repository == 'BamBam1121/inw-mesh'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref main
 
   pages:
     if: github.repository == 'BamBam1121/inw-mesh' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
