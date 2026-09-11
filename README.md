@@ -85,6 +85,8 @@ It never writes the bootloader and never erases the flash.
   updates does it for you): everything comes back from the card. Without a card
   your keys, channels and settings are still kept; contacts refill from adverts.
 - After that, updates arrive over Wi-Fi.
+- **Installer can't connect?** On the pager, Settings > System > usb flash mode,
+  then click install. (On 1.1.5 or older: hold BOOT, tap RESET, let go of BOOT.)
 
 ## Building
 
