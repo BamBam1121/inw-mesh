@@ -343,6 +343,11 @@ static void takeScreenshot() {
 //   dfu         restart into the ROM's USB download mode, ready for esptool or
 //               the web installer (flash with --before no_reset)
 
+// The flag that sends the chip into download mode sits in the RTC domain, which
+// the battery keeps alive, so clear it as soon as we're running: one trip into
+// flash mode can never turn into a device that always boots there.
+static void clearForceDownloadBoot() { REG_WRITE(RTC_CNTL_OPTION1_REG, 0); }
+
 // Restarts into the chip's own download mode: no BOOT/RESET buttons needed.
 void app::rebootToFlashMode() {
   if (g_node) {
@@ -453,6 +458,7 @@ static void bootNote(const char* msg) {      // a long step the user should know
 }
 
 void setup() {
+  clearForceDownloadBoot();     // first thing: one trip into flash mode stays one trip
   Serial.begin(115200);
   delay(150);
   Serial.println("\n[INW] boot " FW_VERSION);
