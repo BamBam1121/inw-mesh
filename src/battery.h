@@ -80,8 +80,11 @@ public:
         // The gauge counts charge and is what we show. Voltage sags under radio
         // and screen load, so it only takes over when the gauge is plainly wrong
         // (it once sat at 60% on a full 4.197 V cell before it had seen a taper).
-        if (_millivolts) {
-            const uint8_t byVolt = fromVoltage(charging() ? _millivolts - 80 : _millivolts);
+        // While charging, the charger lifts the cell voltage well above its
+        // resting value (by more the emptier it is), so voltage says nothing
+        // useful then: show the gauge as is.
+        if (_millivolts && !charging()) {
+            const uint8_t byVolt = fromVoltage(_millivolts);
             // A pager that's running isn't at 0%: a near-empty gauge figure with
             // plenty of voltage behind it is the gauge being wrong.
             const bool falseEmpty = _gaugePct <= 5 && byVolt >= 15;
