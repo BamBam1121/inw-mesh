@@ -38,12 +38,22 @@ public:
         if (!_gauge || (now - _last < REFRESH_MS && _last)) return;
         _last = now;
         uint16_t v;
-        if (read16(REG_SOC, v) && v <= 100) _percent = (uint8_t)v;
+        if (read16(REG_SOC, v) && v <= 100) _gaugePct = (uint8_t)v;
         if (read16(REG_VOLTAGE, v) && v > 2500 && v < 5000) _millivolts = v;
         if (read16(REG_CURRENT, v)) _currentMa = (int16_t)v;
+        // The gauge only learns a pack over full cycles and can be far off until
+        // then (it showed 60% on a full 4.197 V cell). When it disagrees with the
+        // voltage by a lot, trust the voltage.
+        if (_millivolts) {
+            const uint8_t byVolt = fromVoltage(charging() ? _millivolts - 80 : _millivolts);
+            _percent = abs((int)_gaugePct - (int)byVolt) > 15 ? byVolt : _gaugePct;
+        } else {
+            _percent = _gaugePct;
+        }
     }
 
     uint8_t  percent() const { return _percent; }
+    uint8_t  gaugePercent() const { return _gaugePct; }
     uint16_t millivolts() const { return _millivolts; }
     // What the gauge held at boot, what it holds now, and whether we rewrote it.
     uint16_t designBefore() const { return _designBefore; }
@@ -61,6 +71,16 @@ private:
     };
     static constexpr uint16_t ROM_FULL_CHARGE_CAP = 0x929D, ROM_DESIGN_CAP = 0x929F;
     static constexpr uint32_t REFRESH_MS = 5000;
+
+    // Typical single-cell Li-ion curve under light load.
+    static uint8_t fromVoltage(int mv) {
+        static const int16_t MV[]  = {3400, 3500, 3600, 3650, 3700, 3750, 3800, 3900, 4000, 4100, 4170};
+        static const uint8_t PCT[] = {   0,    4,   10,   18,   28,   40,   50,   66,   80,   92,  100};
+        if (mv <= MV[0]) return 0;
+        for (int i = 1; i < 11; i++)
+            if (mv < MV[i]) return PCT[i - 1] + (PCT[i] - PCT[i - 1]) * (mv - MV[i - 1]) / (MV[i] - MV[i - 1]);
+        return 100;
+    }
 
     bool read16(uint8_t reg, uint16_t& out) {
         _w->beginTransmission(ADDR_BQ27220_GAUGE);
@@ -124,7 +144,7 @@ private:
 
     TwoWire* _w = nullptr;
     bool     _gauge = false, _configured = false;
-    uint8_t  _percent = 0;
+    uint8_t  _percent = 0, _gaugePct = 0;
     uint16_t _millivolts = 0, _designBefore = 0, _designNow = 0;
     int16_t  _currentMa = 0;
     uint32_t _last = 0;
