@@ -1,0 +1,16 @@
+.pio/
+.pioenvs/
+.piolibdeps/
+.vscode/
+*.bin
+*.elf
+*.map
+
+# Real config exports. These carry a private key and a full contact list, so a
+# file copied off an SD card for testing must never end up in a commit.
+*_meshcore_config_*.json
+*meshcore-config*.json
+inwmesh-identity*
+
+# Optional per-device identity seed (a private key). Never commit it.
+src/identity_seed.h

@@ -1,0 +1,75 @@
+name: build
+
+# Every push to main rebuilds the release firmware and republishes the installer
+# site with it. A v* tag also attaches the binaries to a GitHub release.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio/libdeps
+          key: pio-${{ hashFiles('platformio.ini') }}
+
+      - name: Build (no NFC)
+        run: |
+          pip install platformio
+          pio run -e t-lora-pager-public
+
+      - name: Assemble site
+        run: |
+          mkdir -p site/firmware
+          cp .pio/build/t-lora-pager-public/firmware.bin site/firmware/
+          cp .pio/build/t-lora-pager-public/partitions.bin site/firmware/
+          # 0xFF over otadata makes the bootloader start app0 on a first install.
+          python -c "open('site/firmware/otadata-blank.bin','wb').write(bytes([255])*8192)"
+          echo "${GITHUB_REF_NAME} ${GITHUB_SHA::7}" > site/firmware/version.txt
+
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: site
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            site/firmware/firmware.bin
+            site/firmware/partitions.bin
+            site/firmware/otadata-blank.bin
+
+  pages:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: firmware
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>INW Mesh - T-Lora Pager firmware</title>
+<meta name="description" content="MeshCore firmware for the LilyGo T-Lora Pager. Install from your browser.">
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root {
+    --bg: #060a09; --panel: #0b120e; --line: #16241c; --green: #3dffa8;
+    --green-dim: #1f6f4e; --txt: #b9d4c6; --dim: #5f8074; --amber: #e6b955;
+    --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--txt); font: 15px/1.6 var(--mono);
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 32px 32px; background-position: -1px -1px;
+  }
+  a { color: var(--green); }
+  main { max-width: 880px; margin: 0 auto; padding: 48px 20px 80px; }
+  header { display: flex; align-items: center; gap: 22px; margin-bottom: 36px; }
+  header svg { flex: none; }
+  h1 {
+    margin: 0; font-size: 44px; letter-spacing: .18em; color: var(--green);
+    text-shadow: 0 0 10px rgba(61,255,168,.45);
+  }
+  .tag { color: var(--dim); margin: 2px 0 0; }
+  h2 {
+    font-size: 13px; letter-spacing: .25em; text-transform: uppercase; color: var(--green);
+    margin: 44px 0 14px;
+  }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px 22px; }
+  .boot { color: var(--dim); white-space: pre-wrap; font-size: 13.5px; }
+  .boot b { color: var(--green); font-weight: normal; }
+  .install { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .install .panel { display: flex; flex-direction: column; gap: 10px; }
+  .install h3 { margin: 0; color: var(--txt); font-size: 16px; }
+  .install p { margin: 0; color: var(--dim); font-size: 13.5px; flex: 1; }
+  button.go {
+    font: inherit; font-size: 14px; letter-spacing: .08em; cursor: pointer;
+    background: var(--green); color: var(--bg); border: 0; border-radius: 6px; padding: 11px 16px;
+  }
+  button.go.alt { background: transparent; color: var(--green); border: 1px solid var(--green-dim); }
+  .warn { border-left: 3px solid var(--amber); color: var(--txt); }
+  .warn b { color: var(--amber); font-weight: normal; }
+  .nosupport { color: var(--amber); }
+  ul { padding-left: 18px; margin: 0; }
+  li { margin: 4px 0; }
+  li::marker { content: "// "; color: var(--green-dim); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  td { border-top: 1px solid var(--line); padding: 7px 8px; vertical-align: top; }
+  td:first-child { color: var(--green); white-space: nowrap; }
+  code { color: var(--green); }
+  footer { margin-top: 56px; color: var(--dim); font-size: 13px; }
+  #ver { color: var(--dim); }
+  @media (max-width: 640px) { .install { grid-template-columns: 1fr; } h1 { font-size: 34px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
+      <g stroke="#1f6f4e" stroke-width="2">
+        <line x1="26" y1="30" x2="60" y2="18"/><line x1="60" y1="18" x2="80" y2="54"/>
+        <line x1="80" y1="54" x2="50" y2="82"/><line x1="50" y1="82" x2="16" y2="64"/>
+        <line x1="16" y1="64" x2="26" y2="30"/><line x1="26" y1="30" x2="80" y2="54"/>
+        <line x1="60" y1="18" x2="50" y2="82"/>
+      </g>
+      <g fill="#3dffa8">
+        <circle cx="26" cy="30" r="6"/><circle cx="60" cy="18" r="6"/><circle cx="80" cy="54" r="8"/>
+        <circle cx="50" cy="82" r="6"/><circle cx="16" cy="64" r="6"/>
+      </g>
+    </svg>
+    <div>
+      <h1>INW MESH</h1>
+      <p class="tag">// MeshCore firmware for the LilyGo T-Lora Pager</p>
+    </div>
+  </header>
+
+  <div class="panel boot"><b>root@pager:~$</b> ./install inw-mesh
+radio sx1262 ............ <b>ok</b>
+meshcore companion ...... <b>ok</b>
+messages, map, tools .... <b>ok</b>
+phone app over ble ...... <b>ok</b>
+<b>&gt;</b> plug the pager in over USB-C and pick an option below. <span id="ver"></span></div>
+
+  <h2>Install</h2>
+  <p id="unsupported" class="nosupport" hidden>This browser can't talk to USB serial devices. Use Chrome or Edge on a computer.</p>
+  <div class="install">
+    <div class="panel">
+      <h3>Update</h3>
+      <p>Already running INW Mesh? This replaces the app and keeps your settings, contacts and messages.</p>
+      <esp-web-install-button manifest="manifest-update.json">
+        <button class="go" slot="activate">UPDATE</button>
+      </esp-web-install-button>
+    </div>
+    <div class="panel">
+      <h3>First install</h3>
+      <p>Coming from other firmware. Also writes the partition table, so the first start formats storage (a few minutes). Contacts and channels can be pulled from the SD card, see below.</p>
+      <esp-web-install-button manifest="manifest-install.json">
+        <button class="go alt" slot="activate">FIRST INSTALL</button>
+      </esp-web-install-button>
+    </div>
+  </div>
+  <p></p>
+  <div class="panel warn">
+    <b>Safe by design:</b> the installer never erases the flash and never writes the bootloader.
+    It relies on the bootloader already on the pager; so far it has been run on a pager
+    whose bootloader came from Launcher and Wadamesh. If yours doesn't start afterwards,
+    installing <a href="https://github.com/bmorcelli/Launcher">Launcher</a> first gives it
+    a bootloader that works, then run the first install again.
+  </div>
+
+  <h2>What it does</h2>
+  <div class="panel">
+    <ul>
+      <li>Channels, DMs and room servers, with delivery ticks, retries and how many repeaters heard your post</li>
+      <li>Colour emoji, @mentions, quick replies</li>
+      <li>Up to 1000 contacts, sorted by recency, name or distance</li>
+      <li>Repeater admin: login, status, telemetry, trace, console</li>
+      <li>Offline map from SD tiles, downloading missing tiles over Wi-Fi</li>
+      <li>Discover nearby repeaters, packet sniffer, radio stats</li>
+      <li>Works with the MeshCore phone app over Bluetooth (PIN 123456)</li>
+    </ul>
+  </div>
+
+  <h2>Keys</h2>
+  <div class="panel">
+    <table>
+      <tr><td>wheel</td><td>turn to move, press to select</td></tr>
+      <tr><td>Backspace</td><td>back, or delete while typing</td></tr>
+      <tr><td>Enter</td><td>send a message</td></tr>
+      <tr><td>orange (hold)</td><td>numbers and symbols</td></tr>
+      <tr><td>home</td><td><code>m</code> messages, <code>c</code> contacts, <code>p</code> map, <code>t</code> tools, <code>s</code> settings, <code>l</code> lock</td></tr>
+      <tr><td>in a chat</td><td>press the wheel for emoji and quick replies</td></tr>
+      <tr><td>map</td><td>wheel zooms, <code>wasd</code> pans, <code>n</code> next node, <code>c</code> centre on me</td></tr>
+    </table>
+  </div>
+
+  <h2>SD card</h2>
+  <div class="panel">
+    <table>
+      <tr><td>/tiles/z/x/y.jpg</td><td>map tiles (png works too); <code>/tiles/topo/...</code> for a second layer</td></tr>
+      <tr><td>/meshcore-backup.json</td><td>a MeshCore config export: contacts, channels, name and radio settings are imported on first start</td></tr>
+      <tr><td>/meshcomod/</td><td>a Wadamesh data folder is imported too</td></tr>
+      <tr><td>/inw/</td><td>written by the pager: a backup of its store every 30 minutes</td></tr>
+    </table>
+  </div>
+
+  <footer>
+    Source, releases and issues: <a href="https://github.com/BamBam1121/inw-mesh">github.com/BamBam1121/inw-mesh</a>
+    &nbsp;//&nbsp; GPL-3.0 &nbsp;//&nbsp; built on <a href="https://github.com/meshcore-dev/MeshCore">MeshCore</a>
+  </footer>
+</main>
+<script>
+  if (!("serial" in navigator)) document.getElementById("unsupported").hidden = false;
+  fetch("firmware/version.txt").then(r => r.ok ? r.text() : "").then(t => {
+    if (t) document.getElementById("ver").textContent = "(build " + t.trim() + ")";
+  }).catch(() => {});
+</script>
+</body>
+</html>
