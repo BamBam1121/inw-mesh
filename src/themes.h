@@ -96,9 +96,11 @@ static const ThemeSpec THEMES[] = {
     { 0x040716, 0x0b1230, 0x18214a, 0x72f5c8, 0x6a4fc2, 0xd6e4ff, 0x7c86b8, 0xffc46b,
       0xff6b8b, 0xffffff, 0x121a3e, 0x1b3a4a, 0x7db8ff, 0x141d45, 0x2c2250 },
     STYLE_AURORA, &tunes::AUR_BOOT_J, &tunes::AUR_MSG_J, &tunes::AUR_DM_J, &tunes::AUR_MEN_J,
-    {{82, 70}, 2},                                          // a soft swell in and out
-    {{82, 70, 0x80 | 10, 82, 70}, 5},
-    {{82, 0x80 | 5, 14, 0x80 | 10, 82, 70}, 6},
+    // Slow waves. The ramp effects (70/82) are too gentle to spin this ERM up,
+    // so the swell comes from strong pulses (52) with long gaps between them.
+    {{52, 0x80 | 12, 52}, 3},
+    {{52, 0x80 | 12, 52, 0x80 | 12, 52}, 5},
+    {{14, 0x80 | 10, 52, 0x80 | 8, 52, 0x80 | 8, 52}, 7},
     7, 0x28 },
 };
 static constexpr uint8_t THEME_COUNT = sizeof(THEMES) / sizeof(THEMES[0]);
