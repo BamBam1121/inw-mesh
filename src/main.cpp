@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPIFFS.h>
+#include "power.h"
 #include <SD.h>
 #include <time.h>
 #include "board_pins.h"
@@ -100,6 +101,11 @@ uint16_t app::unread() {
 }
 
 void app::applyDisplay() {
+  if (power::saver()) {             // dimmer, and asleep sooner; the saved settings are untouched
+    dimmer.setFull(min<uint8_t>(ui_settings.brightness, 4));
+    dimmer.setTimes(min<uint16_t>(ui_settings.dimSecs, 10) * 1000UL, min<uint16_t>(ui_settings.sleepSecs, 30) * 1000UL);
+    return;
+  }
   dimmer.setFull(ui_settings.brightness);
   dimmer.setTimes(ui_settings.dimSecs * 1000UL, ui_settings.sleepSecs * 1000UL);
 }
@@ -490,7 +496,7 @@ void setup() {
 
 // ---- loop -------------------------------------------------------------------------------------------
 static void gpsTick() {
-  if (!ui_settings.gpsOn) return;
+  if (!ui_settings.gpsOn || power::saver()) return;
   const uint32_t t0 = millis(), b0 = gps.bytesRead;
   const bool parsed = gps.update();
   if (millis() - t0 > 100)
@@ -593,6 +599,7 @@ void loop() {
   { static bool w = false; if (wifi::connected() != w) { w = wifi::connected(); nav.statusChanged(); } }
   lap(2);
   battery.tick(millis());
+  power::tick();
   nodeLoop();
   lap(3);
   nav.tick();
@@ -605,7 +612,7 @@ void loop() {
   // Keyboard light follows the screen (or flashes for a message).
   {
     static uint8_t prev = 1;
-    uint8_t kb = dimmer.asleep() ? 0 : dimmer.dimmed() ? ui_settings.kbBacklight / 6 : ui_settings.kbBacklight;
+    uint8_t kb = dimmer.asleep() || power::saver() ? 0 : dimmer.dimmed() ? ui_settings.kbBacklight / 6 : ui_settings.kbBacklight;
     if (s_kbFlashUntil) { if ((int32_t)(millis() - s_kbFlashUntil) < 0) kb = 255; else s_kbFlashUntil = 0; }
     if (kb != prev) { keyboard.setBacklight(kb); prev = kb; }
   }

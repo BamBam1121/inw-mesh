@@ -9,6 +9,8 @@
 #include "gps.h"
 #include "backlight.h"
 #include "netwifi.h"
+#include "power.h"
+#include "battery.h"
 #include <SPIFFS.h>
 #include <SD.h>
 
@@ -20,6 +22,13 @@ extern void logsPage();
 extern void joinChannelFlow();
 
 static NodePrefs& P() { return g_node->prefs(); }
+
+// Radios stay off while battery saver is on; say why instead of silently ignoring.
+static bool saverBlocks() {
+  if (!power::saver()) return false;
+  nav.toast("battery saver is on - turn it off in Battery first", 3000);
+  return true;
+}
 
 // ---- profile ------------------------------------------------------------------------------
 static void profileMenu() {
@@ -204,6 +213,7 @@ static void autoAddMenu() {
 static void bluetoothMenu() {
   auto* m = new MenuView("Bluetooth (phone app)");
   m->toggle("bluetooth", [] { return bleEnabled(); }, [] {
+    if (saverBlocks()) return;
     ui_settings.ble = !bleEnabled();
     bleSetEnabled(ui_settings.ble);
     markUiDirty();
@@ -274,6 +284,7 @@ static void wifiMenu() {
   auto* m = new MenuView("Wi-Fi");
   m->rebuild = [](MenuView& v) {
     v.toggle("wi-fi", [] { return wifi::enabled(); }, [] {
+      if (saverBlocks()) return;
       ui_settings.wifiOn = !wifi::enabled(); wifi::setEnabled(ui_settings.wifiOn); markUiDirty(); nav.statusChanged(); });
     v.info("status", []() -> String { return String(wifi::statusText()); });
     v.action("scan + join a network", [] { nav.push(new WifiScanView()); });
@@ -308,8 +319,8 @@ static void wifiMenu() {
 // ---- gps / clock ----------------------------------------------------------------------------------------
 static void gpsMenu() {
   auto* m = new MenuView("GPS");
-  m->toggle("gps receiver", [] { return ui_settings.gpsOn; },
-            [] { ui_settings.gpsOn = !ui_settings.gpsOn; gpsPower(ui_settings.gpsOn); markUiDirty(); });
+  m->toggle("gps receiver", [] { return ui_settings.gpsOn && !power::saver(); },
+            [] { if (saverBlocks()) return; ui_settings.gpsOn = !ui_settings.gpsOn; gpsPower(ui_settings.gpsOn); markUiDirty(); });
   m->toggle("advert position follows gps", [] { return ui_settings.gpsLivePosition; },
             [] { ui_settings.gpsLivePosition = !ui_settings.gpsLivePosition; markUiDirty(); });
   m->toggle("set clock from gps", [] { return ui_settings.gpsSetsClock; },
@@ -514,6 +525,37 @@ static void backupsMenu() {
   nav.push(m);
 }
 
+// ---- battery -------------------------------------------------------------------------------------
+extern Battery battery;
+
+static void batteryMenu() {
+  auto* m = new MenuView("Battery");
+  m->info("charge", []() -> String {
+    String s = String(app::batteryPct()) + "%  " + String(app::batteryMv()) + " mV";
+    if (power::holding()) s += "  held";
+    else if (app::charging()) s += "  charging";
+    else if (battery.pluggedIn()) s += "  plugged in";
+    return s; });
+  m->info("health", []() -> String {
+    const uint16_t f = battery.fullChargeMah();
+    return f ? String(f) + " of " + String(Battery::DESIGN_MAH) + " mAh  (" + String(min(100, f * 100 / Battery::DESIGN_MAH)) + "%)" : String("--"); });
+  m->header("optimised charging");
+  m->toggle("hold at 80% until needed", [] { return ui_settings.smartCharge; }, [] {
+    ui_settings.smartCharge = !ui_settings.smartCharge;
+    if (!ui_settings.smartCharge) power::chargeFullNow();
+    markUiDirty(); });
+  m->info("status", []() -> String { return String(power::chargeStatus()); });
+  m->action("charge to 100% now", [] { power::chargeFullNow(); nav.toast("charging to full this time"); });
+  m->header("battery saver");
+  m->toggle("battery saver", [] { return power::saver(); }, [] { power::setSaver(!power::saver()); });
+  m->toggle("turn on automatically", [] { return ui_settings.autoSaver; },
+            [] { ui_settings.autoSaver = !ui_settings.autoSaver; markUiDirty(); });
+  m->adjust("turn on at", []() -> String { return String(ui_settings.saverPct) + "%"; },
+            [](int d) { ui_settings.saverPct = constrain(ui_settings.saverPct + d * 5, 5, 50); markUiDirty(); });
+  m->info("what it does", []() -> String { return String("gps, bluetooth, wi-fi off, dim screen"); });
+  nav.push(m);
+}
+
 static void systemMenu() {
   auto* m = new MenuView("System");
   m->action("device info", [] { deviceInfoPage(); });
@@ -569,6 +611,7 @@ static String subGps()     { return !ui_settings.gpsOn ? "off" : gps.hasFix() ? 
 static String subNotify()  { return ui_settings.dnd ? "dnd" : "on"; }
 static String subNone()    { return ""; }
 static String subTheme()   { return app::themeSpec().name; }
+static String subBattery() { return power::saver() ? String(app::batteryPct()) + "% saver" : power::holding() ? String("held 80%") : String(app::batteryPct()) + "%"; }
 
 static const Tile TILES[] = {
   {"Profile", "@", profileMenu, subProfile},
@@ -586,6 +629,7 @@ static const Tile TILES[] = {
   {"Messages", "=", messagesMenu, subNone},
   {"Telemetry", "%", telemetryMenu, subNone},
   {"Backups", "S", backupsMenu, subNone},
+  {"Battery", "b", batteryMenu, subBattery},
   {"System", "&", systemMenu, subNone},
   {"About", "i", aboutPage, subNone},
 };
@@ -596,7 +640,7 @@ public:
   void rotate(int d) override { _f = ((_f + d) % TILE_N + TILE_N) % TILE_N; dirty = true; }
   void press() override {
     // Without a running node only the device-side sections make sense.
-    static const bool NEEDS_NODE[TILE_N] = {1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,0,0};
+    static const bool NEEDS_NODE[TILE_N] = {1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,0,0,0};
     if (g_node || !NEEDS_NODE[_f]) TILES[_f].open(); else nav.toast("radio not running");
   }
   void key(char c) override {

@@ -5,6 +5,7 @@
 #include "gps.h"
 #include "logstore.h"
 #include "netwifi.h"
+#include "power.h"
 #include <time.h>
 #include "emoji_data.h"
 
@@ -40,12 +41,21 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t) {
   rx -= bw + 2;
   d.drawRect(rx, 4, bw, bh, t.dim);
   d.fillRect(rx + bw, 7, 2, 4, t.dim);
-  const uint16_t bc = app::charging() ? t.green : pct <= 15 ? t.red : pct <= 30 ? t.amber : t.txt;
+  const uint16_t bc = app::charging() ? t.green : power::saver() ? t.amber : pct <= 15 ? t.red : pct <= 30 ? t.amber : t.txt;
   d.fillRect(rx + 2, 6, (bw - 4) * min<uint8_t>(pct, 100) / 100, bh - 4, bc);
   const char* bt = app::batteryText();
   rx -= d.textWidth(bt) + 4;
   d.setTextColor(t.dim, t.panel);
   d.drawString(bt, rx, 1);
+  if (power::saver()) {
+    rx -= 44;
+    d.setTextColor(t.amber, t.panel);
+    d.drawString("SAVER", rx, 1);
+  } else if (power::holding()) {
+    rx -= 30;
+    d.setTextColor(t.green, t.panel);
+    d.drawString("80%", rx, 1);
+  }
   if (bleEnabled()) {
     rx -= 22;
     d.setTextColor(bleConnected() ? t.blue : t.dim, t.panel);
@@ -56,7 +66,7 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t) {
     d.setTextColor(wifi::connected() ? t.green : t.dim, t.panel);
     d.drawString("WiFi", rx, 1);
   }
-  if (ui_settings.gpsOn) {
+  if (ui_settings.gpsOn && !power::saver()) {
     rx -= 30;
     d.setTextColor(gps.hasFix() ? t.green : t.dim, t.panel);
     d.drawString("GPS", rx, 1);

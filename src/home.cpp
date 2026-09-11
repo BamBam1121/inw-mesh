@@ -7,6 +7,7 @@
 #include "gps.h"
 #include "backlight.h"
 #include "quips.h"
+#include "power.h"
 
 static Carousel s_carousel;
 
@@ -22,7 +23,7 @@ static const char* subContacts() {
   snprintf(b, sizeof(b), "%d known", g_node ? g_node->getNumContacts() : 0);
   return b;
 }
-static const char* subMap() { return gps.hasFix() ? "gps fix" : (ui_settings.gpsOn ? "searching" : "gps off"); }
+static const char* subMap() { return gps.hasFix() ? "gps fix" : (ui_settings.gpsOn && !power::saver() ? "searching" : "gps off"); }
 static const char* subTools() { return "discover  trace  rf"; }
 #if INW_NFC
 static const char* subNfc() { return "read  write  share"; }

@@ -39,12 +39,14 @@ public:
         if (!chgRead(0x05, r05) || !chgRead(0x07, r07)) return;
         chgWrite(0x05, r05 & 0xF0);                     // ITERM = 64 mA, pre-charge unchanged
         chgWrite(0x07, r07 & ~0x30);                    // WATCHDOG disabled
+        uint8_t r03;
+        if (chgRead(0x03, r03) && !(r03 & 0x10)) chgWrite(0x03, r03 | 0x10);   // charging on (clears any old hold)
     }
 
     // If the charger is done but the gauge never flagged full, run the tail of the
     // charge again (toggle CHG_CONFIG) so the gauge can see the taper. Once a boot.
     void resyncFull() {
-        if (_resynced) return;
+        if (_resynced || _held) return;
         uint16_t flags, soc;
         uint8_t st, r03;
         if (!read16(0x0A, flags) || !read16(REG_SOC, soc) || !chgRead(0x0B, st) || !chgRead(0x03, r03)) return;
@@ -71,6 +73,9 @@ public:
         if (read16(REG_SOC, v) && v <= 100) _gaugePct = (uint8_t)v;
         if (read16(REG_VOLTAGE, v) && v > 2500 && v < 5000) _millivolts = v;
         if (read16(REG_CURRENT, v)) _currentMa = (int16_t)v;
+        if (read16(0x12, v) && v > 100 && v < 5000) _fcc = v;
+        uint8_t st;
+        if (chgRead(0x0B, st)) _vbus = (st >> 5) != 0;
         // The gauge counts charge and is what we show. Voltage sags under radio
         // and screen load, so it only takes over when the gauge is plainly wrong
         // (it once sat at 60% on a full 4.197 V cell before it had seen a taper).
@@ -111,6 +116,19 @@ public:
                           r[0x04], r[0x05], r[0x06], r[0x07], r[0x0B]);
         }
     }
+
+    bool     pluggedIn() const { return _vbus; }
+    uint16_t fullChargeMah() const { return _fcc; }
+
+    // Pause or resume charging (optimised charging holds at 80%). Only the
+    // charger's enable bit changes; voltage, current and safety limits don't.
+    // A hold never survives a reboot: begin() re-enables charging.
+    void holdCharge(bool hold) {
+        uint8_t r03;
+        if (hold == _held || !chgRead(0x03, r03)) return;
+        if (chgWrite(0x03, hold ? (r03 & ~0x10) : (r03 | 0x10))) _held = hold;
+    }
+    bool chargeHeld() const { return _held; }
 
     // The gauge reports current signed: positive is charge going in.
     bool charging() const { return _currentMa > 5; }
@@ -207,7 +225,8 @@ private:
     }
 
     TwoWire* _w = nullptr;
-    bool     _gauge = false, _configured = false, _resynced = false;
+    bool     _gauge = false, _configured = false, _resynced = false, _held = false, _vbus = false;
+    uint16_t _fcc = 0;
     uint8_t  _percent = 0, _gaugePct = 0;
     uint16_t _millivolts = 0, _designBefore = 0, _designNow = 0;
     int16_t  _currentMa = 0;

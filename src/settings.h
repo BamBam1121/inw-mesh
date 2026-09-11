@@ -70,6 +70,13 @@ struct UiSettings {
   char     tileUrl[96]   = "";        // custom: base URL, {z}/{x}/{y} appended
   bool     ntpSync       = true;
   uint8_t  themeId       = 0;         // index into THEMES
+  // battery
+  bool     smartCharge   = true;      // hold at 80% until shortly before the usual unplug time
+  bool     autoSaver     = true;      // battery saver switches itself on when low
+  uint8_t  saverPct      = 20;
+  static constexpr uint8_t UNPLUG_N = 14;
+  uint16_t unplugMin[UNPLUG_N] = {};  // local minute-of-day of recent unplugs (0 = empty slot)
+  uint8_t  unplugPos     = 0;
 
   void load();
   void save();
