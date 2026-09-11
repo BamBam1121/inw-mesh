@@ -213,19 +213,22 @@ inline void aurora(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll
   }
   d.fillCircle(88, 40, 11, rgb(0xf2f5ff));
   d.fillCircle(93, 36, 10, t.bg);
-  // Ridge and pines, with the sasquatch stopped to look up.
+  // Ridge and pines drifting past, and the sasquatch walking under the lights.
   const uint16_t ridge = mix(t.bg, t.line, 0.6f), pine = mix(t.bg, t.line, 0.35f);
   d.fillTriangle(0, 150, 110, 112, 230, 150, ridge);
   d.fillTriangle(180, 152, 330, 104, 480, 152, ridge);
   d.fillRect(0, 150, 480, GROUND - 150, ridge);
+  // Same speed and wrap as the INW scene, so the walk cycle matches the ground.
+  const int span = 480 + 60;
   for (int i = 0; i < 18; i++) {
-    const int x = (int)(i * 29 + (hash(i) % 13)) - (int)fmodf(scroll * 0.1f, 29.0f);
+    int x = (int)(i * 29 + (hash(i) % 13) - scroll);
+    x = ((x % span) + span) % span - 30;
     if (x > 205 && x < 290) continue;
     const int h = 18 + hash(i * 3) % 16;
     d.fillTriangle(x, GROUND, x + 7, GROUND - h, x + 14, GROUND, pine);
   }
   d.drawFastHLine(0, GROUND, 480, t.line);
-  drawSasquatch(d, t, 250, GROUND, 80, 0.4f + sinf(phase * 0.05f) * 0.15f, unread ? t.amber : t.green);
+  drawSasquatch(d, t, 250, GROUND, 80, phase, unread ? t.amber : t.green);   // walking, like INW: the pines scroll past
 }
 
 }  // namespace scenes
