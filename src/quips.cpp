@@ -6,6 +6,8 @@
 #include "app.h"
 #include "node.h"
 #include "theme.h"
+#include "settings.h"
+#include "power.h"
 
 static const char* const GENERAL[] = {
   // jokes
@@ -66,39 +68,98 @@ static const char* const GENERAL[] = {
   "Tip: backups run daily. Keep a card in the pager.",
 };
 
-static const char* const THEMED[][6] = {
+#include "quips_more.h"
+
+static constexpr int N_THEMED = 20;
+static const char* const THEMED[][N_THEMED] = {
   // INW
   { "Sasquatch approves this signal strength.",
     "Pine trees: nature's attenuators.",
     "Inland Northwest: great views, better line of sight.",
     "Spokane to the lake, one hop at a time.",
     "Big sky, small packets.",
-    "Somewhere in the woods, a node is listening." },
+    "Somewhere in the woods, a node is listening.",
+    "Sasquatch has never been photographed. Nor has a clean SNR.",
+    "The Palouse: rolling hills, rolling packets.",
+    "Huckleberry season, mesh season. Same thing.",
+    "Wheat fields make excellent Fresnel zones.",
+    "From the Selkirks to the Snake, the mesh has you.",
+    "Smoke season? Radio doesn't mind the haze.",
+    "Lake cabin, no bars, full mesh.",
+    "Up here, a hill is worth a thousand milliwatts.",
+    "Basalt cliffs: dramatic, rugged, occasionally blocking.",
+    "The river valleys carry signal like a hallway.",
+    "Inland Northwest nights are dark. Nodes glow anyway.",
+    "Moose crossing. Packet crossing. Watch for both.",
+    "A tall pine is a free antenna mast. Ask it nicely.",
+    "Rumour says Sasquatch runs a repeater. Unconfirmed." },
   // Blocks
   { "Punch trees. Place repeaters.",
     "Night falls. Adverts spawn.",
     "Mine a little, mesh a little.",
     "One block at a time, one hop at a time.",
     "Crafting table optional. Antenna required.",
-    "Dig straight down? Terrible for signal." },
+    "Dig straight down? Terrible for signal.",
+    "Build your repeater tower out of dirt. It works.",
+    "Placed a torch. Placed a node. Both glow.",
+    "Redstone wishes it had this much range.",
+    "Every biome deserves a repeater.",
+    "Chunk loaded. Mesh loaded.",
+    "Survival tip: bring a pager.",
+    "Found diamonds. Found a direct path. Good day.",
+    "The pixel sky is clear. Great propagation.",
+    "Building a base? Put an antenna on the roof.",
+    "Sheep can't block signal. Hills can.",
+    "Hunger bar full. Battery bar, less so.",
+    "Respawn point: next to the charger.",
+    "Cobblestone tower: ugly, tall, perfect for LoRa.",
+    "The creepiest sound is an unacked message." },
   // Hero
   { "A hero never skips the ack.",
     "Hearts full. Signal full. Onward.",
     "Every hop is a dungeon cleared.",
     "The quest: deliver one message across the kingdom.",
     "Found: a secret repeater behind the waterfall.",
-    "Legends speak of a node with perfect SNR." },
+    "Legends speak of a node with perfect SNR.",
+    "You got a new contact! Da-da-da-daaa.",
+    "The old man in the cave had a repeater. Wise man.",
+    "Rupees can't buy line of sight.",
+    "Every tower you climb is a better repeater site.",
+    "Save point reached. Backup complete.",
+    "A shield blocks arrows. A mountain blocks signal.",
+    "Heart containers: 3. Hops to the lake: 4.",
+    "The kingdom is vast. The mesh is vaster.",
+    "Slay dragons. Relay packets.",
+    "Your sword is sharp. Your antenna is sharper.",
+    "Adventurer's rule: never travel without a radio.",
+    "The fairy fountain is also great for coverage.",
+    "Side quest: find the farthest node on the map.",
+    "The hero's journey ends with a perfect ack." },
   // Aurora
   { "The sky is busy tonight. So is the mesh.",
     "Quiet lights, quiet channels.",
     "Somewhere north, a repeater is watching the sky glow.",
     "Solar wind outside. Solar panels on the tower.",
     "Look up once in a while. The mesh will wait.",
-    "Green sky, green ack." },
+    "Green sky, green ack.",
+    "Curtains of light, curtains of chirps.",
+    "The aurora is charged particles. So is your battery.",
+    "Magnetic storms bother satellites more than LoRa.",
+    "Cold clear nights make the stars and signals sharp.",
+    "Somewhere a ridge-top node has the best view in town.",
+    "The night is long. The packets are short.",
+    "Stars don't need towers either.",
+    "Soft light, soft vibes, soft SNR.",
+    "The northern sky is a mesh of its own.",
+    "Watch the sky dance. The mesh keeps time.",
+    "Breathe in. Breathe out. Check the channel.",
+    "Violet, teal, green. Also your status bar.",
+    "Calm night on the mesh. Enjoy it.",
+    "Everything is glowing. Even the unread count." },
 };
 static constexpr int N_GENERAL = sizeof(GENERAL) / sizeof(GENERAL[0]);
-static constexpr int N_THEMED = 6;
-static constexpr int N_LIVE = 6;
+static constexpr int N_MORE = sizeof(MORE) / sizeof(MORE[0]);
+static constexpr int N_LIVE = 11;
 
 // Lines built from the contact list. Empty when there is nothing true to say.
 static bool liveLine(int which, char* out, size_t cap) {
@@ -136,27 +197,43 @@ static bool liveLine(int which, char* out, size_t cap) {
     case 5: if (app::batteryPct() > 25) return false;
             snprintf(out, cap, "Battery at %u%%. The mesh can wait, the charger can't.", app::batteryPct()); return true;
   }
+  const int hour = clock ? (int)((((int64_t)now + ui_settings.tzMinutes * 60) % 86400 + 86400) % 86400 / 3600) : -1;
+  switch (which) {
+    case 6: if (hour < 0 || hour > 4) return false;
+            snprintf(out, cap, "%d:%02d and still up. The mesh respects it.", hour ? hour : 12, (int)((now / 60) % 60)); return true;
+    case 7: if (hour < 5 || hour > 9) return false;
+            snprintf(out, cap, "Morning. %d nodes were busy while you slept.", heardDay > 1 ? heardDay : g_node->getNumContacts()); return true;
+    case 8: if (!power::saver()) return false;
+            snprintf(out, cap, "Battery saver on. Radios napping, messages still flow."); return true;
+    case 9: if (!power::holding()) return false;
+            snprintf(out, cap, "Charging paused at 80%% to go easy on the battery."); return true;
+    case 10: if (!g_node || repeaters < 1) return false;
+            snprintf(out, cap, "%d of your %d contacts are repeaters.", repeaters, g_node->getNumContacts()); return true;
+  }
   return false;
 }
 
 const char* quipNext() {
-  static const int TOTAL = N_GENERAL + N_THEMED + N_LIVE;
-  static uint8_t deck[TOTAL];
+  static const int TOTAL = N_GENERAL + N_MORE + N_THEMED + N_LIVE;
+  static uint16_t deck[TOTAL];
   static int pos = TOTAL;
   static char line[96];
   for (int tries = 0; tries < TOTAL * 2; tries++) {
     if (pos >= TOTAL) {
       for (int i = 0; i < TOTAL; i++) deck[i] = i;
-      for (int i = TOTAL - 1; i > 0; i--) { const int j = esp_random() % (i + 1); const uint8_t t = deck[i]; deck[i] = deck[j]; deck[j] = t; }
+      for (int i = TOTAL - 1; i > 0; i--) { const int j = esp_random() % (i + 1); const uint16_t t = deck[i]; deck[i] = deck[j]; deck[j] = t; }
       pos = 0;
     }
-    const int k = deck[pos++];
+    int k = deck[pos++];
     if (k < N_GENERAL) return GENERAL[k];
-    if (k < N_GENERAL + N_THEMED) {
+    k -= N_GENERAL;
+    if (k < N_MORE) return MORE[k];
+    k -= N_MORE;
+    if (k < N_THEMED) {
       const uint8_t s = nav.theme().style;
-      return THEMED[s < 4 ? s : 0][k - N_GENERAL];
+      return THEMED[s < 4 ? s : 0][k];
     }
-    if (liveLine(k - N_GENERAL - N_THEMED, line, sizeof(line))) return line;
+    if (liveLine(k - N_THEMED, line, sizeof(line))) return line;
   }
   return GENERAL[0];
 }
