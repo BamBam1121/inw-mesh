@@ -316,7 +316,12 @@ void setup() {
   Serial.begin(115200);
   delay(150);
   Serial.println("\n[INW] boot " FW_VERSION);
-  logs.add(LOG_INFO, "boot %s", FW_VERSION);
+  static const char* RESET[] = {"unknown", "power on", "external", "software", "crash",
+                                 "interrupt watchdog", "task watchdog", "watchdog", "deep sleep",
+                                 "brownout", "sdio"};
+  const int rr = (int)esp_reset_reason();
+  logs.add(rr == ESP_RST_POWERON || rr == ESP_RST_SW ? LOG_INFO : LOG_WARN, "boot %s, last reset: %s",
+           FW_VERSION, rr < 11 ? RESET[rr] : "?");
   ui_settings.load();
 
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
@@ -479,6 +484,12 @@ static void autoAdvertTick() {
 }
 
 void loop() {
+  // Anything that holds the loop long enough to feel like a freeze gets logged
+  // with where the time went.
+  const uint32_t tLoop = millis();
+  uint32_t lapAt = tLoop;
+  uint16_t laps[8] = {};
+  auto lap = [&](uint8_t i) { const uint32_t now = millis(); laps[i] = now - lapAt; lapAt = now; };
   const int8_t detents = rotary.takeDetents();
   const bool press = rotary.takePress();
   bool backspace = false, anyKey = false;
@@ -523,13 +534,19 @@ void loop() {
   if (dimmer.asleep() && !wasAsleep && ui_settings.lockOnSleep) app::lock();
   wasAsleep = dimmer.asleep();
 
+  lap(0);
   gpsTick();
+  lap(1);
   wifi::tick();
   { static bool w = false; if (wifi::connected() != w) { w = wifi::connected(); nav.statusChanged(); } }
+  lap(2);
   battery.tick(millis());
   nodeLoop();
+  lap(3);
   nav.tick();
+  lap(4);
   if (!dimmer.asleep() || nav.overlayActive()) nav.draw();
+  lap(5);
   dimmer.tick();
   jingle.tick();
 
@@ -549,8 +566,13 @@ void loop() {
   if (s_uiDirtyAt && millis() - s_uiDirtyAt > 2000) { s_uiDirtyAt = 0; ui_settings.save(); }
   if (g_shotAt && (int32_t)(millis() - g_shotAt) >= 0) { g_shotAt = 0; takeScreenshot(); }
 
-  autoAdvertTick();
-  sdBackupTick();
-  localBackupTick();
+  lap(6);
+  autoAdvertTick(); sdBackupTick(); localBackupTick();
+  lap(7);
+  const uint32_t total = millis() - tLoop;
+  if (total > 300) {
+    logs.add(LOG_WARN, "slow loop %lums: input %u gps %u wifi %u mesh %u tick %u draw %u misc %u backup %u",
+             (unsigned long)total, laps[0], laps[1], laps[2], laps[3], laps[4], laps[5], laps[6], laps[7]);
+  }
   delay(2);
 }

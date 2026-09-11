@@ -70,6 +70,17 @@ static bool validStore(fs::FS& fs, const char* p, size_t rec) {
 static const char* restoreStore(const char* name, size_t rec) {
   char live[32], bak[40], mine[40], wada[48];
   snprintf(live, sizeof(live), "/%s", name);
+  // A save writes <name>.tmp and then swaps it in. With the live file present the
+  // .tmp is a save that never finished; without it, the swap was cut short.
+  char tmp[40];
+  snprintf(tmp, sizeof(tmp), "/%s.tmp", name);
+  if (SPIFFS.exists(tmp)) {
+    if (!SPIFFS.exists(live) && validStore(SPIFFS, tmp, rec)) {
+      SPIFFS.rename(tmp, live);
+      return "finished save";
+    }
+    SPIFFS.remove(tmp);
+  }
   if (validStore(SPIFFS, live, rec)) return nullptr;
   snprintf(bak, sizeof(bak), "/%s.bak", name);
   if (validStore(SPIFFS, bak, rec) && copyFile(SPIFFS, bak, SPIFFS, live)) return "flash backup";
@@ -268,13 +279,25 @@ const char* importJsonNow() {
 }
 
 // ---- backups -------------------------------------------------------------------
-const char* sdBackupNow() {
+// Copies a store file over its backup unless that would throw away a lot of
+// records. A torn save looks exactly like that, and the backup is the way back.
+static bool mirrorStore(const char* src, fs::FS& to, const char* dst, size_t rec, bool force) {
+  if (!validStore(SPIFFS, src, rec)) return false;
+  const size_t have = fileSize(SPIFFS, src) / rec, kept = fileSize(to, dst) / rec;
+  if (!force && kept > 10 && have < kept * 9 / 10) {
+    logs.add(LOG_WARN, "kept %s backup: %u records, store has only %u", dst, (unsigned)kept, (unsigned)have);
+    return false;
+  }
+  return copyFile(SPIFFS, src, to, dst) > 0;
+}
+
+const char* sdBackupNow(bool force) {
   if (!sdMount()) return "no sd card";
   if (!SD.exists("/inw")) SD.mkdir("/inw");
   if (!SD.exists("/inw/identity")) SD.mkdir("/inw/identity");
   uint8_t n = 0;
-  if (validStore(SPIFFS, "/contacts3", CONTACT_REC) && copyFile(SPIFFS, "/contacts3", SD, "/inw/contacts3")) n++;
-  if (validStore(SPIFFS, "/channels2", CHANNEL_REC) && copyFile(SPIFFS, "/channels2", SD, "/inw/channels2")) n++;
+  if (mirrorStore("/contacts3", SD, "/inw/contacts3", CONTACT_REC, force)) n++;
+  if (mirrorStore("/channels2", SD, "/inw/channels2", CHANNEL_REC, force)) n++;
   if (fileSize(SPIFFS, "/identity/_main.id") >= 96 &&
       copyFile(SPIFFS, "/identity/_main.id", SD, "/inw/identity/_main.id")) n++;
   if (copyFile(SPIFFS, "/prefs.json", SD, "/inw/prefs.json")) n++;
@@ -291,7 +314,7 @@ void sdBackupTick() {
   if ((int32_t)(millis() - next) < 0) return;
   next = millis() + 30UL * 60UL * 1000UL;
   if (!g_node) return;
-  const char* r = sdBackupNow();
+  const char* r = sdBackupNow(false);
   logs.add(LOG_INFO, "auto backup: %s", r);
 }
 
@@ -299,8 +322,8 @@ void localBackupTick() {
   static uint32_t next = 180000;
   if ((int32_t)(millis() - next) < 0) return;
   next = millis() + 30UL * 60UL * 1000UL;
-  if (validStore(SPIFFS, "/contacts3", CONTACT_REC)) copyFile(SPIFFS, "/contacts3", SPIFFS, "/contacts3.bak");
-  if (validStore(SPIFFS, "/channels2", CHANNEL_REC)) copyFile(SPIFFS, "/channels2", SPIFFS, "/channels2.bak");
+  mirrorStore("/contacts3", SPIFFS, "/contacts3.bak", CONTACT_REC, false);
+  mirrorStore("/channels2", SPIFFS, "/channels2.bak", CHANNEL_REC, false);
 }
 
 // ---- export ----------------------------------------------------------------------
