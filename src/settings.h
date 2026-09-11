@@ -69,6 +69,7 @@ struct UiSettings {
   uint8_t  tileSource    = 0;         // 0 OSM (https), 1 wadamesh proxy (jpg), 2 custom
   char     tileUrl[96]   = "";        // custom: base URL, {z}/{x}/{y} appended
   bool     ntpSync       = true;
+  uint8_t  themeId       = 0;         // index into THEMES
 
   void load();
   void save();

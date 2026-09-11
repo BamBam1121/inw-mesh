@@ -1,6 +1,7 @@
 #include "app.h"
 #include "carousel.h"
 #include "mascot.h"
+#include "scenes.h"
 #include "node.h"
 #include "history.h"
 #include "gps.h"
@@ -105,24 +106,18 @@ private:
 // ---------------------------------------------------------------------------------
 class LockView : public View {
 public:
-  static constexpr int GROUND_Y = 170;
   bool isLock() override { return true; }
   void draw(Canvas& d) override {
     const Theme& t = nav.theme();
     drawStatusBar(d, t);
-    d.fillTriangle(0, 120, 90, 66, 160, 120, t.line);
-    d.fillTriangle(120, 124, 230, 58, 340, 124, t.line);
-    d.fillTriangle(300, 120, 400, 72, 480, 120, t.line);
-    const int span = L::W + 60;
-    for (int i = 0; i < 14; i++) {
-      int px = (int)(i * 46 - _scroll);
-      px = ((px % span) + span) % span - 30;
-      if (px > 200 && px < 300) continue;
-      const int ph = 20 + (i % 3) * 7;
-      d.fillTriangle(px, GROUND_Y - 4, px + 9, GROUND_Y - 4 - ph, px + 18, GROUND_Y - 4, t.greenDim);
+    const bool hasUnread = app::unread() > 0;
+    switch (t.style) {
+      case STYLE_BLOCKS: scenes::blocks(d, t, _phase, _scroll, hasUnread); break;
+      case STYLE_HERO:   scenes::hero(d, t, _phase, _scroll, hasUnread, app::batteryPct(), app::unread()); break;
+      case STYLE_AURORA: scenes::aurora(d, t, _phase, _scroll, hasUnread); break;
+      default:           scenes::inw(d, t, _phase, _scroll, hasUnread); break;
     }
-    d.drawFastHLine(0, GROUND_Y, L::W, t.greenDim);
-    drawSasquatch(d, t, 250, GROUND_Y, 88, _phase, app::unread() ? t.amber : t.green);
+    d.fillRect(0, 172, L::W, L::H - 172, t.bg);
 
     d.setFont(&fonts::Font4);
     d.setTextColor(t.green, t.bg);

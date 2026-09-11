@@ -207,7 +207,7 @@ public:
     const int tx0 = (int)floor(left / TILE), ty0 = (int)floor(top / TILE);
     const int tx1 = (int)floor((left + L::W) / TILE), ty1 = (int)floor((top + MAP_H) / TILE);
     g.setClipRect(0, MAP_Y, L::W, MAP_H);
-    g.fillRect(0, MAP_Y, L::W, MAP_H, lgfx::color565(0x0c, 0x14, 0x11));
+    g.fillRect(0, MAP_Y, L::W, MAP_H, t.panel);
     bool any = false;
     for (int ty = ty0; ty <= ty1; ty++) {
       for (int tx = tx0; tx <= tx1; tx++) {

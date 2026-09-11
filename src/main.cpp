@@ -105,12 +105,22 @@ void app::applyDisplay() {
 }
 void app::applySound() { jingle.setVolume(ui_settings.sound ? ui_settings.volume : 0); }
 void app::applyHaptics() { haptic.setMode(ui_settings.vibeMode); }
+
+const ThemeSpec& app::themeSpec() { return THEMES[ui_settings.themeId < THEME_COUNT ? ui_settings.themeId : 0]; }
+
+void app::applyTheme() {
+  const ThemeSpec& th = themeSpec();
+  theme.apply(display, th.palette, th.style);
+  haptic.setPattern(th.vibeMsg.seq, th.vibeMsg.n);
+  haptic.setTick(th.tickEffect, th.tickClamp);
+  nav.invalidate();
+}
 void app::reboot() { if (g_node) g_node->savePrefsNow(); ui_settings.save(); delay(200); ESP.restart(); }
 void app::lock() { if (!nav.top() || !nav.top()->isLock()) nav.push(makeLockView()); }
 
 void app::testNotify() {
-  haptic.buzz();
-  if (ui_settings.sound) jingle.play(&jingles::DM);
+  haptic.pattern(app::themeSpec().vibeDm.seq, app::themeSpec().vibeDm.n);
+  if (ui_settings.sound) jingle.play(app::themeSpec().dm);
   nav.banner("Test", "this is what a new message looks like");
 }
 
@@ -159,11 +169,16 @@ static bool quietHours() {
   return a <= b ? (h >= a && h < b) : (h >= a || h < b);
 }
 
-static void alert(const char* title, const char* text, const Jingle* sound) {
+enum class AlertKind : uint8_t { Msg, Dm, Mention };
+
+static void alert(const char* title, const char* text, AlertKind kind) {
+  const ThemeSpec& th = app::themeSpec();
+  const Jingle* sound = kind == AlertKind::Dm ? th.dm : kind == AlertKind::Mention ? th.mention : th.msg;
+  const VibePattern& vibe = kind == AlertKind::Dm ? th.vibeDm : kind == AlertKind::Mention ? th.vibeMention : th.vibeMsg;
   if (ui_settings.wakeOnMessage) dimmer.wake();
   nav.banner(title, text);
   if (quietHours()) return;
-  if (ui_settings.vibrate) haptic.buzz();
+  if (ui_settings.vibrate) haptic.pattern(vibe.seq, vibe.n);
   if (ui_settings.sound) jingle.play(sound);
   if (ui_settings.kbFlash) { keyboard.setBacklight(255); s_kbFlashUntil = millis() + 2500; }
 }
@@ -183,7 +198,7 @@ static void onNodeEvent(NodeEvent e, const void* arg) {
       char text[200];
       if (room) snprintf(text, sizeof(text), "%s: %s", m->sender, m->text);
       else strlcpy(text, m->text, sizeof(text));
-      alert(c->name, text, room ? &jingles::MSG : &jingles::DM);
+      alert(c->name, text, room ? AlertKind::Msg : AlertKind::Dm);
       break;
     }
     case NodeEvent::ChannelMsg: {
@@ -201,7 +216,7 @@ static void onNodeEvent(NodeEvent e, const void* arg) {
       char title[48], text[200];
       snprintf(title, sizeof(title), "%s%s", ch.name, mention ? "  @you" : "");
       snprintf(text, sizeof(text), "%s: %s", m->sender, m->text);
-      alert(title, text, mention ? &jingles::ALERT : &jingles::MSG);
+      alert(title, text, mention ? AlertKind::Mention : AlertKind::Msg);
       break;
     }
     case NodeEvent::NewContact:
@@ -320,7 +335,7 @@ void setup() {
 
   display.init();
   display.setRotation(TFT_ROTATION);
-  theme.init(display);
+  app::applyTheme();
   if (digitalRead(PIN_BUTTON) == LOW) {        // BOOT held: hardware self test
     backlight.begin(PIN_TFT_BL);
     backlight.setLevel(12);
@@ -390,7 +405,7 @@ void setup() {
   wifi::begin();
   s_bootStep = BOOT_STEPS - 1;
   bootStep("ready", true);
-  if (ui_settings.bootJingle && ui_settings.sound) jingle.play(&jingles::BOOT);
+  if (ui_settings.bootJingle && ui_settings.sound) jingle.play(app::themeSpec().boot);
 
   nav.begin(&display, &theme);
   nav.push(makeHomeView());

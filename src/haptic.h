@@ -31,9 +31,26 @@ public:
     return N[m % CONFIG_COUNT];
   }
 
-  // Notification: `pulses` strong buzzes, 220 ms apart.
+  // Play a theme's sequence: effect ids, with bit 7 set meaning a pause of
+  // (v & 0x7F) x 10 ms. Up to 8 slots, one GO write.
+  void pattern(const uint8_t* seq, uint8_t n) {
+    if (!_ok || !n) return;
+    write(REG_ODCLAMP, _odClamp);
+    uint8_t slot = REG_SEQ;
+    for (uint8_t i = 0; i < n && slot <= 0x0B; i++) write(slot++, seq[i]);
+    if (slot <= 0x0B) write(slot, 0);
+    write(REG_MODE, 0);
+    write(REG_GO, 1);
+  }
+
+  // The theme's default notification pattern, used by buzz().
+  void setPattern(const uint8_t* seq, uint8_t n) { _pat = seq; _patN = n; }
+  void setTick(uint8_t effect, uint8_t clamp) { _tickEffect = effect; _tickClamp = clamp; }
+
+  // Notification: the theme pattern if one is set, else `pulses` strong buzzes.
   void buzz(uint8_t pulses = 3) {
     if (!_ok) return;
+    if (_pat && _patN && pulses == 3) { pattern(_pat, _patN); return; }
     write(REG_ODCLAMP, _odClamp);          // the tick lowers it; put it back
     uint8_t slot = REG_SEQ;
     for (uint8_t i = 0; i < pulses && slot <= 0x0B; i++) {
@@ -51,8 +68,8 @@ public:
     const uint32_t now = millis();
     if (now - _lastTick < 30) return;
     _lastTick = now;
-    write(REG_ODCLAMP, 0x40);
-    write(REG_SEQ, 7);
+    write(REG_ODCLAMP, _tickClamp);
+    write(REG_SEQ, _tickEffect);
     write(REG_SEQ + 1, 0);
     write(REG_MODE, 0);
     write(REG_GO, 1);
@@ -99,4 +116,6 @@ private:
   bool     _ok = false;
   uint8_t  _mode = 5, _effect = 14, _odClamp = 0xFF;
   uint32_t _lastTick = 0;
+  const uint8_t* _pat = nullptr;
+  uint8_t  _patN = 0, _tickEffect = 7, _tickClamp = 0x40;
 };

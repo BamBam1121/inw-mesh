@@ -227,7 +227,7 @@ private:
     const int x = out ? L::W - 8 - w : 8;
     const int y = bottomY - h;
     const bool mention = m.flags & HF_MENTION;
-    const uint16_t bg = out ? t.bubbleOut : (mention ? lgfx::color565(0x3a, 0x30, 0x12) : t.bubbleIn);
+    const uint16_t bg = out ? t.bubbleOut : (mention ? t.mentionBg : t.bubbleIn);
     g.fillRoundRect(x, y, w, h, 8, bg);
     if (selected) g.drawRoundRect(x - 1, y - 1, w + 2, h + 2, 9, t.green);
     else if (mention) g.drawRoundRect(x, y, w, h, 8, t.amber);

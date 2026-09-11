@@ -130,6 +130,47 @@ private:
 
     float dist(int8_t k) const { return fabsf((float)k - _offset); }
 
+    // Each theme frames its cards its own way.
+    static void frame(lgfx::LovyanGFX& d, const Theme& t, int x, int y, int w, int h, bool focus) {
+        const uint16_t fill = focus ? t.panel : t.bg;
+        switch (t.style) {
+        case STYLE_BLOCKS: {             // square, bevelled like an inventory slot
+            d.fillRect(x, y, w, h, fill);
+            d.fillRect(x, y, w, 3, focus ? t.green : t.line);
+            d.fillRect(x, y, 3, h, focus ? t.green : t.line);
+            d.fillRect(x, y + h - 3, w, 3, t.greenDim);
+            d.fillRect(x + w - 3, y, 3, h, t.greenDim);
+            if (focus) d.drawRect(x - 3, y - 3, w + 6, h + 6, t.amber);
+            break;
+        }
+        case STYLE_HERO: {               // double gold border, diamonds on the corners
+            d.fillRect(x, y, w, h, fill);
+            d.drawRect(x, y, w, h, focus ? t.green : t.line);
+            d.drawRect(x + 3, y + 3, w - 6, h - 6, focus ? t.greenDim : t.line);
+            if (focus) {
+                const int cx[4] = {x, x + w, x, x + w}, cy[4] = {y, y, y + h, y + h};
+                for (int i = 0; i < 4; i++) {
+                    d.fillTriangle(cx[i] - 5, cy[i], cx[i], cy[i] - 5, cx[i] + 5, cy[i], t.green);
+                    d.fillTriangle(cx[i] - 5, cy[i], cx[i], cy[i] + 5, cx[i] + 5, cy[i], t.green);
+                }
+            }
+            break;
+        }
+        case STYLE_AURORA:               // soft rounded glass with a two-colour glow
+            d.fillRoundRect(x, y, w, h, 12, fill);
+            d.drawRoundRect(x, y, w, h, 12, focus ? t.green : t.line);
+            if (focus) {
+                d.drawRoundRect(x - 2, y - 2, w + 4, h + 4, 14, t.greenDim);
+                d.drawRoundRect(x - 4, y - 4, w + 8, h + 8, 16, t.line);
+            }
+            break;
+        default:
+            d.fillRect(x, y, w, h, fill);
+            d.drawRect(x, y, w, h, focus ? t.green : t.line);
+            if (focus) d.drawRect(x - 2, y - 2, w + 4, h + 4, t.greenDim);
+        }
+    }
+
     void card(int8_t k) {
         auto& d = _fb; const Theme& t = *_t;
         const float pos = (float)k - _offset;
@@ -147,9 +188,7 @@ private:
         const int cy = BAND_H / 2 - 6;   // band-relative: sprite origin is BAND_TOP
         const int x0 = cx - w / 2, y0 = cy - h / 2;
 
-        d.fillRect(x0, y0, w, h, focus ? t.panel : t.bg);
-        d.drawRect(x0, y0, w, h, focus ? t.green : t.line);
-        if (focus) d.drawRect(x0 - 2, y0 - 2, w + 4, h + 4, t.greenDim);
+        frame(d, t, x0, y0, w, h, focus);
 
         d.setFont(focus ? &fonts::Font4 : &fonts::Font2);
         d.setTextColor(focus ? t.green : (near < 1.5f ? t.dim : t.greenDim),

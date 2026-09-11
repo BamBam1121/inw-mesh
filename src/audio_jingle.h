@@ -6,25 +6,21 @@
 #include <math.h>
 #include "es8311_codec.h"
 
-struct ToneStep { uint16_t freq; uint16_t ms; };   // freq 0 = rest
+enum : uint8_t { WAVE_SINE = 0, WAVE_SQUARE, WAVE_TRIANGLE };
+
+// freq 0 is a rest. slideTo, when set, glides the pitch there over the step.
+struct ToneStep {
+  uint16_t freq, ms, slideTo;
+  constexpr ToneStep(uint16_t f, uint16_t m, uint16_t s = 0) : freq(f), ms(m), slideTo(s) {}
+};
 
 struct Jingle {
   const char*     name;
   const ToneStep* steps;
   uint8_t         count;
+  uint8_t         wave;
+  bool            bell;     // piano/bell envelope: sharp attack, exponential decay
 };
-
-namespace jingles {
-  static const ToneStep MSG_STEPS[]   = {{880, 90}, {1318, 110}};              // two-note chime
-  static const ToneStep DM_STEPS[]    = {{1047, 90}, {1568, 120}};             // rising fifth
-  static const ToneStep ALERT_STEPS[] = {{1318, 70}, {1760, 70}, {2349, 130}}; // @mention arpeggio
-  static const ToneStep BOOT_STEPS[]  = {{523, 90}, {659, 90}, {784, 140}};    // C-E-G
-
-  static const Jingle MSG   = {"msg",   MSG_STEPS,   2};
-  static const Jingle DM    = {"dm",    DM_STEPS,    2};
-  static const Jingle ALERT = {"alert", ALERT_STEPS, 3};
-  static const Jingle BOOT  = {"boot",  BOOT_STEPS,  3};
-}
 
 class JinglePlayer {
 public:
@@ -50,8 +46,8 @@ private:
     if (p->_codec->start()) {
       p->_codec->setVolumePercent(p->_vol);
       p->_codec->setMute(false);
-      for (uint8_t i = 0; i < p->_j->count; i++) p->tone(p->_j->steps[i].freq, p->_j->steps[i].ms);
-      p->tone(0, 40);                    // let the last tone drain before power-down
+      for (uint8_t i = 0; i < p->_j->count; i++) p->tone(p->_j->steps[i]);
+      p->tone({0, 40});                  // let the last note drain before power-down
       p->_codec->stop();
     }
     if (p->_amp) p->_amp(false);
@@ -59,22 +55,41 @@ private:
     vTaskDelete(nullptr);
   }
 
-  void tone(uint16_t freq, uint16_t ms) {
-    const int total = (int)(Es8311::SAMPLE_RATE * ms / 1000);
+  float sample(float phase) const {
+    switch (_j->wave) {
+      case WAVE_SQUARE:   return phase < PI ? 0.45f : -0.45f;   // squares are loud; tame them
+      case WAVE_TRIANGLE: return phase < PI ? (2.0f * phase / PI - 1.0f) : (3.0f - 2.0f * phase / PI);
+      default:            return sinf(phase);
+    }
+  }
+
+  void tone(const ToneStep& s) {
+    const int total = (int)(Es8311::SAMPLE_RATE * s.ms / 1000);
     const int fade = max(1, total / 8);
-    const float step = 2.0f * PI * freq / Es8311::SAMPLE_RATE;
+    const float sr = Es8311::SAMPLE_RATE;
     int16_t buf[128];
     int done = 0;
-    float phase = 0;
     while (done < total) {
       int n = 0;
       for (; n < 128 && done < total; n++, done++) {
-        float a = freq ? 22000.0f : 0.0f;
-        if (done < fade) a *= (float)done / fade;
-        else if (done > total - fade) a *= (float)(total - done) / fade;
-        buf[n] = (int16_t)(sinf(phase) * a);
-        phase += step;
-        if (phase > 2.0f * PI) phase -= 2.0f * PI;
+        float amp = 0;
+        if (s.freq) {
+          const float f = s.slideTo ? s.freq + (s.slideTo - s.freq) * (float)done / total : s.freq;
+          _phase += 2.0f * PI * f / sr;
+          if (_phase > 2.0f * PI) _phase -= 2.0f * PI;
+          if (_j->bell) {
+            const float t = (float)done / sr;
+            amp = 22000.0f * min(1.0f, t * 400.0f) * expf(-t * 6.0f);   // 2.5 ms attack, ring out
+            if (done > total - fade) amp *= (float)(total - done) / fade;
+          } else {
+            amp = 22000.0f;
+            if (done < fade) amp *= (float)done / fade;
+            else if (done > total - fade) amp *= (float)(total - done) / fade;
+          }
+          buf[n] = (int16_t)(sample(_phase) * amp);
+        } else {
+          buf[n] = 0;
+        }
       }
       _codec->write(buf, n);
     }
@@ -85,4 +100,5 @@ private:
   const Jingle* _j = nullptr;
   volatile bool _busy = false;
   uint8_t _vol = 60;
+  float _phase = 0;
 };

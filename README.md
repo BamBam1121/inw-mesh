@@ -23,6 +23,8 @@ stock firmware.
 - **Wi-Fi:** saved networks, internet time, map tiles.
 - **NFC:** read and write tags, share your contact or a channel invite by tapping
   a phone to the pager.
+- **Themes:** INW, Blocks, Hero and Aurora. Each changes the colours, the
+  lock-screen scene, the card style, the sounds and the vibration patterns.
 - **Settings:** radio presets, client repeat, auto-add rules, notifications with
   quiet hours, vibration strength, Bluetooth PIN, backups.
 

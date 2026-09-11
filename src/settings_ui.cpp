@@ -365,6 +365,38 @@ static void displayMenu() {
   nav.push(m);
 }
 
+static void previewSound(const Jingle* j) {
+  if (!ui_settings.sound) { nav.toast("sounds are off (Sound settings)"); return; }
+  jingle.play(j);
+}
+
+static void themeMenu() {
+  auto* m = new MenuView("Theme");
+  m->rebuild = [](MenuView& v) {
+    for (uint8_t i = 0; i < THEME_COUNT; i++) {
+      v.value(THEMES[i].name, [i]() -> String { return ui_settings.themeId == i ? String("active") : String(""); }, [i] {
+        ui_settings.themeId = i;
+        app::applyTheme();
+        markUiDirty();
+        if (ui_settings.sound) jingle.play(THEMES[i].msg);
+        if (ui_settings.vibrate) haptic.pattern(THEMES[i].vibeMsg.seq, THEMES[i].vibeMsg.n);
+        nav.toast(THEMES[i].blurb, 3000);
+      });
+    }
+    v.header("preview this theme");
+    v.action("boot sound", [] { previewSound(app::themeSpec().boot); });
+    v.action("message", [] { previewSound(app::themeSpec().msg);
+      haptic.pattern(app::themeSpec().vibeMsg.seq, app::themeSpec().vibeMsg.n); });
+    v.action("direct message", [] { previewSound(app::themeSpec().dm);
+      haptic.pattern(app::themeSpec().vibeDm.seq, app::themeSpec().vibeDm.n); });
+    v.action("@mention", [] { previewSound(app::themeSpec().mention);
+      haptic.pattern(app::themeSpec().vibeMention.seq, app::themeSpec().vibeMention.n); });
+    v.action("see the lock screen", [] { app::lock(); });
+  };
+  m->rebuild(*m);
+  nav.push(m);
+}
+
 static void soundMenu() {
   auto* m = new MenuView("Sound & vibration");
   m->header("vibration");
@@ -536,6 +568,7 @@ static String subWifi()    { return !wifi::enabled() ? "off" : wifi::connected()
 static String subGps()     { return !ui_settings.gpsOn ? "off" : gps.hasFix() ? "fix" : "searching"; }
 static String subNotify()  { return ui_settings.dnd ? "dnd" : "on"; }
 static String subNone()    { return ""; }
+static String subTheme()   { return app::themeSpec().name; }
 
 static const Tile TILES[] = {
   {"Profile", "@", profileMenu, subProfile},
@@ -547,6 +580,7 @@ static const Tile TILES[] = {
   {"GPS", "o", gpsMenu, subGps},
   {"Clock", "t", clockMenu, subNone},
   {"Display", "*", displayMenu, subNone},
+  {"Theme", "^", themeMenu, subTheme},
   {"Sound", "v", soundMenu, subNone},
   {"Notifications", "!", notifyMenu, subNotify},
   {"Messages", "=", messagesMenu, subNone},
@@ -562,7 +596,7 @@ public:
   void rotate(int d) override { _f = ((_f + d) % TILE_N + TILE_N) % TILE_N; dirty = true; }
   void press() override {
     // Without a running node only the device-side sections make sense.
-    static const bool NEEDS_NODE[TILE_N] = {1,1,1,1,1,0,0,0,0,0,0,0,1,1,0,0};
+    static const bool NEEDS_NODE[TILE_N] = {1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,0,0};
     if (g_node || !NEEDS_NODE[_f]) TILES[_f].open(); else nav.toast("radio not running");
   }
   void key(char c) override {

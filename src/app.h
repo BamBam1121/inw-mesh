@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "ui.h"
 #include "settings.h"
+#include "themes.h"
 
 class Haptic; class Gps; class Battery; class IdleDimmer; class Keyboard;
 class JinglePlayer; class Es8311; class LogStore; class Rtc; class Carousel;
@@ -33,6 +34,8 @@ namespace app {
   void     applyDisplay();        // brightness, timeouts, keyboard light
   void     applySound();
   void     applyHaptics();
+  void     applyTheme();          // colours, tick and vibration of ui_settings.themeId
+  const ThemeSpec& themeSpec();
   void     testNotify();
   void     lock();                // show the lock face
   void     reboot();
