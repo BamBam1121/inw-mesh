@@ -10,6 +10,21 @@ stock firmware.
 **Website and browser installer:** https://inwmesh.lovable.app
 (or the plain installer at https://bambam1121.github.io/inw-mesh/)
 
+![Aurora lock screen](docs/img/lock-aurora.png)
+
+## Themes
+
+Each theme changes the colours, the lock-screen scene, the card style, the
+sounds, the vibration, the charging indicator and the plug-in chime.
+(Screenshots straight off the pager.)
+
+| | Lock screen | Home |
+|---|---|---|
+| **INW** | ![INW lock](docs/img/lock-inw.png) | ![INW home](docs/img/home-inw.png) |
+| **Blocks** | ![Blocks lock](docs/img/lock-blocks.png) | ![Blocks home](docs/img/home-blocks.png) |
+| **Hero** | ![Hero lock](docs/img/lock-hero.png) | ![Hero home](docs/img/home-hero.png) |
+| **Aurora** | ![Aurora lock](docs/img/lock-aurora.png) | ![Aurora home](docs/img/home-aurora.png) |
+
 ## Features
 
 - **Messages:** channels, DMs and room servers. Delivery ticks, retries, how many
@@ -24,11 +39,13 @@ stock firmware.
 - **Tools:** discover nearby repeaters, recently heard nodes, radio stats, a
   packet sniffer, GPS status, screenshots to SD.
 - **Wi-Fi:** saved networks, internet time, map tiles.
+- **Wi-Fi updates:** the pager checks for a new release on start (or from
+  Settings > System) and asks before installing. Releases are signed; the pager
+  verifies the signature and the download before switching, and keeps the old
+  version if anything goes wrong. Contacts, keys and settings are untouched.
 - **NFC:** read and write tags, share your contact or a channel invite by tapping
   a phone to the pager.
-- **Themes:** INW, Blocks, Hero and Aurora. Each changes the colours, the
-  lock-screen scene, the card style, the sounds, the vibration patterns, the
-  charging indicator and the plug-in chime.
+- **Themes:** INW, Blocks, Hero and Aurora (see above).
 - **Lock screen:** a rotating one-liner under the clock, a few hundred of them:
   jokes, mesh tips, per-theme lines and live ones from your own contact list.
 - **Battery:** an accurate percentage from the fuel gauge (the charger is set up so
@@ -63,6 +80,11 @@ It never writes the bootloader and never erases the flash.
   formats the data store, which takes a few minutes. If the SD card holds a
   MeshCore export (`meshcore-backup.json`) or a Wadamesh data folder, contacts and
   channels are imported from it.
+- **Coming from 1.0.x?** Wi-Fi updates need the newer two-slot layout, so do one
+  First install. Back up to SD first (Settings > System > how to enable wi-fi
+  updates does it for you): everything comes back from the card. Without a card
+  your keys, channels and settings are still kept; contacts refill from adverts.
+- After that, updates arrive over Wi-Fi.
 
 ## Building
 

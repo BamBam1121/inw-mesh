@@ -334,7 +334,7 @@ static void takeScreenshot() {
 // ---- USB commands ------------------------------------------------------------------------------------
 // A few line commands on the USB serial port, for capturing documentation
 // screenshots from a computer (tools/capture_screens.py):
-//   shot        stream the screen: "SHOT 480 222\n" then W*H*3 bytes RGB888
+//   shot        stream the screen: "SHOT565 480 222\n" then W*H big-endian RGB565 words
 //   theme N     switch theme
 //   key C       press a key (\n for enter)
 //   home, lock, wheel +N / -N, press
@@ -349,15 +349,17 @@ static void usbCommands() {
     if (!line[0]) continue;
     dimmer.note();
     if (!strcmp(line, "shot")) {
-      nav.draw();
-      Serial.printf("SHOT %d %d\n", L::W, L::H);
-      static uint8_t row[L::W * 3];
-      lgfx::rgb888_t px[L::W];
-      for (int y = 0; y < L::H; y++) {
-        display.readRect(0, y, L::W, 1, px);
-        for (int x = 0; x < L::W; x++) { row[x * 3] = px[x].r; row[x * 3 + 1] = px[x].g; row[x * 3 + 2] = px[x].b; }
-        Serial.write(row, sizeof(row));
-      }
+      // Compose the current screen into the canvas and send that: exact
+      // colours, unlike reading the panel back.
+      View* v = nav.top();
+      Canvas& g = nav.canvas();
+      g.fillScreen(theme.bg);
+      if (v && !v->isLock()) drawStatusBar(g, theme);
+      if (v) v->draw(g);
+      nav.drawOverlays(g);
+      Serial.flush();
+      Serial.printf("SHOT565 %d %d\n", L::W, L::H);
+      Serial.write((const uint8_t*)g.getBuffer(), L::W * L::H * 2);
       Serial.flush();
     } else if (!strncmp(line, "theme ", 6)) {
       const int t = atoi(line + 6);

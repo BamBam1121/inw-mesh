@@ -31,15 +31,24 @@ def shot(s, path, crop_bottom=0):
     s.write(b"shot\n")
     buf = b""
     deadline = time.time() + 10
-    while b"SHOT " not in buf and time.time() < deadline:
+    while b"SHOT565 " not in buf or not buf.partition(b"SHOT565 ")[2].count(b"\n"):
+        if time.time() > deadline:
+            raise RuntimeError("no screenshot header")
         buf += s.read(64)
-    head, _, rest = buf.partition(b"SHOT ")
+    rest = buf.partition(b"SHOT565 ")[2]
     hdr, _, data = rest.partition(b"\n")
     w, h = map(int, hdr.split())
-    need = w * h * 3
-    while len(data) < need and time.time() < deadline + 20:
+    need = w * h * 2
+    while len(data) < need and time.time() < deadline + 30:
         data += s.read(need - len(data))
-    img = Image.frombytes("RGB", (w, h), data[:need])
+    px = bytearray(w * h * 3)
+    for i in range(w * h):                  # big-endian RGB565 -> RGB888
+        v = (data[2 * i] << 8) | data[2 * i + 1]
+        r, g, b = (v >> 11) & 31, (v >> 5) & 63, v & 31
+        px[3 * i] = (r << 3) | (r >> 2)
+        px[3 * i + 1] = (g << 2) | (g >> 4)
+        px[3 * i + 2] = (b << 3) | (b >> 2)
+    img = Image.frombytes("RGB", (w, h), bytes(px))
     if crop_bottom:
         img = img.crop((0, 0, w, h - crop_bottom))
     img.save(path)
