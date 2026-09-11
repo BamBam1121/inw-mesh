@@ -331,6 +331,52 @@ static void takeScreenshot() {
   nav.toast("screenshot saved to sd");
 }
 
+// ---- USB commands ------------------------------------------------------------------------------------
+// A few line commands on the USB serial port, for capturing documentation
+// screenshots from a computer (tools/capture_screens.py):
+//   shot        stream the screen: "SHOT 480 222\n" then W*H*3 bytes RGB888
+//   theme N     switch theme
+//   key C       press a key (\n for enter)
+//   home, lock, wheel +N / -N, press
+static void usbCommands() {
+  static char line[32];
+  static uint8_t n = 0;
+  while (Serial.available()) {
+    const char c = Serial.read();
+    if (c != '\n' && c != '\r') { if (n < sizeof(line) - 1) line[n++] = c; continue; }
+    line[n] = 0;
+    n = 0;
+    if (!line[0]) continue;
+    dimmer.note();
+    if (!strcmp(line, "shot")) {
+      nav.draw();
+      Serial.printf("SHOT %d %d\n", L::W, L::H);
+      static uint8_t row[L::W * 3];
+      lgfx::rgb888_t px[L::W];
+      for (int y = 0; y < L::H; y++) {
+        display.readRect(0, y, L::W, 1, px);
+        for (int x = 0; x < L::W; x++) { row[x * 3] = px[x].r; row[x * 3 + 1] = px[x].g; row[x * 3 + 2] = px[x].b; }
+        Serial.write(row, sizeof(row));
+      }
+      Serial.flush();
+    } else if (!strncmp(line, "theme ", 6)) {
+      const int t = atoi(line + 6);
+      if (t >= 0 && t < THEME_COUNT) { ui_settings.themeId = t; app::applyTheme(); markUiDirty(); }
+    } else if (!strncmp(line, "key ", 4)) {
+      nav.key(line[4] == '\\' && line[5] == 'n' ? '\n' : line[4]);
+    } else if (!strcmp(line, "home")) {
+      nav.popToHome();
+    } else if (!strcmp(line, "lock")) {
+      app::lock();
+    } else if (!strncmp(line, "wheel ", 6)) {
+      nav.rotate(atoi(line + 6));
+    } else if (!strcmp(line, "press")) {
+      nav.press();
+    }
+    nav.invalidate();
+  }
+}
+
 // ---- boot screen ---------------------------------------------------------------------------------
 // The INW mark and wordmark, with a thin progress bar underneath. Steps that fail
 // are listed below the bar; everything else only goes to the serial log.
@@ -649,6 +695,7 @@ void loop() {
   if (s_prefsDirtyAt && millis() - s_prefsDirtyAt > 3000) { s_prefsDirtyAt = 0; if (g_node) g_node->savePrefsNow(); }
   if (s_uiDirtyAt && millis() - s_uiDirtyAt > 2000) { s_uiDirtyAt = 0; ui_settings.save(); }
   if (g_shotAt && (int32_t)(millis() - g_shotAt) >= 0) { g_shotAt = 0; takeScreenshot(); }
+  usbCommands();
 
   lap(6);
   autoAdvertTick(); sdBackupTick();
