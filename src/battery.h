@@ -71,12 +71,12 @@ public:
         if (read16(REG_SOC, v) && v <= 100) _gaugePct = (uint8_t)v;
         if (read16(REG_VOLTAGE, v) && v > 2500 && v < 5000) _millivolts = v;
         if (read16(REG_CURRENT, v)) _currentMa = (int16_t)v;
-        // The gauge only learns a pack over full cycles and can be far off until
-        // then (it showed 60% on a full 4.197 V cell). When it disagrees with the
-        // voltage by a lot, trust the voltage.
+        // The gauge counts charge and is what we show. Voltage sags under radio
+        // and screen load, so it only takes over when the gauge is plainly wrong
+        // (it once sat at 60% on a full 4.197 V cell before it had seen a taper).
         if (_millivolts) {
             const uint8_t byVolt = fromVoltage(charging() ? _millivolts - 80 : _millivolts);
-            _percent = abs((int)_gaugePct - (int)byVolt) > 15 ? byVolt : _gaugePct;
+            _percent = abs((int)_gaugePct - (int)byVolt) > 35 ? byVolt : _gaugePct;
         } else {
             _percent = _gaugePct;
         }
