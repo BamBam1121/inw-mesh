@@ -604,6 +604,10 @@ static void systemMenu() {
     nav.toast(ui_settings.betaUpdates ? "beta: you get builds before release" : "stable releases only", 3000);
   });
   m->header("device");
+  m->action("usb flash mode (for the web installer)", [] {
+    confirm("Enter USB flash mode?", "the screen goes dark until you install from the website or power-cycle.",
+            [] { app::rebootToFlashMode(); });
+  });
   m->action("device info", [] { deviceInfoPage(); });
   m->action("log", [] { logsPage(); });
   m->action("reboot", [] { confirm("Reboot?", "", [] { app::reboot(); }); });

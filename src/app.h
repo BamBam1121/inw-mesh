@@ -30,6 +30,7 @@ namespace app {
   bool     charging();
   bool     pluggedIn();
   void     pluggedInFeedback();     // chime + tap when the charger goes in
+  void     rebootToFlashMode();     // saves, then restarts into ROM USB download mode
   uint16_t batteryMv();
   bool     radioOk();
   uint16_t unread();

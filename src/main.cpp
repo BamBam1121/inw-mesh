@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPIFFS.h>
+#include <esp_system.h>
+#include <soc/rtc_cntl_reg.h>
 #include "power.h"
 #include "notify.h"
 #include "statusbar.h"
@@ -338,6 +340,23 @@ static void takeScreenshot() {
 //   theme N     switch theme
 //   key C       press a key (\n for enter)
 //   home, lock, wheel +N / -N, press
+//   dfu         restart into the ROM's USB download mode, ready for esptool or
+//               the web installer (flash with --before no_reset)
+
+// Restarts into the chip's own download mode: no BOOT/RESET buttons needed.
+void app::rebootToFlashMode() {
+  if (g_node) {
+    if (g_node->hasPendingWork()) g_node->saveContactsNow();
+    g_node->savePrefsNow();
+  }
+  ui_settings.save();
+  Serial.println("[INW] restarting into usb flash mode");
+  Serial.flush();
+  delay(200);
+  REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
+  esp_restart();
+}
+
 static void usbCommands() {
   static char line[32];
   static uint8_t n = 0;
@@ -374,6 +393,8 @@ static void usbCommands() {
       nav.rotate(atoi(line + 6));
     } else if (!strcmp(line, "press")) {
       nav.press();
+    } else if (!strcmp(line, "dfu")) {
+      app::rebootToFlashMode();
     }
     nav.invalidate();
   }
