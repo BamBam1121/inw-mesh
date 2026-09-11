@@ -14,6 +14,9 @@ stock firmware.
 
 - **Messages:** channels, DMs and room servers. Delivery ticks, retries, how many
   repeaters were heard passing a post on, @mentions, quick replies and colour emoji.
+  A red NEW line marks where unread messages start.
+- **Per-chat notifications:** any channel, contact or room can follow the global
+  settings or be set to all, @mentions only, silent or muted.
 - **Contacts:** up to 1000, searchable, sortable by recency, name or distance.
   Repeater and room admin with login, status, telemetry, trace and a console.
 - **Map:** offline tiles from the SD card, with every contact that shares a
@@ -24,7 +27,17 @@ stock firmware.
 - **NFC:** read and write tags, share your contact or a channel invite by tapping
   a phone to the pager.
 - **Themes:** INW, Blocks, Hero and Aurora. Each changes the colours, the
-  lock-screen scene, the card style, the sounds and the vibration patterns.
+  lock-screen scene, the card style, the sounds, the vibration patterns, the
+  charging indicator and the plug-in chime.
+- **Lock screen:** a rotating one-liner under the clock, a few hundred of them:
+  jokes, mesh tips, per-theme lines and live ones from your own contact list.
+- **Battery:** an accurate percentage from the fuel gauge (the charger is set up so
+  the gauge sees every full charge), optimised charging that holds at 80% until
+  shortly before you usually unplug, and a battery saver that turns off GPS,
+  Bluetooth and Wi-Fi at 20%.
+- **Reliability:** contact and channel saves are crash-safe and fast, backups
+  run daily to flash and SD with a progress screen, and a torn store is restored
+  on boot.
 - **Settings:** radio presets, client repeat, auto-add rules, notifications with
   quiet hours, vibration strength, Bluetooth PIN, backups.
 

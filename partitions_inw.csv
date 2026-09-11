@@ -1,8 +1,11 @@
-# 16 MB layout. app0 sits at 0x10000 where the bootloader expects it. There is no
-# second OTA slot (updates go over USB), so that space goes to the data store.
+# 16 MB layout with two app slots, so updates can download over Wi-Fi into the
+# spare one while the other keeps running. app0 stays at 0x10000 where the
+# bootloader expects it, and NVS stays at 0x9000 in every layout this firmware
+# has used, so settings and the NVS safety copy survive a layout change.
 # Name,   Type, SubType, Offset,   Size,     Flags
 nvs,      data, nvs,     0x9000,   0x5000,
 otadata,  data, ota,     0xe000,   0x2000,
-app0,     app,  ota_0,   0x10000,  0x400000,
-spiffs,   data, spiffs,  0x410000, 0xBE0000,
+app0,     app,  ota_0,   0x10000,  0x3C0000,
+app1,     app,  ota_1,   0x3D0000, 0x3C0000,
+spiffs,   data, spiffs,  0x790000, 0x860000,
 coredump, data, coredump,0xFF0000, 0x10000,

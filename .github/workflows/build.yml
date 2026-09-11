@@ -51,6 +51,17 @@ jobs:
           python -c "open('site/firmware/otadata-blank.bin','wb').write(bytes([255])*8192)"
           echo "${GITHUB_REF_NAME} ${GITHUB_SHA::7}" > site/firmware/version.txt
 
+      # Signed update info for Wi-Fi updates. Only the real repo has the key.
+      - name: Sign update
+        if: github.event_name != 'pull_request'
+        env:
+          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+        run: |
+          pip install cryptography
+          VERSION=$(grep -oP 'FW_VERSION=\\"\K[0-9.]+' platformio.ini)
+          NOTES=$(git log -1 --format=%s)
+          python tools/sign_ota.py site/firmware/firmware.bin site/firmware/ota.json "$VERSION" "$NOTES"
+
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
         with:

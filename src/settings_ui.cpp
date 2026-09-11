@@ -12,6 +12,7 @@
 #include "power.h"
 #include "battery.h"
 #include "notify.h"
+#include "ota.h"
 #include <SPIFFS.h>
 #include <SD.h>
 
@@ -564,6 +565,41 @@ static void batteryMenu() {
 
 static void systemMenu() {
   auto* m = new MenuView("System");
+  m->header("updates");
+  m->info("version", []() -> String { return String(FW_VERSION); });
+  if (ota::supported()) {
+    m->action("check for updates", [] {
+      nav.busy("checking for updates...");
+      const ota::Info info = ota::check();
+      if (!info.ok) { nav.toast(info.error, 4000); return; }
+      if (!info.newer) { nav.toast((String("up to date (") + FW_VERSION + ")").c_str(), 3000); return; }
+      confirm(String("Update to ") + info.version + "?",
+              String(info.notes[0] ? info.notes : "a new version is ready") + ". takes about a minute.",
+              [info] { nav.toast(ota::install(info), 5000); });
+    });
+  } else {
+    m->info("wi-fi updates", []() -> String { return String("need one usb reinstall first"); });
+    m->action("how to enable wi-fi updates", [] {
+      sdBackupNow();      // also refreshes the NVS safety copy
+      nav.push(new TextPageView("Enable Wi-Fi updates", [](std::vector<String>& out) {
+        out.push_back("This pager has the older one-slot layout.");
+        out.push_back("One reinstall over USB adds the second slot.");
+        out.push_back("");
+        out.push_back("# what is kept");
+        out.push_back("keys, channels, radio + ui settings: always");
+        out.push_back(sdMounted() ? "contacts + messages: yes, backed up to sd just now"
+                                  : "contacts + messages: only with an sd card");
+        out.push_back("");
+        out.push_back("# steps");
+        out.push_back("1. plug into a computer, open the website");
+        out.push_back("2. choose First install (not Update)");
+        out.push_back("3. first boot sets up storage, a few minutes");
+      }, 120000));
+    });
+  }
+  m->toggle("check on start (wi-fi)", [] { return ui_settings.autoUpdateCheck; },
+            [] { ui_settings.autoUpdateCheck = !ui_settings.autoUpdateCheck; markUiDirty(); });
+  m->header("device");
   m->action("device info", [] { deviceInfoPage(); });
   m->action("log", [] { logsPage(); });
   m->action("reboot", [] { confirm("Reboot?", "", [] { app::reboot(); }); });

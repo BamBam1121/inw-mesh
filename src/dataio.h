@@ -24,4 +24,7 @@ void importPrefsAfterNode(char* report, size_t cap);
 const char* sdBackupNow(bool force = true);
 const char* exportJson();
 const char* importJsonNow();     // merge contacts/channels from the newest export
+// Copies the identity, channels and mesh prefs into NVS, which survives a
+// partition layout change. Cheap when nothing changed.
+void keepEssentials();
 void sdBackupTick();             // call from loop; runs sdBackupNow(false) once a day

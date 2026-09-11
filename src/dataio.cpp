@@ -2,6 +2,7 @@
 #include <SD.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <esp_heap_caps.h>
 #include <helpers/IdentityStore.h>
 #include "board_pins.h"
@@ -129,6 +130,51 @@ struct PsramAllocator : ArduinoJson::Allocator {
 };
 static PsramAllocator s_alloc;
 
+// ---- NVS safety copy ------------------------------------------------------------
+// NVS sits where it is in every partition layout this firmware has used, so the
+// small essentials kept there survive a layout change even with no SD card:
+// the identity (keys), channels and mesh prefs. Contacts are too big for NVS;
+// they come back from SD or refill from adverts.
+static const struct { const char* key; const char* path; size_t max; } KEEP[] = {
+  {"id", "/identity/_main.id", 256},
+  {"ch", "/channels2", 40 * CHANNEL_REC},
+  {"pr", "/prefs.json", 4096},
+};
+
+void keepEssentials() {
+  Preferences p;
+  if (!p.begin("inw-keep", false)) return;
+  static uint8_t buf[4096], old[4096];
+  for (const auto& k : KEEP) {
+    File f = SPIFFS.open(k.path, FILE_READ);
+    if (!f) continue;
+    const size_t n = f.size();
+    if (!n || n > k.max || n > sizeof(buf)) { f.close(); continue; }
+    const size_t got = f.read(buf, n);
+    f.close();
+    if (got != n) continue;
+    // Only write when it changed: NVS is flash too.
+    if (p.getBytesLength(k.key) == n && p.getBytes(k.key, old, n) == n && !memcmp(old, buf, n)) continue;
+    p.putBytes(k.key, buf, n);
+  }
+  p.end();
+}
+
+static bool restoreFromKeep(const char* key, const char* path) {
+  Preferences p;
+  if (!p.begin("inw-keep", true)) return false;
+  const size_t n = p.getBytesLength(key);
+  static uint8_t buf[4096];
+  bool ok = false;
+  if (n && n <= sizeof(buf) && p.getBytes(key, buf, n) == n) {
+    if (!strncmp(path, "/identity/", 10) && !SPIFFS.exists("/identity")) SPIFFS.mkdir("/identity");
+    File f = SPIFFS.open(path, FILE_WRITE);
+    if (f) { ok = f.write(buf, n) == n; f.close(); }
+  }
+  p.end();
+  return ok;
+}
+
 void importBeforeNode(char* report, size_t cap) {
   report[0] = 0;
   size_t w = 0;
@@ -143,12 +189,27 @@ void importBeforeNode(char* report, size_t cap) {
     if (from) logs.add(LOG_INFO, "%s restored from %s", what, from);
   };
   note("contacts", restoreStore("contacts3", CONTACT_REC));
-  note("channels", restoreStore("channels2", CHANNEL_REC));
+  const char* chFrom = restoreStore("channels2", CHANNEL_REC);
+  if (!chFrom && !validStore(SPIFFS, "/channels2", CHANNEL_REC) && restoreFromKeep("ch", "/channels2")) chFrom = "safety copy";
+  note("channels", chFrom);
+
+  // Mesh prefs, message history: from the SD mirror, then (prefs only) NVS.
+  if (!SPIFFS.exists("/prefs.json")) {
+    const char* from = nullptr;
+    if (sdMount() && fileSize(SD, "/inw/prefs.json") && copyFile(SD, "/inw/prefs.json", SPIFFS, "/prefs.json")) from = "sd mirror";
+    else if (restoreFromKeep("pr", "/prefs.json")) from = "safety copy";
+    note("settings", from);
+  }
+  if (!SPIFFS.exists("/hist.log") && sdMount() && fileSize(SD, "/inw/hist.log")) {
+    if (copyFile(SD, "/inw/hist.log", SPIFFS, "/hist.log")) note("messages", "sd mirror");
+    if (fileSize(SD, "/inw/hist_read.bin")) copyFile(SD, "/inw/hist_read.bin", SPIFFS, "/hist_read.bin");
+  }
 
   if (!SPIFFS.exists("/identity/_main.id")) {
     const char* from = nullptr;
     if (sdMount() && fileSize(SD, "/inw/identity/_main.id") >= 96 &&
         copyFile(SD, "/inw/identity/_main.id", SPIFFS, "/identity/_main.id")) from = "sd mirror";
+    if (!from && restoreFromKeep("id", "/identity/_main.id") && fileSize(SPIFFS, "/identity/_main.id") >= 96) from = "safety copy";
 #if defined(SEED_PRV64_HEX)
     if (!from && identityFromHex(SEED_PRV64_HEX, SEED_PUB_HEX)) from = "built-in key";
 #endif
@@ -313,6 +374,7 @@ static bool mirrorStore(const char* src, fs::FS& to, const char* dst, size_t rec
 // Flash-side last-good copies, then the SD mirror. Each step names itself on the
 // progress screen.
 const char* sdBackupNow(bool force) {
+  keepEssentials();
   s_progress = "backing up contacts";
   mirrorStore("/contacts3", SPIFFS, "/contacts3.bak", CONTACT_REC, force);
   s_progress = "backing up channels";

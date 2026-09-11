@@ -77,6 +77,7 @@ struct UiSettings {
   static constexpr uint8_t UNPLUG_N = 14;
   uint16_t unplugMin[UNPLUG_N] = {};  // local minute-of-day of recent unplugs (0 = empty slot)
   uint8_t  unplugPos     = 0;
+  bool     autoUpdateCheck = true;    // look for a new release once per boot on Wi-Fi
 
   void load();
   void save();

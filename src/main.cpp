@@ -6,6 +6,7 @@
 #include "power.h"
 #include "notify.h"
 #include "statusbar.h"
+#include "ota.h"
 #include <SD.h>
 #include <time.h>
 #include "board_pins.h"
@@ -472,6 +473,7 @@ void setup() {
   if (s_radioOk) snprintf(rinfo, sizeof(rinfo), "%.3f MHz sf%u", g_node->prefs().freq, g_node->prefs().sf);
   bootStep("radio", s_radioOk, rinfo);
   logs.add(s_radioOk ? LOG_INFO : LOG_ERROR, s_radioOk ? "radio up" : "radio init failed");
+  if (s_radioOk) keepEssentials();
   if (s_radioOk) {
     importPrefsAfterNode(report, sizeof(report));
     bootStep("import", true, report);
@@ -621,6 +623,7 @@ void loop() {
   lap(2);
   battery.tick(millis());
   power::tick();
+  ota::tick();
   nodeLoop();
   lap(3);
   nav.tick();
