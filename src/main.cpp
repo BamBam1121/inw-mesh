@@ -85,7 +85,7 @@ void app::setTime(uint32_t epoch) { rtc_clock.setCurrentTime(epoch); nav.statusC
 // ---- app helpers ----------------------------------------------------------------------------
 const char* app::batteryText() {
   static char b[12];
-  if (!battery.present()) return "--";
+  if (!battery.present() || !battery.hasReading()) return "--";
   snprintf(b, sizeof(b), "%u%%", battery.percent());
   return b;
 }

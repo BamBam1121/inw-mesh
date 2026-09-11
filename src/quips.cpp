@@ -194,7 +194,7 @@ static bool liveLine(int which, char* out, size_t cap) {
     case 3: snprintf(out, cap, "%d nodes in your contacts. Popular.", g_node->getNumContacts()); return true;
     case 4: if (!clock || !newestAt || now - newestAt > 3600) return false;
             snprintf(out, cap, "Latest to check in: %s.", newest); return true;
-    case 5: if (app::batteryPct() > 25) return false;
+    case 5: if (app::batteryPct() > 25 || !app::batteryPct()) return false;
             snprintf(out, cap, "Battery at %u%%. The mesh can wait, the charger can't.", app::batteryPct()); return true;
   }
   const int hour = clock ? (int)((((int64_t)now + ui_settings.tzMinutes * 60) % 86400 + 86400) % 86400 / 3600) : -1;

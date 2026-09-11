@@ -60,6 +60,7 @@ public:
     }
 
     bool present() const { return _gauge; }
+    bool hasReading() const { return _haveReading; }    // false until one good read
 
     // Cached: the status bar asks every frame and I2C at 400 kHz is not free.
     // The bus is shared with the keyboard, expander and codec, so a read fails
@@ -70,8 +71,8 @@ public:
         if (now - _lastDump > 30000 || !_lastDump) { _lastDump = now | 1; dump(); }
         if (now > 20000) resyncFull();
         uint16_t v;
-        if (read16(REG_SOC, v) && v <= 100) _gaugePct = (uint8_t)v;
-        if (read16(REG_VOLTAGE, v) && v > 2500 && v < 5000) _millivolts = v;
+        if (read16(REG_SOC, v) && v <= 100) { _gaugePct = (uint8_t)v; _haveReading = true; }
+        if (read16(REG_VOLTAGE, v) && v > 2500 && v < 5000) { _millivolts = v; _haveReading = true; }
         if (read16(REG_CURRENT, v)) _currentMa = (int16_t)v;
         if (read16(0x12, v) && v > 100 && v < 5000) _fcc = v;
         uint8_t st;
@@ -81,7 +82,10 @@ public:
         // (it once sat at 60% on a full 4.197 V cell before it had seen a taper).
         if (_millivolts) {
             const uint8_t byVolt = fromVoltage(charging() ? _millivolts - 80 : _millivolts);
-            _percent = abs((int)_gaugePct - (int)byVolt) > 35 ? byVolt : _gaugePct;
+            // A pager that's running isn't at 0%: a near-empty gauge figure with
+            // plenty of voltage behind it is the gauge being wrong.
+            const bool falseEmpty = _gaugePct <= 5 && byVolt >= 15;
+            _percent = falseEmpty || abs((int)_gaugePct - (int)byVolt) > 35 ? byVolt : _gaugePct;
         } else {
             _percent = _gaugePct;
         }
@@ -225,6 +229,7 @@ private:
     }
 
     TwoWire* _w = nullptr;
+    bool     _haveReading = false;
     bool     _gauge = false, _configured = false, _resynced = false, _held = false, _vbus = false;
     uint16_t _fcc = 0;
     uint8_t  _percent = 0, _gaugePct = 0;

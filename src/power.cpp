@@ -160,7 +160,7 @@ static void saverTick() {
 
 void tick() {
   static uint32_t last = 0;
-  if (!battery.present() || millis() - last < 5000 || millis() < 15000) return;
+  if (!battery.present() || !battery.hasReading() || millis() - last < 5000 || millis() < 15000) return;
   last = millis();
   chargeTick();
   saverTick();
