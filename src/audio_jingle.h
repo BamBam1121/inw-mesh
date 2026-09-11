@@ -46,6 +46,7 @@ private:
     if (p->_codec->start()) {
       p->_codec->setVolumePercent(p->_vol);
       p->_codec->setMute(false);
+      p->tone({0, 60});                  // the amp needs a moment after power-up, or the first note is clipped
       for (uint8_t i = 0; i < p->_j->count; i++) p->tone(p->_j->steps[i]);
       p->tone({0, 40});                  // let the last note drain before power-down
       p->_codec->stop();

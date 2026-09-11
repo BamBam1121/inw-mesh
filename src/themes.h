@@ -29,9 +29,9 @@ namespace tunes {
 
   // Blocks: soft decaying "piano" notes and a quick rising pop.
   static const ToneStep BLK_BOOT[] = {{262, 260}, {330, 260}, {392, 260}, {523, 520}};
-  static const ToneStep BLK_MSG[]  = {{520, 70, 1250}};                      // pop
+  static const ToneStep BLK_MSG[]  = {{440, 110, 1180}, {0, 35}, {620, 120, 1500}};   // pop-pop
   static const ToneStep BLK_DM[]   = {{659, 220}, {988, 380}};
-  static const ToneStep BLK_MEN[]  = {{520, 60, 1250}, {0, 40}, {784, 180}, {1047, 320}};
+  static const ToneStep BLK_MEN[]  = {{440, 110, 1180}, {0, 40}, {784, 200}, {1047, 360}};
 
   // Hero: square-wave chiptune fanfares.
   static const ToneStep HERO_BOOT[] = {{523, 110}, {523, 110}, {784, 110}, {659, 110}, {1047, 360}};
@@ -78,10 +78,12 @@ static const ThemeSpec THEMES[] = {
     { 0x0e1622, 0x2b2118, 0x45362a, 0x6cc24a, 0x3f7a2c, 0xe8e0d0, 0x9a8f7a, 0xf2b233,
       0xd9412e, 0xffffff, 0x3a3a3a, 0x2f5a22, 0x5aa9e6, 0x3b2d20, 0x4a3a12 },
     STYLE_BLOCKS, &tunes::BLK_BOOT_J, &tunes::BLK_MSG_J, &tunes::BLK_DM_J, &tunes::BLK_MEN_J,
-    {{1, 0x80 | 8, 1}, 3},                                  // two crisp clicks, like breaking a block
-    {{1, 0x80 | 8, 1, 0x80 | 8, 1}, 5},
-    {{14, 0x80 | 10, 1, 0x80 | 8, 1, 0x80 | 8, 1}, 7},
-    1, 0x30 },
+    // Quick taps, like chipping at a block. Click effects (1) are too short to
+    // spin this ERM up, so these use the short buzz (47).
+    {{47, 0x80 | 5, 47}, 3},
+    {{47, 0x80 | 5, 47, 0x80 | 5, 47}, 5},
+    {{14, 0x80 | 8, 47, 0x80 | 5, 47, 0x80 | 5, 47}, 7},
+    1, 0x50 },
   { "Hero", "night hills, a hooded adventurer, hearts",
     { 0x081420, 0x10263a, 0x1d3a52, 0xf2c14e, 0x2e7d4f, 0xe6edf2, 0x7f98ab, 0xff9f43,
       0xe84a5f, 0xffffff, 0x13283a, 0x1e4a33, 0x5cc8ff, 0x163248, 0x3a2d10 },
