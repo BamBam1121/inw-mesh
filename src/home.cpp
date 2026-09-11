@@ -6,6 +6,7 @@
 #include "history.h"
 #include "gps.h"
 #include "backlight.h"
+#include "quips.h"
 
 static Carousel s_carousel;
 
@@ -124,18 +125,29 @@ public:
     d.drawString(app::timeValid() ? clockText(app::now()) : "--:--", 8, 182);
     d.setFont(&fonts::Font2);
     d.setTextColor(t.dim, t.bg);
-    char sub[64];
     const uint16_t un = app::unread();
-    if (un) snprintf(sub, sizeof(sub), "%u unread message%s", un, un == 1 ? "" : "s");
-    else if (!g_node) snprintf(sub, sizeof(sub), "radio down");
-    else snprintf(sub, sizeof(sub), "%d nodes  //  mesh listening", g_node->getNumContacts());
-    d.drawString(sub, 140, 192);
+    if (un || !g_node) {
+      char sub[40];
+      if (un) snprintf(sub, sizeof(sub), "%u unread message%s", un, un == 1 ? "" : "s");
+      else snprintf(sub, sizeof(sub), "radio down");
+      d.setTextColor(un ? t.amber : t.red, t.bg);
+      d.drawString(sub, 140, 192);
+      d.setTextColor(t.dim, t.bg);
+    }
     if (app::timeValid()) {
       const char* date = clockText(app::now(), true);
       d.drawString(date, L::W - 8 - d.textWidth(date), 192);
     }
+    // A new line on every wake, and every half hour while it sits here.
+    if (!_quip[0] || millis() - _quipAt > 30UL * 60UL * 1000UL) {
+      for (int i = 0; i < 8; i++) {
+        strlcpy(_quip, quipNext(), sizeof(_quip));
+        if (d.textWidth(_quip) <= L::W - 16) break;
+      }
+      _quipAt = millis();
+    }
     d.setTextColor(t.greenDim, t.bg);
-    d.drawString("any key", L::W - 60, 206);
+    d.drawString(_quip, 8, 206);
   }
   void tick() override {
     // Animate only while someone can see it.
@@ -153,7 +165,8 @@ public:
   bool backspace() override { nav.pop(); return true; }
 private:
   float _phase = 0, _scroll = 0;
-  uint32_t _step = 0;
+  uint32_t _step = 0, _quipAt = 0;
+  char _quip[96] = "";
 };
 
 View* makeHomeView() { return new HomeView(); }
