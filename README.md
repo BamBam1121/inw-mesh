@@ -20,8 +20,8 @@ stock firmware.
 - **Tools:** discover nearby repeaters, recently heard nodes, radio stats, a
   packet sniffer, GPS status, screenshots to SD.
 - **Wi-Fi:** saved networks, internet time, map tiles.
-- **NFC** (source builds only, see below): read and write tags, share your contact
-  or a channel invite by tapping a phone to the pager.
+- **NFC:** read and write tags, share your contact or a channel invite by tapping
+  a phone to the pager.
 - **Settings:** radio presets, client repeat, auto-add rules, notifications with
   quiet hours, vibration strength, Bluetooth PIN, backups.
 
@@ -53,14 +53,14 @@ It never writes the bootloader and never erases the flash.
 [PlatformIO](https://platformio.org/):
 
 ```bash
-pio run -e t-lora-pager-public    # what the releases are built from
-pio run -e t-lora-pager           # adds NFC
+pio run -e t-lora-pager           # full firmware, what the releases are built from
+pio run -e t-lora-pager-public    # without NFC
 ```
 
 Flash the app only:
 
 ```bash
-esptool.py --chip esp32s3 write_flash 0x10000 .pio/build/t-lora-pager-public/firmware.bin
+esptool.py --chip esp32s3 write_flash 0x10000 .pio/build/t-lora-pager/firmware.bin
 ```
 
 Don't use `erase_flash` and don't write address 0x0. The pager needs the
@@ -70,12 +70,12 @@ To pre-load a node identity at first boot, create `src/identity_seed.h` with
 `SEED_PRV64_HEX`, `SEED_PUB_HEX` and `SEED_NAME`. The file is gitignored. Don't
 commit a private key.
 
-### Why NFC is a separate build
+### NFC and ST's licence
 
-The NFC chip is driven by ST's RFAL library. Its licence (ST SLA0052) doesn't allow
-it to be distributed as part of GPL software, so the release binaries leave NFC
-out. Building `t-lora-pager` yourself fetches the library straight from the
-PlatformIO registry, under ST's terms.
+The NFC chip is driven by ST's RFAL library (via LilyGo's ST25R3916-NFC-RFAL),
+which is under ST's own licence, SLA0052, included in `licenses/`. The rest of the
+firmware is GPL-3.0. If you'd rather have a build with no ST code in it, use the
+`t-lora-pager-public` environment.
 
 ## Layout
 

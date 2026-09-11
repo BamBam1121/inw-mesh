@@ -14,7 +14,7 @@
 | [base64](https://github.com/Densaugeo/base64_arduino) | MIT | used by MeshCore |
 | [Melopero RV3028](https://github.com/melopero/Melopero_RV-3028_Arduino_Library) | MIT | used by MeshCore |
 
-NFC builds only (`t-lora-pager`, not the release binaries):
+NFC (in the `t-lora-pager` build and the release binaries; licence text in `licenses/ST-SLA0052.txt`):
 
 | Library | Licence | Used for |
 |---|---|---|

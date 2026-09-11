@@ -35,16 +35,18 @@ jobs:
             .pio/libdeps
           key: pio-${{ hashFiles('platformio.ini') }}
 
-      - name: Build (no NFC)
+      # Release builds include NFC. To ship without it (ST RFAL licence), build
+      # t-lora-pager-public here and in the copy step below instead.
+      - name: Build
         run: |
           pip install platformio
-          pio run -e t-lora-pager-public
+          pio run -e t-lora-pager
 
       - name: Assemble site
         run: |
           mkdir -p site/firmware
-          cp .pio/build/t-lora-pager-public/firmware.bin site/firmware/
-          cp .pio/build/t-lora-pager-public/partitions.bin site/firmware/
+          cp .pio/build/t-lora-pager/firmware.bin site/firmware/
+          cp .pio/build/t-lora-pager/partitions.bin site/firmware/
           # 0xFF over otadata makes the bootloader start app0 on a first install.
           python -c "open('site/firmware/otadata-blank.bin','wb').write(bytes([255])*8192)"
           echo "${GITHUB_REF_NAME} ${GITHUB_SHA::7}" > site/firmware/version.txt
