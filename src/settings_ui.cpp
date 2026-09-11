@@ -194,7 +194,7 @@ static void autoAddMenu() {
     v.adjust("max hops away", []() -> String { return P().autoadd_max_hops ? String(P().autoadd_max_hops - 1) : String("any"); },
              [](int d) { P().autoadd_max_hops = constrain(P().autoadd_max_hops + d, 0, 64); markPrefsDirty(); });
     v.info("contacts", []() -> String { return String(g_node->getNumContacts()) + " / " + String(MAX_CONTACTS); });
-    v.action("import contacts from sd export", [] { nav.toast(importJsonNow(), 4000); });
+    v.action("import contacts from sd export", [] { nav.busy("importing, one moment..."); nav.toast(importJsonNow(), 4000); });
   };
   m->rebuild(*m);
   nav.push(m);
@@ -494,12 +494,12 @@ static void backupsMenu() {
   auto* m = new MenuView("Backups");
   m->info("sd card", []() -> String { return sdMount() ? String((unsigned long)(sdFreeBytes() / 1048576ULL)) + " MB free" : String("not found"); });
   m->info("last sd backup", []() -> String { return ui_settings.lastSdBackup ? String(timeAgo(ui_settings.lastSdBackup)) + " ago" : String("never"); });
-  m->action("back up to sd now", [] { nav.toast(sdBackupNow(), 3500); });
+  m->action("back up to sd now", [] { nav.busy("backing up..."); nav.toast(sdBackupNow(), 3500); });
   m->action("export meshcore json (includes key!)", [] {
     confirm("Export includes your private key", "anyone with the file can be you on the mesh. keep it safe.",
-            [] { nav.toast(exportJson(), 4000); });
+            [] { nav.busy("exporting..."); nav.toast(exportJson(), 4000); });
   });
-  m->action("import contacts + channels from sd", [] { nav.toast(importJsonNow(), 4000); });
+  m->action("import contacts + channels from sd", [] { nav.busy("importing, one moment..."); nav.toast(importJsonNow(), 4000); });
   m->action("restore contacts from sd mirror", [] {
     confirm("Restore from SD?", "replaces contacts + channels with /inw on the card, then reboots", [] {
       if (!sdMount() || !SD.exists("/inw/contacts3")) { nav.toast("no /inw backup on sd"); return; }
@@ -510,7 +510,7 @@ static void backupsMenu() {
       app::reboot();          // importBeforeNode() pulls the mirror back in on boot
     });
   });
-  m->info("auto backup", []() -> String { return String("every 30 min to /inw on the sd"); });
+  m->info("auto backup", []() -> String { return String("once a day to /inw on the sd"); });
   nav.push(m);
 }
 

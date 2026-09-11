@@ -115,7 +115,50 @@ void app::applyTheme() {
   haptic.setTick(th.tickEffect, th.tickClamp);
   nav.invalidate();
 }
-void app::reboot() { if (g_node) g_node->savePrefsNow(); ui_settings.save(); delay(200); ESP.restart(); }
+void app::reboot() {
+  if (g_node) {
+    if (g_node->hasPendingWork()) g_node->saveContactsNow();   // contact saves are batched; don't drop one
+    g_node->savePrefsNow();
+  }
+  ui_settings.save(); delay(200); ESP.restart();
+}
+
+// Full-screen progress for slow storage jobs (contact saves, backups). Called from
+// inside them, so it draws straight to the panel rather than through the view stack.
+// done == total == 0 means finished.
+void inwProgress(const char* what, uint32_t done, uint32_t total) {
+  static uint32_t last = 0;
+  static bool shown = false;
+  if (!total) {
+    if (shown) { shown = false; nav.invalidate(); }
+    return;
+  }
+  if (dimmer.asleep()) return;
+  if (shown && done < total && millis() - last < 80) return;
+  last = millis();
+  shown = true;
+  Canvas& g = nav.canvas();
+  const Theme& t = theme;
+  g.fillScreen(t.bg);
+  g.setTextDatum(textdatum_t::top_center);
+  g.setFont(&fonts::Font4);
+  g.setTextColor(t.green, t.bg);
+  g.drawString(what, L::W / 2, 40);
+  g.setFont(&fonts::Font2);
+  g.setTextColor(t.dim, t.bg);
+  g.drawString("please wait, don't power off", L::W / 2, 76);
+  const int x = 30, y = 112, w = L::W - 60, h = 34;
+  const int fill = (int)((uint64_t)(w - 8) * min(done, total) / total);
+  g.drawRoundRect(x, y, w, h, 8, t.green);
+  g.fillRoundRect(x + 4, y + 4, max(fill, 8), h - 8, 5, t.green);
+  char pct[40];
+  snprintf(pct, sizeof(pct), "%u%%  (%lu / %lu kB)", (unsigned)(100ULL * min(done, total) / total),
+           (unsigned long)(done / 1024), (unsigned long)((total + 1023) / 1024));
+  g.setTextColor(t.txt, t.bg);
+  g.drawString(pct, L::W / 2, y + h + 14);
+  g.setTextDatum(textdatum_t::top_left);
+  g.pushSprite(nav.display(), 0, 0);
+}
 void app::lock() { if (!nav.top() || !nav.top()->isLock()) nav.push(makeLockView()); }
 
 void app::testNotify() {
@@ -443,7 +486,12 @@ void setup() {
 
 // ---- loop -------------------------------------------------------------------------------------------
 static void gpsTick() {
-  if (!ui_settings.gpsOn || !gps.update()) return;
+  if (!ui_settings.gpsOn) return;
+  const uint32_t t0 = millis(), b0 = gps.bytesRead;
+  const bool parsed = gps.update();
+  if (millis() - t0 > 100)
+    logs.add(LOG_WARN, "gps read %lums, %lu bytes", (unsigned long)(millis() - t0), (unsigned long)(gps.bytesRead - b0));
+  if (!parsed) return;
   static bool hadFix = false;
   static uint32_t lastClock = 0, lastPosSave = 0;
   static double savedLat = 0, savedLon = 0;
@@ -567,11 +615,11 @@ void loop() {
   if (g_shotAt && (int32_t)(millis() - g_shotAt) >= 0) { g_shotAt = 0; takeScreenshot(); }
 
   lap(6);
-  autoAdvertTick(); sdBackupTick(); localBackupTick();
+  autoAdvertTick(); sdBackupTick();
   lap(7);
   const uint32_t total = millis() - tLoop;
   if (total > 300) {
-    logs.add(LOG_WARN, "slow loop %lums: input %u gps %u wifi %u mesh %u tick %u draw %u misc %u backup %u",
+    logs.add(LOG_WARN, "slow %lu: in%u gps%u wf%u msh%u tk%u drw%u x%u bk%u",
              (unsigned long)total, laps[0], laps[1], laps[2], laps[3], laps[4], laps[5], laps[6], laps[7]);
   }
   delay(2);

@@ -53,6 +53,8 @@ public:
   void replaceTop(View* v);
 
   void toast(const char* msg, uint16_t ms = 2500);
+  // Puts a notice on screen right away, before a slow blocking job starts.
+  void busy(const char* msg) { toast(msg, 60000); draw(); }
   void banner(const char* title, const char* text, uint16_t ms = 4500);
   void invalidate() { if (top()) top()->dirty = true; _statusDirty = true; }
   void statusChanged() { _statusDirty = true; }

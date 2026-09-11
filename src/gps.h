@@ -19,6 +19,8 @@ class Gps {
 public:
     bool begin(HardwareSerial& uart = Serial1) {
         _uart = &uart;
+        // A second's worth of NMEA (~500 bytes) must fit between two loop passes.
+        _uart->setRxBufferSize(2048);
         _uart->begin(GPS_BAUD, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
         pinMode(PIN_GPS_PPS, INPUT);
         _started = true;
@@ -28,8 +30,16 @@ public:
     // Call every loop. Returns true on the tick a sentence completed a parse.
     bool update() {
         bool parsed = false;
-        while (_uart && _uart->available()) {
-            const char c = (char)_uart->read();
+        if (!_uart) return false;
+        // Take only what is already buffered, in one call. Reading byte by byte
+        // goes through the driver lock each time and is slower than the GPS
+        // sends, so the loop used to chase the whole burst for ~250 ms.
+        uint8_t buf[256];
+        const int avail = _uart->available();
+        const size_t n = avail > 0 ? _uart->read(buf, min((size_t)avail, sizeof(buf))) : 0;
+        bytesRead += n;
+        for (size_t i = 0; i < n; i++) {
+            const char c = (char)buf[i];
             if (c == '$') { _len = 0; _line[_len++] = c; continue; }
             if (_len == 0) continue;                       // mid-sentence at startup
             if (c == '\r' || c == '\n') {
@@ -47,6 +57,7 @@ public:
     const GpsFix& fix() const { return _fix; }
     bool hasFix() const { return _fix.valid; }
     bool started() const { return _started; }
+    uint32_t bytesRead = 0;
 
     // True once the fix is fresh enough to trust. GPS keeps reporting the last
     // position after the antenna is covered, so age matters more than validity.

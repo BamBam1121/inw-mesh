@@ -29,9 +29,21 @@ bool sdMount() {
 bool sdMounted() { return s_sd; }
 uint64_t sdFreeBytes() { return s_sd ? SD.totalBytes() - SD.usedBytes() : 0; }
 
+void inwProgress(const char* what, uint32_t done, uint32_t total);   // main.cpp
+static const char* s_progress = nullptr;   // set while a backup runs: copies show a progress screen
+
+static size_t copyFileImpl(fs::FS& from, const char* src, fs::FS& to, const char* dst);
 static size_t copyFile(fs::FS& from, const char* src, fs::FS& to, const char* dst) {
+  const uint32_t t0 = millis();
+  const size_t n = copyFileImpl(from, src, to, dst);
+  if (millis() - t0 > 500) Serial.printf("[copy] %s -> %s: %u kB in %lums\n", src, dst, (unsigned)(n / 1024), (unsigned long)(millis() - t0));
+  return n;
+}
+
+static size_t copyFileImpl(fs::FS& from, const char* src, fs::FS& to, const char* dst) {
   File in = from.open(src, FILE_READ);
   if (!in) return 0;
+  const size_t size = in.size();
   // Write beside the target and swap, so a cut mid-copy never leaves a torn file.
   char tmp[64];
   snprintf(tmp, sizeof(tmp), "%s.new", dst);
@@ -43,6 +55,7 @@ static size_t copyFile(fs::FS& from, const char* src, fs::FS& to, const char* ds
   while ((n = in.read(buf, sizeof(buf))) > 0) {
     if (out.write(buf, n) != (size_t)n) { total = 0; break; }
     total += n;
+    if (s_progress && size) inwProgress(s_progress, total, size);
   }
   in.close(); out.close();
   if (!total) { to.remove(tmp); return 0; }
@@ -119,6 +132,12 @@ static PsramAllocator s_alloc;
 void importBeforeNode(char* report, size_t cap) {
   report[0] = 0;
   size_t w = 0;
+  logs.add(LOG_INFO, "flash store %u/%u kB", (unsigned)(SPIFFS.usedBytes() / 1024), (unsigned)(SPIFFS.totalBytes() / 1024));
+  {
+    File root = SPIFFS.open("/");
+    for (File f = root.openNextFile(); f; f = root.openNextFile())
+      if (f.size() > 16384) Serial.printf("[store] %s %u kB\n", f.path(), (unsigned)(f.size() / 1024));
+  }
   auto note = [&](const char* what, const char* from) {
     if (from && w < cap) w += snprintf(report + w, cap - w, "%s<-%s ", what, from);
     if (from) logs.add(LOG_INFO, "%s restored from %s", what, from);
@@ -291,39 +310,58 @@ static bool mirrorStore(const char* src, fs::FS& to, const char* dst, size_t rec
   return copyFile(SPIFFS, src, to, dst) > 0;
 }
 
+// Flash-side last-good copies, then the SD mirror. Each step names itself on the
+// progress screen.
 const char* sdBackupNow(bool force) {
-  if (!sdMount()) return "no sd card";
-  if (!SD.exists("/inw")) SD.mkdir("/inw");
-  if (!SD.exists("/inw/identity")) SD.mkdir("/inw/identity");
+  s_progress = "backing up contacts";
+  mirrorStore("/contacts3", SPIFFS, "/contacts3.bak", CONTACT_REC, force);
+  s_progress = "backing up channels";
+  mirrorStore("/channels2", SPIFFS, "/channels2.bak", CHANNEL_REC, force);
   uint8_t n = 0;
-  if (mirrorStore("/contacts3", SD, "/inw/contacts3", CONTACT_REC, force)) n++;
-  if (mirrorStore("/channels2", SD, "/inw/channels2", CHANNEL_REC, force)) n++;
-  if (fileSize(SPIFFS, "/identity/_main.id") >= 96 &&
-      copyFile(SPIFFS, "/identity/_main.id", SD, "/inw/identity/_main.id")) n++;
-  if (copyFile(SPIFFS, "/prefs.json", SD, "/inw/prefs.json")) n++;
-  if (copyFile(SPIFFS, "/hist.log", SD, "/inw/hist.log")) n++;
-  copyFile(SPIFFS, "/hist_read.bin", SD, "/inw/hist_read.bin");
+  const bool sd = sdMount();
+  if (sd) {
+    if (!SD.exists("/inw")) SD.mkdir("/inw");
+    if (!SD.exists("/inw/identity")) SD.mkdir("/inw/identity");
+    s_progress = "copying contacts to sd";
+    if (mirrorStore("/contacts3", SD, "/inw/contacts3", CONTACT_REC, force)) n++;
+    s_progress = "copying channels to sd";
+    if (mirrorStore("/channels2", SD, "/inw/channels2", CHANNEL_REC, force)) n++;
+    s_progress = "copying identity to sd";
+    if (fileSize(SPIFFS, "/identity/_main.id") >= 96 &&
+        copyFile(SPIFFS, "/identity/_main.id", SD, "/inw/identity/_main.id")) n++;
+    s_progress = "copying settings to sd";
+    if (copyFile(SPIFFS, "/prefs.json", SD, "/inw/prefs.json")) n++;
+    s_progress = "copying messages to sd";
+    if (copyFile(SPIFFS, "/hist.log", SD, "/inw/hist.log")) n++;
+    copyFile(SPIFFS, "/hist_read.bin", SD, "/inw/hist_read.bin");
+  }
+  s_progress = nullptr;
+  inwProgress(nullptr, 0, 0);
+  if (!sd) return "flash copy done, no sd card";
   ui_settings.lastSdBackup = rtc_clock.getCurrentTime();
+  ui_settings.save();
   static char msg[32];
   snprintf(msg, sizeof(msg), n >= 3 ? "backed up to sd (%u files)" : "backup incomplete (%u)", n);
   return msg;
 }
 
+// Once a day. Checked every few minutes so a clock that only becomes valid
+// later (wifi, gps) is still honoured; without one, every 24 h of uptime.
 void sdBackupTick() {
-  static uint32_t next = 120000;          // first mirror two minutes after boot
+  static const uint32_t DAY = 24UL * 3600UL;
+  static uint32_t next = 5UL * 60UL * 1000UL, lastRun = 0;
   if ((int32_t)(millis() - next) < 0) return;
-  next = millis() + 30UL * 60UL * 1000UL;
+  next = millis() + 5UL * 60UL * 1000UL;
   if (!g_node) return;
+  const uint32_t now = rtc_clock.getCurrentTime();
+  const bool clockOk = now > 1700000000UL;
+  const bool due = clockOk ? (now - ui_settings.lastSdBackup >= DAY)
+                           : (!lastRun || millis() - lastRun >= DAY * 1000UL);
+  if (!due) return;
+  if (lastRun && millis() - lastRun < 3600000UL) return;   // failed recently (no card): hourly at most
+  lastRun = millis();
   const char* r = sdBackupNow(false);
-  logs.add(LOG_INFO, "auto backup: %s", r);
-}
-
-void localBackupTick() {
-  static uint32_t next = 180000;
-  if ((int32_t)(millis() - next) < 0) return;
-  next = millis() + 30UL * 60UL * 1000UL;
-  mirrorStore("/contacts3", SPIFFS, "/contacts3.bak", CONTACT_REC, false);
-  mirrorStore("/channels2", SPIFFS, "/channels2.bak", CHANNEL_REC, false);
+  logs.add(LOG_INFO, "daily backup: %s", r);
 }
 
 // ---- export ----------------------------------------------------------------------

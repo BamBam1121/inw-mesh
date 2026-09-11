@@ -3,7 +3,7 @@
 // On boot, a missing or torn store file is put back from the flash .bak copy,
 // then the SD mirror (/inw), then a Wadamesh store (/meshcomod) if one is on the
 // card - it uses MeshCore's own file formats, so the files copy across as-is.
-// While running, the store is mirrored to SD every 30 minutes.
+// While running, the store is backed up to flash and SD once a day.
 
 #pragma once
 #include <Arduino.h>
@@ -24,5 +24,4 @@ void importPrefsAfterNode(char* report, size_t cap);
 const char* sdBackupNow(bool force = true);
 const char* exportJson();
 const char* importJsonNow();     // merge contacts/channels from the newest export
-void sdBackupTick();             // call from loop
-void localBackupTick();          // flash-side last-good copies
+void sdBackupTick();             // call from loop; runs sdBackupNow(false) once a day
