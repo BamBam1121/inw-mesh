@@ -780,8 +780,9 @@ void ConfirmView::draw(Canvas& g) {
     g.drawString(line, x + (w - g.textWidth(line)) / 2, y + 44 + i * 18);
   }
   const int by = y + h - 40, bw = 110;
-  drawPill(g, x + w / 2 - bw - 10, by, bw, 26, !_sel ? t.green : t.line, !_sel ? t.bg : t.txt, "No");
-  drawPill(g, x + w / 2 + 10, by, bw, 26, _sel ? t.red : t.line, _sel ? t.bg : t.txt, "Yes");
+  // No is red, Yes is green; the focused one is filled, the other keeps its colour in the text.
+  drawPill(g, x + w / 2 - bw - 10, by, bw, 26, !_sel ? t.red : t.line, !_sel ? t.white : t.red, "No");
+  drawPill(g, x + w / 2 + 10, by, bw, 26, _sel ? t.green : t.line, _sel ? t.bg : t.green, "Yes");
 }
 
 void ConfirmView::press() {
