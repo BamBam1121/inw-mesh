@@ -5,6 +5,7 @@
 #include <SPIFFS.h>
 #include "power.h"
 #include "notify.h"
+#include "statusbar.h"
 #include <SD.h>
 #include <time.h>
 #include "board_pins.h"
@@ -91,6 +92,7 @@ const char* app::batteryText() {
 }
 uint8_t app::batteryPct() { return battery.present() ? battery.percent() : 0; }
 bool app::charging() { return battery.present() && battery.charging(); }
+bool app::pluggedIn() { return battery.present() && battery.pluggedIn(); }
 uint16_t app::batteryMv() { return battery.present() ? battery.millivolts() : 0; }
 bool app::radioOk() { return s_radioOk; }
 
@@ -167,6 +169,16 @@ void inwProgress(const char* what, uint32_t done, uint32_t total) {
   g.pushSprite(nav.display(), 0, 0);
 }
 void app::lock() { if (!nav.top() || !nav.top()->isLock()) nav.push(makeLockView()); }
+
+static bool quietHours();
+// Plugged in: the theme's charge chime and one tap, like a phone. Quiet hours
+// keep it silent; the screen still shows the charge mark.
+void app::pluggedInFeedback() {
+  nav.statusChanged();
+  if (quietHours()) return;
+  if (ui_settings.vibrate) { static const uint8_t TAP[] = {47}; haptic.pattern(TAP, 1); }
+  if (ui_settings.sound) jingle.play(themeSpec().charge);
+}
 
 void app::testNotify() {
   haptic.pattern(app::themeSpec().vibeDm.seq, app::themeSpec().vibeDm.n);
@@ -614,6 +626,7 @@ void loop() {
   nav.tick();
   lap(4);
   if (!dimmer.asleep() || nav.overlayActive()) nav.draw();
+  if (!dimmer.asleep() && nav.top() && !nav.top()->isLock()) animateBatteryIcon(nav.display(), theme);
   lap(5);
   dimmer.tick();
   jingle.tick();

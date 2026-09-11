@@ -28,6 +28,8 @@ namespace app {
   const char* batteryText();      // "87%" / "CHG 87%"
   uint8_t  batteryPct();
   bool     charging();
+  bool     pluggedIn();
+  void     pluggedInFeedback();     // chime + tap when the charger goes in
   uint16_t batteryMv();
   bool     radioOk();
   uint16_t unread();

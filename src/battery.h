@@ -125,6 +125,12 @@ public:
     }
 
     bool     pluggedIn() const { return _vbus; }
+    // Cheap single-register check, so plugging in is noticed within a moment.
+    bool pollVbus() {
+        uint8_t st;
+        if (_gauge && chgRead(0x0B, st)) _vbus = (st >> 5) != 0;
+        return _vbus;
+    }
     uint16_t fullChargeMah() const { return _fcc; }
 
     // Pause or resume charging (optimised charging holds at 80%). Only the

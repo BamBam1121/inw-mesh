@@ -80,8 +80,14 @@ static void planCharge() {
 
 static void chargeTick() {
   const bool plugged = battery.pluggedIn();
-  if (plugged && !s_plugged) { s_plugged = true; s_plugAt = millis(); planCharge(); }
+  static bool first = true;               // already on the charger at boot: no chime
+  if (plugged && !s_plugged) {
+    s_plugged = true; s_plugAt = millis(); planCharge();
+    if (!first) app::pluggedInFeedback();
+  }
+  first = false;
   if (!plugged && s_plugged) {
+    nav.statusChanged();
     s_plugged = false;
     battery.holdCharge(false);
     if (millis() - s_plugAt > 60UL * 60UL * 1000UL) recordUnplug();   // real charges only
@@ -159,8 +165,14 @@ static void saverTick() {
 }
 
 void tick() {
-  static uint32_t last = 0;
-  if (!battery.present() || !battery.hasReading() || millis() - last < 5000 || millis() < 15000) return;
+  static uint32_t last = 0, lastPoll = 0;
+  if (!battery.present() || !battery.hasReading() || millis() < 15000) return;
+  bool changed = false;
+  if (millis() - lastPoll > 500) {
+    lastPoll = millis();
+    changed = battery.pollVbus() != s_plugged;
+  }
+  if (!changed && millis() - last < 5000) return;
   last = millis();
   chargeTick();
   saverTick();

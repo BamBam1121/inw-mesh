@@ -13,6 +13,82 @@ Nav nav;
 static std::vector<View*> s_graveyard;   // popped views die on the next tick, never mid-call
 
 // ---- status bar ----------------------------------------------------------------
+static uint16_t mix565(uint16_t a, uint16_t b, float f) {
+  const int r = ((a >> 11) & 31) + (int)((((b >> 11) & 31) - ((a >> 11) & 31)) * f);
+  const int g = ((a >> 5) & 63) + (int)((((b >> 5) & 63) - ((a >> 5) & 63)) * f);
+  const int bl = (a & 31) + (int)(((b & 31) - (a & 31)) * f);
+  return (uint16_t)((r << 11) | (g << 5) | bl);
+}
+
+static constexpr int BATT_W = 20, BATT_H = 10, BATT_Y = 4;
+
+// The battery glyph at (x, y), 22 x 10. While plugged in it shows a charge mark
+// in the theme's own shape; while actually charging the fill breathes.
+static void drawBatteryIcon(lgfx::LovyanGFX& d, const Theme& t, int x, int y) {
+  const uint8_t pct = app::batteryPct();
+  const bool plugged = app::pluggedIn(), charging = app::charging();
+  d.fillRect(x - 1, y - 2, BATT_W + 5, BATT_H + 4, t.panel);
+  d.drawRect(x, y, BATT_W, BATT_H, t.dim);
+  d.fillRect(x + BATT_W, y + 3, 2, 4, t.dim);
+  const float breath = charging ? 0.5f + 0.5f * sinf(millis() * (2.0f * PI / 1800.0f)) : 1.0f;
+  uint16_t bc = power::saver() ? t.amber : pct <= 15 ? t.red : pct <= 30 ? t.amber : t.txt;
+  if (plugged) {
+    switch (t.style) {
+      case STYLE_AURORA: {             // drift through the sky's colours
+        const float h = fmodf(millis() / 4000.0f, 1.0f);
+        const uint16_t a = t.green, b = t.greenDim, c = t.blue;
+        bc = h < 0.33f ? mix565(a, c, h * 3) : h < 0.66f ? mix565(c, b, (h - 0.33f) * 3) : mix565(b, a, (h - 0.66f) * 3);
+        break;
+      }
+      case STYLE_HERO:   bc = t.red; break;    // hearts refill red
+      default:           bc = t.green; break;
+    }
+    bc = mix565(t.panel, bc, 0.35f + 0.65f * breath);
+  }
+  const int fw = (BATT_W - 4) * min<uint8_t>(pct, 100) / 100;
+  d.fillRect(x + 2, y + 2, max(fw, plugged ? 2 : 0), BATT_H - 4, bc);
+  if (!plugged) return;
+  const int cx = x + BATT_W / 2, cy = y + BATT_H / 2;
+  const uint16_t mark = t.white, edge = t.panel;
+  switch (t.style) {
+    case STYLE_BLOCKS:                  // a stepped pixel bolt
+      d.fillRect(cx, cy - 4, 3, 3, edge); d.fillRect(cx - 2, cy - 1, 5, 2, edge); d.fillRect(cx - 3, cy + 1, 3, 3, edge);
+      d.fillRect(cx + 1, cy - 3, 1, 2, mark); d.fillRect(cx - 1, cy - 1, 3, 1, mark); d.fillRect(cx - 2, cy + 1, 1, 2, mark);
+      break;
+    case STYLE_HERO:                    // a little heart
+      d.fillCircle(cx - 2, cy - 1, 2, edge); d.fillCircle(cx + 2, cy - 1, 2, edge); d.fillTriangle(cx - 4, cy, cx + 4, cy, cx, cy + 4, edge);
+      d.fillCircle(cx - 2, cy - 1, 1, mark); d.fillCircle(cx + 2, cy - 1, 1, mark); d.fillTriangle(cx - 3, cy, cx + 3, cy, cx, cy + 3, mark);
+      break;
+    case STYLE_AURORA:                  // a four-point star
+      d.fillTriangle(cx, cy - 5, cx - 2, cy, cx + 2, cy, edge); d.fillTriangle(cx, cy + 5, cx - 2, cy, cx + 2, cy, edge);
+      d.fillTriangle(cx - 5, cy, cx, cy - 2, cx, cy + 2, edge); d.fillTriangle(cx + 5, cy, cx, cy - 2, cx, cy + 2, edge);
+      d.fillTriangle(cx, cy - 4, cx - 1, cy, cx + 1, cy, mark); d.fillTriangle(cx, cy + 4, cx - 1, cy, cx + 1, cy, mark);
+      d.fillTriangle(cx - 4, cy, cx, cy - 1, cx, cy + 1, mark); d.fillTriangle(cx + 4, cy, cx, cy - 1, cx, cy + 1, mark);
+      break;
+    default:                            // a lightning bolt
+      d.fillTriangle(cx + 2, cy - 5, cx - 3, cy + 1, cx + 1, cy + 1, edge);
+      d.fillTriangle(cx - 2, cy + 5, cx + 3, cy - 1, cx - 1, cy - 1, edge);
+      d.fillTriangle(cx + 1, cy - 4, cx - 2, cy + 1, cx + 1, cy + 1, mark);
+      d.fillTriangle(cx - 1, cy + 4, cx + 2, cy - 1, cx - 1, cy - 1, mark);
+      break;
+  }
+}
+
+static int battX() { return L::W - 4 - BATT_W - 2; }
+
+// Animates just the battery corner, straight to the panel, while plugged in.
+// A full status-bar repaint every frame would cost a whole-screen push.
+void animateBatteryIcon(lgfx::LovyanGFX* panel, const Theme& t) {
+  static uint32_t last = 0;
+  if (!panel || !app::pluggedIn() || millis() - last < 60) return;
+  last = millis();
+  static LGFX_Sprite s;
+  if (!s.getBuffer()) { s.setColorDepth(16); if (!s.createSprite(BATT_W + 5, BATT_H + 4)) return; }
+  // The sprite's (0, 0) sits at the panel's (battX() - 1, BATT_Y - 2).
+  drawBatteryIcon(s, t, 1, 2);
+  s.pushSprite(panel, battX() - 1, BATT_Y - 2);
+}
+
 void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t) {
   d.setFont(&fonts::Font2);
   d.fillRect(0, 0, L::W, 17, t.panel);
@@ -35,14 +111,8 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t) {
     d.drawString(c, (L::W - d.textWidth(c)) / 2, 1);
   }
   // right side, laid out right to left
-  int rx = L::W - 4;
-  const uint8_t pct = app::batteryPct();
-  const int bw = 20, bh = 10;
-  rx -= bw + 2;
-  d.drawRect(rx, 4, bw, bh, t.dim);
-  d.fillRect(rx + bw, 7, 2, 4, t.dim);
-  const uint16_t bc = app::charging() ? t.green : power::saver() ? t.amber : pct <= 15 ? t.red : pct <= 30 ? t.amber : t.txt;
-  d.fillRect(rx + 2, 6, (bw - 4) * min<uint8_t>(pct, 100) / 100, bh - 4, bc);
+  int rx = battX();
+  drawBatteryIcon(d, t, rx, BATT_Y);
   const char* bt = app::batteryText();
   rx -= d.textWidth(bt) + 4;
   d.setTextColor(t.dim, t.panel);

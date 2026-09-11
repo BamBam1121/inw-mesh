@@ -18,6 +18,7 @@ struct ThemeSpec {
     const Jingle *boot, *msg, *dm, *mention;
     VibePattern vibeMsg, vibeDm, vibeMention;
     uint8_t tickEffect, tickClamp;
+    const Jingle* charge;             // plugged in
 };
 
 namespace tunes {
@@ -45,6 +46,12 @@ namespace tunes {
   static const ToneStep AUR_DM[]   = {{659, 240}, {988, 240}, {1319, 520}};
   static const ToneStep AUR_MEN[]  = {{1047, 160}, {1319, 160}, {1568, 160}, {1976, 600}};
 
+  // Plugged in: a short rising "power up" in each theme's voice.
+  static const ToneStep INW_CHG[]  = {{660, 90, 990}, {0, 30}, {1320, 120}};
+  static const ToneStep BLK_CHG[]  = {{392, 70, 784}, {0, 30}, {784, 90, 1175}};
+  static const ToneStep HERO_CHG[] = {{523, 70}, {659, 70}, {784, 70}, {1047, 160}};
+  static const ToneStep AUR_CHG[]  = {{784, 280}, {1175, 520}};
+
   #define J(name, steps, wave, bell) static const Jingle name = {#name, steps, sizeof(steps) / sizeof(steps[0]), wave, bell}
   J(INW_BOOT_J, INW_BOOT, WAVE_SINE, false);
   J(INW_MSG_J,  INW_MSG,  WAVE_SINE, false);
@@ -62,6 +69,10 @@ namespace tunes {
   J(AUR_MSG_J,  AUR_MSG,  WAVE_SINE, true);
   J(AUR_DM_J,   AUR_DM,   WAVE_SINE, true);
   J(AUR_MEN_J,  AUR_MEN,  WAVE_TRIANGLE, true);
+  J(INW_CHG_J,  INW_CHG,  WAVE_SINE, false);
+  J(BLK_CHG_J,  BLK_CHG,  WAVE_TRIANGLE, false);
+  J(HERO_CHG_J, HERO_CHG, WAVE_SQUARE, false);
+  J(AUR_CHG_J,  AUR_CHG,  WAVE_SINE, true);
   #undef J
 }
 
@@ -73,7 +84,7 @@ static const ThemeSpec THEMES[] = {
     {{14, 0x80 | 22, 14, 0x80 | 22, 14}, 5},
     {{14, 0x80 | 22, 14, 0x80 | 22, 14}, 5},
     {{14, 0x80 | 12, 14, 0x80 | 12, 14, 0x80 | 12, 14}, 7},
-    7, 0x40 },
+    7, 0x40, &tunes::INW_CHG_J },
   { "Blocks", "grass, dirt and a pixel sky",
     { 0x0e1622, 0x2b2118, 0x45362a, 0x6cc24a, 0x3f7a2c, 0xe8e0d0, 0x9a8f7a, 0xf2b233,
       0xd9412e, 0xffffff, 0x3a3a3a, 0x2f5a22, 0x5aa9e6, 0x3b2d20, 0x4a3a12 },
@@ -83,7 +94,7 @@ static const ThemeSpec THEMES[] = {
     {{47, 0x80 | 5, 47}, 3},
     {{47, 0x80 | 5, 47, 0x80 | 5, 47}, 5},
     {{14, 0x80 | 8, 47, 0x80 | 5, 47, 0x80 | 5, 47}, 7},
-    1, 0x50 },
+    1, 0x50, &tunes::BLK_CHG_J },
   { "Hero", "night hills, a hooded adventurer, hearts",
     { 0x081420, 0x10263a, 0x1d3a52, 0xf2c14e, 0x2e7d4f, 0xe6edf2, 0x7f98ab, 0xff9f43,
       0xe84a5f, 0xffffff, 0x13283a, 0x1e4a33, 0x5cc8ff, 0x163248, 0x3a2d10 },
@@ -91,7 +102,7 @@ static const ThemeSpec THEMES[] = {
     {{47, 0x80 | 8, 47}, 3},
     {{47, 0x80 | 8, 47, 0x80 | 8, 14}, 5},                  // da-da-daaa
     {{47, 0x80 | 6, 47, 0x80 | 6, 47, 0x80 | 6, 14}, 7},
-    7, 0x40 },
+    7, 0x40, &tunes::HERO_CHG_J },
   { "Aurora", "northern lights over the ridge",
     { 0x040716, 0x0b1230, 0x18214a, 0x72f5c8, 0x6a4fc2, 0xd6e4ff, 0x7c86b8, 0xffc46b,
       0xff6b8b, 0xffffff, 0x121a3e, 0x1b3a4a, 0x7db8ff, 0x141d45, 0x2c2250 },
@@ -101,6 +112,6 @@ static const ThemeSpec THEMES[] = {
     {{14, 0x80 | 16, 47}, 3},
     {{14, 0x80 | 16, 14, 0x80 | 16, 47}, 5},
     {{14, 0x80 | 10, 14, 0x80 | 10, 15}, 5},
-    7, 0x28 },
+    7, 0x28, &tunes::AUR_CHG_J },
 };
 static constexpr uint8_t THEME_COUNT = sizeof(THEMES) / sizeof(THEMES[0]);
