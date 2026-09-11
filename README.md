@@ -7,7 +7,8 @@ The pager runs a full MeshCore companion node, so it works on its own (keyboard,
 wheel, screen) and still pairs with the MeshCore phone app over Bluetooth like
 stock firmware.
 
-**Install it from the browser:** https://bambam1121.github.io/inw-mesh/
+**Website and browser installer:** https://inwmesh.lovable.app
+(or the plain installer at https://bambam1121.github.io/inw-mesh/)
 
 ## Features
 
@@ -39,7 +40,7 @@ stock firmware.
 
 ## Install
 
-Use the [web installer](https://bambam1121.github.io/inw-mesh/) in Chrome or Edge.
+Use the [web installer](https://inwmesh.lovable.app) in Chrome or Edge.
 It never writes the bootloader and never erases the flash.
 
 - **Update** writes only the app. Settings, contacts and messages stay.
