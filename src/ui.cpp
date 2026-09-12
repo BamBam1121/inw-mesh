@@ -586,17 +586,19 @@ void MenuView::resume() {
     _scroll = s;
   }
   if (_focus < 0) _focus = 0;
-  if (!_rows.empty() && !focusable(_focus)) moveFocus(1);
+  if (!_rows.empty() && !focusable(_focus)) { moveFocus(1); if (!focusable(_focus)) moveFocus(-1); }
   dirty = true;
 }
 
 void MenuView::moveFocus(int d) {
   const int n = _rows.size();
   if (!n) return;
-  int f = _focus;
-  for (int tries = 0; tries < n; tries++) {
-    f = (f + (d >= 0 ? 1 : -1) + n) % n;
-    if (focusable(f)) { _focus = f; break; }
+  // Stop at the ends instead of wrapping. A flick of the wheel arrives as several
+  // detents at once, and wrapping meant an upward flick stepped past the first row
+  // and reappeared at the bottom, so the top of a long menu was unreachable.
+  const int dir = d >= 0 ? 1 : -1;
+  for (int f = _focus + dir; f >= 0 && f < n; f += dir) {
+    if (focusable(f)) { _focus = f; return; }
   }
 }
 
@@ -610,7 +612,7 @@ void MenuView::rotate(int d) {
     dirty = true;
     return;
   }
-  if (!focusable(_focus)) moveFocus(1);
+  if (!focusable(_focus)) { moveFocus(1); if (!focusable(_focus)) moveFocus(-1); }
   const int steps = abs(d);
   for (int i = 0; i < steps; i++) moveFocus(d);
   dirty = true;
@@ -648,7 +650,7 @@ void MenuView::tick() {
 
 void MenuView::draw(Canvas& g) {
   const Theme& t = nav.theme();
-  char pos[12] = "";
+  char pos[24] = "";
   const int visible = (L::H - L::BODY_Y) / L::ROW_H;
   if ((int)_rows.size() > visible) snprintf(pos, sizeof(pos), "%d/%d", _focus + 1, (int)_rows.size());
   drawHeader(g, _title.c_str(), pos);
@@ -659,7 +661,10 @@ void MenuView::draw(Canvas& g) {
   }
   if (_focus < _scroll) _scroll = _focus;
   if (_focus >= _scroll + visible) _scroll = _focus - visible + 1;
-  if (_scroll > 0 && _focus == _scroll && _rows[_scroll - 1].kind == RowKind::Header) _scroll--;
+  // Pull headers and info rows above the focus into view: focus never lands on them,
+  // so without this the top of a list scrolls away and cannot be brought back.
+  while (_scroll > 0 && !focusable(_scroll - 1) && _focus < _scroll + visible - 1) _scroll--;
+  _scroll = constrain(_scroll, 0, max(0, (int)_rows.size() - visible));
   for (int i = _scroll; i < (int)_rows.size() && i < _scroll + visible; i++) {
     const MenuRow& r = _rows[i];
     const int y = L::BODY_Y + (i - _scroll) * L::ROW_H;

@@ -45,7 +45,7 @@ public:
   }
   void rotate(int d) override {
     const int n = _n + 2;                  // two control rows first
-    _focus = ((_focus + d) % n + n) % n;
+    _focus = constrain(_focus + d, 0, n - 1);   // stop at the ends; a wheel flick used to wrap past them
     dirty = true;
   }
   void key(char c) override {
