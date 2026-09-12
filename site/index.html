@@ -93,7 +93,7 @@ phone app over ble ...... <b>ok</b>
   <div class="install">
     <div class="panel">
       <h3>Update</h3>
-      <p>Already running INW Mesh? This replaces the app and keeps your settings, contacts and messages.</p>
+      <p>Already running INW Mesh? This replaces the app and keeps your settings, contacts and messages. It also restores the bootloader and partition table if they have gone missing.</p>
       <esp-web-install-button manifest="manifest-update.json">
         <button class="go" slot="activate">UPDATE</button>
       </esp-web-install-button>
@@ -108,16 +108,16 @@ phone app over ble ...... <b>ok</b>
   </div>
   <p></p>
   <div class="panel warn">
-    <b>Do not tick "erase device".</b> If the flash is erased, everything on the pager goes
-    with it, including its bootloader. First install writes a bootloader itself, so an erased
-    pager can be brought back by running first install again. Update does not, so an erase
-    followed by update leaves a pager that will not start.
+    <b>There is no need to tick "erase device".</b> If the flash is erased, everything on the
+    pager goes with it, including your contacts and channels. Nothing brings those back except
+    a backup.
     <br><br>
-    Update writes only the app, and keeps your contacts, channels and settings. First install
-    also writes the bootloader and the partition table, so the first start formats storage
-    (a few minutes) and contacts come back from the SD card. If a pager still will not start,
-    installing <a href="https://github.com/bmorcelli/Launcher">Launcher</a> gives it a known
-    good bootloader, then run first install again.
+    Both options write the bootloader and the partition table, so either one can revive a pager
+    that will not start. Update keeps your contacts, channels and settings. First install is for
+    a pager coming from other firmware: its first start formats storage (a few minutes) and
+    contacts come back from the SD card. If a pager still will not start, installing
+    <a href="https://github.com/bmorcelli/Launcher">Launcher</a> gives it a known good
+    bootloader, then run first install again.
   </div>
 
   <h2>What it does</h2>

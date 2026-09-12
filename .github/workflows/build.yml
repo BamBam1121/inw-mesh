@@ -74,6 +74,7 @@ jobs:
             cp "$B/firmware.bin" "$B/partitions.bin" "$F/"
             python tools/sign_ota.py "$F/firmware.bin" "$F/ota.json" "$VERSION" "$NOTES"
             echo "${GITHUB_REF_NAME} ${GITHUB_SHA::7}" > "$F/version.txt"
+            STABLE="$VERSION"
           else
             # stable: the latest release, carried along
             TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)
@@ -82,11 +83,23 @@ jobs:
                 --pattern firmware.bin --pattern partitions.bin --clobber
               python tools/sign_ota.py "$F/firmware.bin" "$F/ota.json" "${TAG#v}" "$TAG"
               echo "$TAG" > "$F/version.txt"
+              STABLE="${TAG#v}"
             else
               cp "$B/firmware.bin" "$B/partitions.bin" "$F/"
               echo "dev ${GITHUB_SHA::7}" > "$F/version.txt"
+              STABLE="$VERSION"
             fi
           fi
+
+          # The manifests are hand-written, so their version strings used to
+          # drift from the firmware (they sat at 1.1.4 while the code was on
+          # 1.1.8). Stamp them with the version the site actually serves, which
+          # on a non-tag run is the latest release, not this build.
+          for m in "$F/../manifest-install.json" "$F/../manifest-update.json"; do
+            sed -i "s/\"version\": \"[0-9.]*\"/\"version\": \"$STABLE\"/" "$m"
+            grep -q "\"version\": \"$STABLE\"" "$m" || { echo "failed to stamp $m"; exit 1; }
+          done
+          grep -h '"version"' "$F/../manifest-install.json" "$F/../manifest-update.json"
           ls -la "$F"
 
       - uses: actions/upload-pages-artifact@v3

@@ -17,3 +17,7 @@ inwmesh-identity*
 
 # Optional per-device identity seed (a private key). Never commit it.
 src/identity_seed.h
+
+# python bytecode from tools/
+__pycache__/
+*.pyc
