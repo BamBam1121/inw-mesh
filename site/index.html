@@ -108,11 +108,16 @@ phone app over ble ...... <b>ok</b>
   </div>
   <p></p>
   <div class="panel warn">
-    <b>Safe by design:</b> the installer never erases the flash and never writes the bootloader.
-    It relies on the bootloader already on the pager; so far it has been run on a pager
-    whose bootloader came from Launcher and Wadamesh. If yours doesn't start afterwards,
-    installing <a href="https://github.com/bmorcelli/Launcher">Launcher</a> first gives it
-    a bootloader that works, then run the first install again.
+    <b>Do not tick "erase device".</b> If the flash is erased, everything on the pager goes
+    with it, including its bootloader. First install writes a bootloader itself, so an erased
+    pager can be brought back by running first install again. Update does not, so an erase
+    followed by update leaves a pager that will not start.
+    <br><br>
+    Update writes only the app, and keeps your contacts, channels and settings. First install
+    also writes the bootloader and the partition table, so the first start formats storage
+    (a few minutes) and contacts come back from the SD card. If a pager still will not start,
+    installing <a href="https://github.com/bmorcelli/Launcher">Launcher</a> gives it a known
+    good bootloader, then run first install again.
   </div>
 
   <h2>What it does</h2>
@@ -121,7 +126,7 @@ phone app over ble ...... <b>ok</b>
       <li>Channels, DMs and room servers, with delivery ticks, retries and how many repeaters heard your post</li>
       <li>Colour emoji, @mentions, quick replies</li>
       <li>Four themes (INW, Blocks, Hero, Aurora) with their own scenes, sounds and vibration</li>
-      <li>Up to 1000 contacts, sorted by recency, name or distance</li>
+      <li>Up to 2000 contacts, sorted by recency, name or distance</li>
       <li>Repeater admin: login, status, telemetry, trace, console</li>
       <li>Offline map from SD tiles, downloading missing tiles over Wi-Fi</li>
       <li>NFC: read and write tags, and let a phone tap the pager to get your contact or a channel invite</li>

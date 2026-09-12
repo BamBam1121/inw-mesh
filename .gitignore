@@ -5,6 +5,9 @@
 *.bin
 *.elf
 *.map
+# ...but the web installer's bootloader is a shipped asset, not a build output.
+# Without it, an erased pager gets no bootloader and will not start.
+!site/firmware/bootloader.bin
 
 # Real config exports. These carry a private key and a full contact list, so a
 # file copied off an SD card for testing must never end up in a commit.

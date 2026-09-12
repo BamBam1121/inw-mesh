@@ -28,6 +28,12 @@ NFC (in the `t-lora-pager` build and the release binaries; licence text in `lice
   `tools/convert_emoji.py`.
 - **ES8311 register sequence** (`src/es8311_codec.h`): follows Espressif's es8311
   driver as adapted for this board in Wadamesh (GPL-3.0).
+- **Second-stage bootloader** (`site/firmware/bootloader.bin`): the stock ESP-IDF
+  v5.5.4 bootloader (Espressif, Apache-2.0), taken from the
+  [Launcher](https://github.com/bmorcelli/Launcher) release build for this board.
+  The web installer writes it at 0x0 so a device whose flash has been erased still
+  has a bootloader. The Arduino-framework bootloader this project builds has been
+  seen to crash-loop this board, which is why the IDF one is shipped instead.
 - **Board details** cross-checked against Meshtastic's `tlora-pager` variant
   (GPL-3.0) and LilyGo's LilyGoLib.
 
