@@ -543,9 +543,15 @@ static void batteryMenu() {
     else if (app::charging()) s += "  charging";
     else if (battery.pluggedIn()) s += "  plugged in";
     return s; });
-  m->info("health", []() -> String {
+  // "82% health" first: "1244 of 1500 mAh (82%)" reads like a charge level.
+  m->info("battery health", []() -> String {
     const uint16_t f = battery.fullChargeMah();
-    return f ? String(f) + " of " + String(Battery::DESIGN_MAH) + " mAh  (" + String(min(100, f * 100 / Battery::DESIGN_MAH)) + "%)" : String("--"); });
+    return f ? String(min(100, f * 100 / Battery::DESIGN_MAH)) + "% health  (holds " + String(f) +
+               " of " + String(Battery::DESIGN_MAH) + " mAh when new)" : String("--"); });
+  m->action("reset battery learning", [] {
+    confirm("Reset the gauge's learning?", "use this if health looks wrong on a new battery. it re-learns over the next full charge and discharge.",
+            [] { nav.toast(battery.relearn() ? "reset - charge to full, then run it low" : "the gauge refused", 4000); });
+  });
   m->header("optimised charging");
   m->toggle("hold at 80% until needed", [] { return ui_settings.smartCharge; }, [] {
     ui_settings.smartCharge = !ui_settings.smartCharge;

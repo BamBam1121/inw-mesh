@@ -37,11 +37,20 @@ void History::loadLog() {
   while (f.available()) {
     char kind;
     if (f.read((uint8_t*)&kind, 1) != 1) break;
-    if (kind == 'M') {
+    if (kind == 'M' || kind == 'N') {
       HistMsg m;
-      if (f.read((uint8_t*)&m, sizeof(m)) != sizeof(m)) break;
+      memset(&m, 0, sizeof(m));
+      if (kind == 'N') {
+        if (f.read((uint8_t*)&m, sizeof(m)) != sizeof(m)) break;
+      } else {
+        // Older record: same fields up to the text, no path.
+        HistMsgV1 v1;
+        if (f.read((uint8_t*)&v1, sizeof(v1)) != sizeof(v1)) break;
+        memcpy(&m, &v1, sizeof(v1));
+      }
       m.sender[sizeof(m.sender) - 1] = 0;
       m.text[sizeof(m.text) - 1] = 0;
+      if (m.path_len > sizeof(m.path)) m.path_len = 0;
       _ring[_head] = m;
       _head = (_head + 1) % CAP;
       if (_count < CAP) _count++;
@@ -70,7 +79,7 @@ void History::loadLog() {
 void History::compact() {
   File f = SPIFFS.open("/hist.tmp", FILE_WRITE);
   if (!f) return;
-  const char kind = 'M';
+  const char kind = 'N';          // must match what add() writes, or paths are lost
   for (uint16_t i = 0; i < _count; i++) {
     if (!at(i)->conv.type) continue;
     f.write((const uint8_t*)&kind, 1);
@@ -82,7 +91,8 @@ void History::compact() {
 }
 
 uint32_t History::add(const ConvKey& k, uint8_t flags, uint8_t status, const char* sender,
-                      const char* text, uint32_t ts, uint8_t hops, int8_t snr4) {
+                      const char* text, uint32_t ts, uint8_t hops, int8_t snr4,
+                      const uint8_t* path, uint8_t path_len) {
   HistMsg& m = _ring[_head];
   memset(&m, 0, sizeof(m));
   m.id = _nextId++;
@@ -94,9 +104,11 @@ uint32_t History::add(const ConvKey& k, uint8_t flags, uint8_t status, const cha
   m.ts = ts;
   strlcpy(m.sender, sender ? sender : "", sizeof(m.sender));
   strlcpy(m.text, text ? text : "", sizeof(m.text));
+  m.path_len = path && path_len ? min<uint8_t>(path_len, sizeof(m.path)) : 0;
+  if (m.path_len) memcpy(m.path, path, m.path_len);
   _head = (_head + 1) % CAP;
   if (_count < CAP) _count++;
-  appendRecord('M', &m, sizeof(m));
+  appendRecord('N', &m, sizeof(m));    // 'M' was the layout before paths
   gen++;
   return m.id;
 }

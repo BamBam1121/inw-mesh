@@ -124,6 +124,10 @@ public:
         }
     }
 
+    // Throw away what the gauge has learned and start from the pack's rating.
+    // It re-learns over the next full charge and discharge.
+    bool relearn() { return setCapacity(DESIGN_MAH); }
+
     bool     pluggedIn() const { return _vbus; }
     // Cheap single-register check, so plugging in is noticed within a moment.
     bool pollVbus() {

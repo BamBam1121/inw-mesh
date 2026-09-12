@@ -479,6 +479,18 @@ static void openMessageActions(ThreadView* tv, uint32_t id) {
   if (!out) {
     m->info("route", [id]() -> String { HistMsg* x = history.find(id); if (!x) return String("");
       return x->hops == 0xFF || !x->hops ? String("direct") : String(x->hops) + " hops"; });
+    // One row per repeater that carried it, named from contacts where we know them.
+    HistMsg* msg2 = history.find(id);
+    for (uint8_t h = 0; msg2 && h < msg2->path_len; h++) {
+      const uint8_t hash = msg2->path[h];
+      char label[12];
+      snprintf(label, sizeof(label), "  hop %u", h + 1);
+      m->info(label, [hash]() -> String {
+        ContactInfo* c = g_node ? g_node->contactByPrefix(&hash, 1) : nullptr;
+        char b[40];
+        snprintf(b, sizeof(b), "%02x  %s", hash, c && c->name[0] ? c->name : "(unknown)");
+        return String(b); });
+    }
     m->info("signal", [id]() -> String { HistMsg* x = history.find(id); return String(x ? x->snr4 / 4.0 : 0, 1) + " dB SNR"; });
   } else {
     m->info("status", [id]() -> String { HistMsg* x = history.find(id); if (!x) return String("");

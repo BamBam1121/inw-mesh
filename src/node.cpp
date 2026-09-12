@@ -43,6 +43,16 @@ static uint8_t hopsOf(mesh::Packet* pkt) {
   return pkt->isRouteFlood() ? pkt->getPathHashCount() : 0xFF;
 }
 
+// The repeaters that carried a flood packet: first byte of each path hash,
+// oldest hop first. Direct packets have no path.
+static uint8_t pathOf(mesh::Packet* pkt, uint8_t* out, uint8_t cap) {
+  if (!pkt->isRouteFlood()) return 0;
+  const uint8_t sz = pkt->getPathHashSize();
+  uint8_t n = min<uint8_t>(pkt->getPathHashCount(), cap);
+  for (uint8_t i = 0; i < n; i++) out[i] = pkt->path[i * sz];
+  return n;
+}
+
 static bool mentions(const char* text, const char* me) {
   if (!me || !*me) return false;
   char tag[40];
@@ -187,8 +197,10 @@ void InwNode::onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t
   const bool room = from.type == ADV_TYPE_ROOM;
   uint8_t flags = mentions(text, getNodeName()) ? HF_MENTION : 0;
   if (room) flags |= HF_ROOM;
+  uint8_t hp[8];
+  const uint8_t hn = pathOf(pkt, hp, sizeof(hp));
   history.add(ConvKey::contact(from.id.pub_key), flags, ST_RECV, from.name, text,
-              getRTCClock()->getCurrentTime(), hopsOf(pkt), (int8_t)(pkt->getSNR() * 4));
+              getRTCClock()->getCurrentTime(), hopsOf(pkt), (int8_t)(pkt->getSNR() * 4), hp, hn);
   emit(room ? NodeEvent::RoomMsg : NodeEvent::DirectMsg, &from);
 }
 
@@ -204,8 +216,10 @@ void InwNode::onSignedMessageRecv(const ContactInfo& from, mesh::Packet* pkt, ui
                 sender_prefix[2], sender_prefix[3]);
   uint8_t flags = HF_ROOM | (mentions(text, getNodeName()) ? HF_MENTION : 0);
   if (!memcmp(sender_prefix, self_id.pub_key, 4)) flags |= HF_OUT;
+  uint8_t hp[8];
+  const uint8_t hn = pathOf(pkt, hp, sizeof(hp));
   history.add(ConvKey::contact(from.id.pub_key), flags, (flags & HF_OUT) ? ST_DELIVERED : ST_RECV,
-              who, text, ts ? ts : getRTCClock()->getCurrentTime(), hopsOf(pkt), (int8_t)(pkt->getSNR() * 4));
+              who, text, ts ? ts : getRTCClock()->getCurrentTime(), hopsOf(pkt), (int8_t)(pkt->getSNR() * 4), hp, hn);
   emit(NodeEvent::RoomMsg, &from);
 }
 
@@ -228,8 +242,10 @@ void InwNode::onChannelMessageRecv(const mesh::GroupChannel& ch, mesh::Packet* p
     body = sep + 2;
   }
   const uint8_t flags = mentions(body, getNodeName()) ? HF_MENTION : 0;
+  uint8_t hp[8];
+  const uint8_t hn = pathOf(pkt, hp, sizeof(hp));
   history.add(ConvKey::channel(ch.secret), flags, ST_RECV, who, body,
-              getRTCClock()->getCurrentTime(), hopsOf(pkt), (int8_t)(pkt->getSNR() * 4));
+              getRTCClock()->getCurrentTime(), hopsOf(pkt), (int8_t)(pkt->getSNR() * 4), hp, hn);
   int idx = findChannelIdx(ch);
   emit(NodeEvent::ChannelMsg, &idx);
 }

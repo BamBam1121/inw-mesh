@@ -22,6 +22,23 @@ struct ConvKey {
   static ConvKey channel(const uint8_t* secret) { ConvKey k; k.type = CONV_CHANNEL; memcpy(k.id, secret, 6); return k; }
 };
 
+// The layout written as an 'M' record before paths were stored. Kept so an
+// existing hist.log still loads; new messages are written as 'N' records.
+struct HistMsgV1 {
+  uint32_t id;
+  ConvKey  conv;
+  uint8_t  flags;
+  uint8_t  status;
+  uint8_t  hops;
+  int8_t   snr4;
+  uint8_t  repeats;
+  uint8_t  attempts;
+  uint16_t rtt10;
+  uint32_t ts;
+  char     sender[24];
+  char     text[160];
+};
+
 struct HistMsg {
   uint32_t id;
   ConvKey  conv;
@@ -35,6 +52,10 @@ struct HistMsg {
   uint32_t ts;            // epoch, our clock at receipt / send
   char     sender[24];
   char     text[160];
+  // Which repeaters carried it: one hash byte per hop, oldest first. Only for
+  // messages received since this was added; 0 on everything else.
+  uint8_t  path[8];
+  uint8_t  path_len;
 };
 
 class History {
@@ -44,7 +65,8 @@ public:
 
   bool begin();
   uint32_t add(const ConvKey& k, uint8_t flags, uint8_t status, const char* sender,
-               const char* text, uint32_t ts, uint8_t hops = 0xFF, int8_t snr4 = 0);
+               const char* text, uint32_t ts, uint8_t hops = 0xFF, int8_t snr4 = 0,
+               const uint8_t* path = nullptr, uint8_t path_len = 0);
   HistMsg* find(uint32_t id);
   void setStatus(uint32_t id, uint8_t st, uint8_t attempts = 0xFF, uint16_t rtt10 = 0);
   void bumpRepeat(uint32_t id);

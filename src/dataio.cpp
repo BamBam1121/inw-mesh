@@ -175,6 +175,39 @@ static bool restoreFromKeep(const char* key, const char* path) {
   return ok;
 }
 
+// Two records with the same secret are the same channel, whatever they're
+// named; old restores can bring copies back. Keep the first of each.
+static uint8_t dedupeChannels() {
+  if (!validStore(SPIFFS, "/channels2", CHANNEL_REC)) return 0;
+  static uint8_t recs[MAX_GROUP_CHANNELS * CHANNEL_REC];
+  File f = SPIFFS.open("/channels2", FILE_READ);
+  if (!f) return 0;
+  const size_t n = f.size() / CHANNEL_REC;
+  if (!n || n > MAX_GROUP_CHANNELS) { f.close(); return 0; }
+  const size_t got = f.read(recs, n * CHANNEL_REC);
+  f.close();
+  if (got != n * CHANNEL_REC) return 0;
+
+  const size_t SECRET = 36;            // 4 unused + 32 name, then the 32-byte secret
+  size_t keep = 0;
+  uint8_t dropped = 0;
+  for (size_t i = 0; i < n; i++) {
+    const uint8_t* rec = recs + i * CHANNEL_REC;
+    bool dup = false;
+    for (size_t k = 0; k < keep && !dup; k++) dup = !memcmp(recs + k * CHANNEL_REC + SECRET, rec + SECRET, 32);
+    if (dup) { dropped++; continue; }
+    if (keep != i) memmove(recs + keep * CHANNEL_REC, rec, CHANNEL_REC);
+    keep++;
+  }
+  if (!dropped) return 0;
+  File w = SPIFFS.open("/channels2", FILE_WRITE);
+  if (!w) return 0;
+  const bool ok = w.write(recs, keep * CHANNEL_REC) == keep * CHANNEL_REC;
+  w.close();
+  logs.add(LOG_WARN, "channels: removed %u duplicate%s", dropped, dropped == 1 ? "" : "s");
+  return ok ? dropped : 0;
+}
+
 void importBeforeNode(char* report, size_t cap) {
   report[0] = 0;
   size_t w = 0;
@@ -192,6 +225,7 @@ void importBeforeNode(char* report, size_t cap) {
   const char* chFrom = restoreStore("channels2", CHANNEL_REC);
   if (!chFrom && !validStore(SPIFFS, "/channels2", CHANNEL_REC) && restoreFromKeep("ch", "/channels2")) chFrom = "safety copy";
   note("channels", chFrom);
+  if (dedupeChannels()) note("channels", "duplicates removed");
 
   // Mesh prefs, message history: from the SD mirror, then (prefs only) NVS.
   if (!SPIFFS.exists("/prefs.json")) {

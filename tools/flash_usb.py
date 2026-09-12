@@ -17,6 +17,8 @@ import time
 import serial
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# ESP32-S3 RTC_CNTL_OPTION1_REG: holds the "boot into download mode" flag.
+RTC_CNTL_OPTION1_REG = 0x6000812C
 FW = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", ".pio", "build", "t-lora-pager", "firmware.bin")
 PORT = sys.argv[2] if len(sys.argv) > 2 else "COM5"
 ESPTOOL = os.path.expanduser("~/.platformio/packages/tool-esptoolpy/esptool.py")
@@ -43,19 +45,27 @@ def main():
                 s.flush()
         except serial.SerialException as e:
             sys.exit("couldn't open %s: %s" % (PORT, e))
-        time.sleep(3)                      # USB drops and comes back as the ROM
-        for _ in range(20):
+        # USB drops and comes back as the ROM. The port can be missing, or
+        # briefly refuse to open, during that gap, and a probe landing in it
+        # looks like failure, so keep retrying well past the re-enumeration.
+        time.sleep(4)
+        for _ in range(30):
             if in_download_mode():
                 break
-            time.sleep(1)
+            time.sleep(2)
         else:
             sys.exit("the pager didn't enter flash mode (older firmware? use BOOT + RESET once)")
 
     blank = os.path.join(HERE, "..", ".pio", "otadata-blank.bin")
     with open(blank, "wb") as f:
         f.write(b"\xff" * 8192)
-    ok = esptool("--baud", "460800", "--before", "no_reset", "--after", "hard_reset",
+    ok = esptool("--baud", "460800", "--before", "no_reset", "--after", "no_reset",
                  "write_flash", "0xe000", blank, "0x10000", FW)
+    # The force-download flag lives in the RTC domain and survives a reset, and
+    # the chip never reaches our firmware to clear it, so clear it from here.
+    esptool("--before", "no_reset", "--after", "hard_reset",
+            "write_mem", hex(RTC_CNTL_OPTION1_REG), "0", "0xFFFFFFFF")
+    print("done. if the screen stays dark, power-cycle the pager.")
     sys.exit(0 if ok else 1)
 
 
