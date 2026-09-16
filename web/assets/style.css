@@ -8,7 +8,7 @@
   --accent: #3dffa8;
   --accent-dim: #1f6f4e;
   --text: #b9d4c6;
-  --muted: #5f8074;
+  --muted: #6f9384;
   --amber: #e6b955;
   --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   --display: "Space Grotesk", system-ui, -apple-system, sans-serif;
@@ -198,4 +198,9 @@ footer a:hover { color: var(--accent); }
   .float, .ticker .run { animation: none; }
   .reveal { opacity: 1; transform: none; transition: none; }
   html { scroll-behavior: auto; }
+}
+
+/* Keyboard users need to see where they are. */
+a:focus-visible, button:focus-visible, .btn:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px;
 }
