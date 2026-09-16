@@ -79,6 +79,7 @@ struct UiSettings {
   uint8_t  unplugPos     = 0;
   bool     autoUpdateCheck = true;    // look for a new release once per boot on Wi-Fi
   bool     betaUpdates   = false;     // follow every build, not only tagged releases
+  bool     wheelUnlock   = true;      // lock screen: only a wheel press unlocks (pocket-safe)
 
   void load();
   void save();

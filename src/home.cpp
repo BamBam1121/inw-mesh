@@ -160,12 +160,12 @@ public:
     if (_scroll > 10000.0f) _scroll = 0;
     dirty = true;
   }
-  // Only a wheel press unlocks. Keys and wheel turns happen in a pocket, and any of
-  // them used to open the pager; now they just get a hint.
-  void rotate(int) override { hint(); }
+  // By default only a wheel press unlocks: keys and wheel turns happen in a pocket,
+  // and any of them used to open the pager. Settings can allow any key again.
+  void rotate(int) override { if (ui_settings.wheelUnlock) hint(); else nav.pop(); }
   void press() override { nav.pop(); }
-  void key(char) override { hint(); }
-  bool backspace() override { hint(); return true; }
+  void key(char) override { if (ui_settings.wheelUnlock) hint(); else nav.pop(); }
+  bool backspace() override { if (ui_settings.wheelUnlock) hint(); else nav.pop(); return true; }
 private:
   void hint() {
     if (millis() - _hintAt < 3000) return;

@@ -377,6 +377,8 @@ static void displayMenu() {
             [](int d) { ui_settings.kbBacklight = constrain((int)ui_settings.kbBacklight + d * 25, 0, 255); app::applyDisplay(); markUiDirty(); });
   m->toggle("lock face after screen off", [] { return ui_settings.lockOnSleep; },
             [] { ui_settings.lockOnSleep = !ui_settings.lockOnSleep; markUiDirty(); });
+  m->toggle("unlock with wheel press only", [] { return ui_settings.wheelUnlock; },
+            [] { ui_settings.wheelUnlock = !ui_settings.wheelUnlock; markUiDirty(); });
   m->toggle("wake screen on message", [] { return ui_settings.wakeOnMessage; },
             [] { ui_settings.wakeOnMessage = !ui_settings.wakeOnMessage; markUiDirty(); });
   nav.push(m);

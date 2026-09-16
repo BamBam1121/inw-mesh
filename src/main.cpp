@@ -718,10 +718,10 @@ void loop() {
     // Their events were read above so they don't pile up; here they are dropped.
     if (btnPress) { dimmer.note(); if (ui_settings.lockOnSleep) app::lock(); nav.invalidate(); }
   } else if (detents || press || anyKey || btnPress) {
-    // On the lock screen only a wheel press counts as someone using it, so stray
-    // keys can't keep a pocketed screen lit.
+    // With wheel-only unlock, on the lock screen only a wheel press counts as someone
+    // using it, so stray keys can't keep a pocketed screen lit.
     const bool onLock = nav.top() && nav.top()->isLock();
-    if (!onLock || press || btnPress) dimmer.note();
+    if (!onLock || !ui_settings.wheelUnlock || press || btnPress) dimmer.note();
     if (btnPress) {
       // Like a phone: the side button locks and turns the screen off at once.
       app::lock();
