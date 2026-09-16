@@ -159,6 +159,7 @@ protected:
   String _title;
   std::vector<MenuRow> _rows;
   int _focus = 0, _scroll = 0;
+  int _drawnFocus = -1;                   // the view follows the focus only when it moves
   bool _editing = false;
   uint32_t _lastRefresh = 0;
 };

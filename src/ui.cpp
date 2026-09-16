@@ -613,13 +613,29 @@ void MenuView::rotate(int d) {
     return;
   }
   if (!focusable(_focus)) { moveFocus(1); if (!focusable(_focus)) moveFocus(-1); }
-  const int steps = abs(d);
-  for (int i = 0; i < steps; i++) moveFocus(d);
+  // Info rows below the last selectable one (a message's route, hops and signal)
+  // could never be reached: the wheel only moved the focus, and the page only
+  // scrolled to follow it. Once the focus can't go further, scroll the page.
+  const int visible = (L::H - L::BODY_Y) / L::ROW_H;
+  const int maxScroll = max(0, (int)_rows.size() - visible);
+  const int dir = d >= 0 ? 1 : -1;
+  for (int i = 0; i < abs(d); i++) {
+    // Scrolled down past the focus (it is above the page): come back up to it
+    // before moving it.
+    if (dir < 0 && _focus < _scroll) { _scroll--; continue; }
+    const int before = _focus;
+    moveFocus(dir);
+    if (_focus == before) _scroll = constrain(_scroll + dir, 0, maxScroll);
+  }
   dirty = true;
 }
 
 void MenuView::press() {
   if (_rows.empty()) return;
+  // The focused row scrolled out of sight: bring it back rather than act on
+  // something the user can't see.
+  const int visible = (L::H - L::BODY_Y) / L::ROW_H;
+  if (_focus < _scroll || _focus >= _scroll + visible) { _drawnFocus = -1; dirty = true; return; }
   MenuRow& r = _rows[_focus];
   if (r.kind == RowKind::Adjust) { _editing = !_editing; dirty = true; return; }
   dirty = true;
@@ -659,11 +675,16 @@ void MenuView::draw(Canvas& g) {
     g.drawString("nothing here", 18, L::BODY_Y + 10);
     return;
   }
-  if (_focus < _scroll) _scroll = _focus;
-  if (_focus >= _scroll + visible) _scroll = _focus - visible + 1;
-  // Pull headers and info rows above the focus into view: focus never lands on them,
-  // so without this the top of a list scrolls away and cannot be brought back.
-  while (_scroll > 0 && !focusable(_scroll - 1) && _focus < _scroll + visible - 1) _scroll--;
+  // Follow the focus only when it has moved. Past the last selectable row the wheel
+  // scrolls the page on its own (rotate), and snapping back here would undo that.
+  if (_focus != _drawnFocus) {
+    if (_focus < _scroll) _scroll = _focus;
+    if (_focus >= _scroll + visible) _scroll = _focus - visible + 1;
+    // Pull headers and info rows above the focus into view: focus never lands on them,
+    // so without this the top of a list scrolls away and cannot be brought back.
+    while (_scroll > 0 && !focusable(_scroll - 1) && _focus < _scroll + visible - 1) _scroll--;
+    _drawnFocus = _focus;
+  }
   _scroll = constrain(_scroll, 0, max(0, (int)_rows.size() - visible));
   for (int i = _scroll; i < (int)_rows.size() && i < _scroll + visible; i++) {
     const MenuRow& r = _rows[i];
