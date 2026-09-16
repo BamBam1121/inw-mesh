@@ -443,12 +443,13 @@ const char* sdBackupNow(bool force) {
 
 // Once a day. Checked every few minutes so a clock that only becomes valid
 // later (wifi, gps) is still honoured; without one, every 24 h of uptime.
+bool inwCanSaveNow();
 void sdBackupTick() {
   static const uint32_t DAY = 24UL * 3600UL;
   static uint32_t next = 5UL * 60UL * 1000UL, lastRun = 0;
   if ((int32_t)(millis() - next) < 0) return;
   next = millis() + 5UL * 60UL * 1000UL;
-  if (!g_node) return;
+  if (!g_node || !inwCanSaveNow()) return;   // only with the screen off, never mid-use
   const uint32_t now = rtc_clock.getCurrentTime();
   const bool clockOk = now > 1700000000UL;
   const bool due = clockOk ? (now - ui_settings.lastSdBackup >= DAY)

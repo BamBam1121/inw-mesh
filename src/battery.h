@@ -39,6 +39,10 @@ public:
         if (!chgRead(0x05, r05) || !chgRead(0x07, r07)) return;
         chgWrite(0x05, r05 & 0xF0);                     // ITERM = 64 mA, pre-charge unchanged
         chgWrite(0x07, r07 & ~0x30);                    // WATCHDOG disabled
+        // Charge at 1472 mA, about 1C for this 1500 mAh cell. It was charging at
+        // 2 A, which heats and wears a small pack for little time saved.
+        uint8_t r04;
+        if (chgRead(0x04, r04)) chgWrite(0x04, (r04 & 0x80) | 23);
         uint8_t r03;
         if (chgRead(0x03, r03) && !(r03 & 0x10)) chgWrite(0x03, r03 | 0x10);   // charging on (clears any old hold)
     }
@@ -83,15 +87,23 @@ public:
         // While charging, the charger lifts the cell voltage well above its
         // resting value (by more the emptier it is), so voltage says nothing
         // useful then: show the gauge as is.
+        uint8_t target = _gaugePct;
         if (_millivolts && !charging()) {
             const uint8_t byVolt = fromVoltage(_millivolts);
             // A pager that's running isn't at 0%: a near-empty gauge figure with
             // plenty of voltage behind it is the gauge being wrong.
             const bool falseEmpty = _gaugePct <= 5 && byVolt >= 15;
-            _percent = falseEmpty || abs((int)_gaugePct - (int)byVolt) > 35 ? byVolt : _gaugePct;
-        } else {
-            _percent = _gaugePct;
+            // Voltage only means something with little current flowing. Under radio
+            // or screen load it sags, and trusting it then flipped the figure between
+            // the gauge and the voltage table, which is the jumping people saw.
+            const bool rested = abs(_currentMa) < 120;
+            if (falseEmpty || (rested && abs((int)_gaugePct - (int)byVolt) > 35)) target = byVolt;
         }
+        // Show it the way a phone does: unplugged it only counts down, plugged in it
+        // only counts up, one step at a time, so a noisy read never makes it bounce.
+        if (!_shown) { _percent = target; _shown = true; }
+        else if (_vbus || charging()) { if (target > _percent) _percent++; }
+        else if (target < _percent) _percent--;
     }
 
     uint8_t  percent() const { return _percent; }
@@ -248,5 +260,6 @@ private:
     uint8_t  _percent = 0, _gaugePct = 0;
     uint16_t _millivolts = 0, _designBefore = 0, _designNow = 0;
     int16_t  _currentMa = 0;
+    bool     _shown = false;
     uint32_t _last = 0, _lastDump = 0;
 };

@@ -94,6 +94,9 @@ public:
         if (_state == DIM  && idle > _sleepMs) { _state = SLEEP; _bl->fadeTo(0,   800); }
     }
 
+    // Screen off now, the way the side button works on a phone.
+    void sleepNow() { if (_state != SLEEP) { _state = SLEEP; _bl->fadeTo(0, 250); } }
+
     bool asleep() const { return _state == SLEEP; }
     bool dimmed() const { return _state == DIM; }
 

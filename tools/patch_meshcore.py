@@ -19,7 +19,7 @@ import re
 
 Import("env")  # noqa: F821
 
-SAVE_BATCH_MS = 15 * 60 * 1000
+SAVE_BATCH_MS = 6 * 60 * 60 * 1000
 
 HELPER = r'''
 // --- INW: buffered, atomic store writes (added by tools/patch_meshcore.py) ---
@@ -112,6 +112,14 @@ def patch_mymesh(src):
     src = src.replace(old, "if (!dirty_contacts_expiry) " + old)
     if n < 5 or str(SAVE_BATCH_MS) not in src:
         raise SystemExit("patch_meshcore.py: MyMesh.cpp changed upstream, patch did not apply")
+    # A background save stalls the pager for seconds behind a progress screen, and
+    # on a busy mesh one came due every batch while someone was using it. Hold it
+    # until the screen is off (inwCanSaveNow in main.cpp).
+    old = "if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {"
+    if old not in src:
+        raise SystemExit("patch_meshcore.py: MyMesh.cpp lazy save changed upstream, patch did not apply")
+    src = src.replace(old, "if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry) && inwCanSaveNow()) {")
+    src = "extern bool inwCanSaveNow();\n" + src
     # The device-info frame carries MAX_CONTACTS / 2 in one byte; past 510 it
     # wraps (1000 read as 488, 2000 as 464). Cap it instead.
     old = "out_frame[i++] = MAX_CONTACTS / 2;"

@@ -151,8 +151,8 @@ public:
     d.drawString(_quip, 8, 206);
   }
   void tick() override {
-    // Animate only while someone can see it.
-    if (dimmer.asleep()) return;
+    // Animate only while someone is looking at it: not dimmed, not off.
+    if (dimmer.asleep() || dimmer.dimmed()) return;
     if (millis() - _step < 33) return;
     _step = millis();
     _phase += 0.32f;
@@ -160,11 +160,19 @@ public:
     if (_scroll > 10000.0f) _scroll = 0;
     dirty = true;
   }
-  void rotate(int) override { nav.pop(); }
+  // Only a wheel press unlocks. Keys and wheel turns happen in a pocket, and any of
+  // them used to open the pager; now they just get a hint.
+  void rotate(int) override { hint(); }
   void press() override { nav.pop(); }
-  void key(char) override { nav.pop(); }
-  bool backspace() override { nav.pop(); return true; }
+  void key(char) override { hint(); }
+  bool backspace() override { hint(); return true; }
 private:
+  void hint() {
+    if (millis() - _hintAt < 3000) return;
+    _hintAt = millis();
+    nav.toast("press the wheel to unlock");
+  }
+  uint32_t _hintAt = 0;
   float _phase = 0, _scroll = 0;
   uint32_t _step = 0, _quipAt = 0;
   char _quip[96] = "";

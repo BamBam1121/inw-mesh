@@ -94,7 +94,11 @@ def main():
                 break
             time.sleep(2)
         else:
-            sys.exit("the pager didn't enter flash mode (older firmware? use BOOT + RESET once)")
+            # No answer to "dfu" (older firmware, or it was busy). The USB reset line
+            # usually still works, so try that before asking for buttons.
+            print("no answer to dfu; trying a USB reset into flash mode...")
+            if not esptool_quiet("--before", "default_reset", "--after", "no_reset", "chip_id"):
+                sys.exit("the pager didn't enter flash mode. Hold BOOT, tap RESET, release BOOT, then run this again.")
 
     parts = []
 

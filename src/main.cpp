@@ -218,9 +218,31 @@ const char* app::fmtDistance(double km) {
   return b;
 }
 
+// Background contact saves and the daily backup stall the pager for seconds behind
+// a progress screen. Hold them until the screen is off so they never land while
+// someone is using it. If the screen has somehow been on for a whole day, go ahead
+// rather than sit on a day of changes.
+static uint32_t s_lastDarkAt = 0;
+bool inwCanSaveNow() {
+  return dimmer.asleep() || millis() - s_lastDarkAt > 24UL * 3600UL * 1000UL;
+}
+
+static bool s_gpsRail = true;   // bringup powers every rail
 void gpsPower(bool on) {
+  if (on == s_gpsRail) return;
+  s_gpsRail = on;
   if (on) { expander.enableRail(EXP_GPS_EN, 20); gps.begin(); }
   else expander.digitalWrite(EXP_GPS_EN, LOW);
+}
+
+// GPS draws ~25 mA, more than the rest of the pager put together once the screen
+// is off, and it used to stay on around the clock. Keep it on while the screen is
+// on; with the screen off, give it a two-minute window every half hour so the
+// clock and the advert position stay fresh.
+static void gpsSchedule() {
+  if (!ui_settings.gpsOn || power::saver()) return;   // those paths switch it themselves
+  const bool window = millis() % 1800000UL < 120000UL;
+  gpsPower(!dimmer.asleep() || window);
 }
 
 // ---- alerts ------------------------------------------------------------------------------------
@@ -481,7 +503,7 @@ void setup() {
   if (railsOk) {
     bringup::powerAllRails(expander);
     expander.enableRail(EXP_LORA_EN, 20);
-    if (!ui_settings.gpsOn) expander.digitalWrite(EXP_GPS_EN, LOW);
+    if (!ui_settings.gpsOn) gpsPower(false);
   }
 
   display.init();
@@ -663,14 +685,20 @@ void loop() {
   const bool btnPress = btn && !btnWas;
   btnWas = btn;
 
-  if (detents || press || anyKey || btnPress) {
-    const bool wasAsleep = dimmer.asleep();
-    dimmer.note();
-    if (wasAsleep) {
-      // The first touch only wakes the screen.
-      nav.invalidate();
-    } else if (btnPress) {
+  if (dimmer.asleep()) {
+    // Screen off: only the side button wakes it. Keys and the wheel get pressed in
+    // a pocket, and each stray wake lit the screen and let the next bump unlock it.
+    // Their events were read above so they don't pile up; here they are dropped.
+    if (btnPress) { dimmer.note(); if (ui_settings.lockOnSleep) app::lock(); nav.invalidate(); }
+  } else if (detents || press || anyKey || btnPress) {
+    // On the lock screen only a wheel press counts as someone using it, so stray
+    // keys can't keep a pocketed screen lit.
+    const bool onLock = nav.top() && nav.top()->isLock();
+    if (!onLock || press || btnPress) dimmer.note();
+    if (btnPress) {
+      // Like a phone: the side button locks and turns the screen off at once.
       app::lock();
+      dimmer.sleepNow();
     } else {
       if (detents && ui_settings.scrollTick) haptic.tick();
       else if ((anyKey || press) && ui_settings.keyHaptics) haptic.tick();
@@ -678,7 +706,7 @@ void loop() {
       if (press) nav.press();
       for (uint8_t i = 0; i < nchars; i++) {
         View* v = nav.top();
-        if (chars[i] == '\n' && v && !v->wantsAllKeys() && !v->isHome()) nav.press();
+        if (chars[i] == '\n' && v && !v->wantsAllKeys() && !v->isHome() && !v->isLock()) nav.press();
         else nav.key(chars[i]);
       }
       if (backspace) nav.backspace();
@@ -709,6 +737,25 @@ void loop() {
   dimmer.tick();
   jingle.tick();
 
+  // The panel follows the backlight: once it has been dark a moment it also gets
+  // its sleep command, which saves more than the backlight alone.
+  {
+    static bool panelOff = false;
+    static uint32_t darkSince = 0;
+    if (dimmer.asleep()) {
+      s_lastDarkAt = millis();
+      if (!darkSince) darkSince = millis() | 1;
+      if (!panelOff && millis() - darkSince > 1000) { display.sleep(); panelOff = true; }
+    } else {
+      darkSince = 0;
+      if (panelOff) { display.wakeup(); panelOff = false; nav.invalidate(); }
+    }
+  }
+  // Woken onto the lock screen and left alone (a message, a bump of the button):
+  // back to sleep in 10 s instead of waiting out the dim and sleep timers.
+  if (!dimmer.asleep() && nav.top() && nav.top()->isLock() && dimmer.idleFor() > 10000UL) dimmer.sleepNow();
+  gpsSchedule();
+
   // Keyboard light follows the screen (or flashes for a message).
   {
     static uint8_t prev = 1;
@@ -734,5 +781,9 @@ void loop() {
     logs.add(LOG_WARN, "slow %lu: in%u gps%u wf%u msh%u tk%u drw%u x%u bk%u",
              (unsigned long)total, laps[0], laps[1], laps[2], laps[3], laps[4], laps[5], laps[6], laps[7]);
   }
-  delay(2);
+  // Screen off and nothing playing: poll gently. It used to spin every 2 ms with
+  // the screen dark. The radio holds a received packet until it's read, so 30 ms
+  // loses nothing and the CPU idles in between. A connected phone keeps the fast
+  // pace so syncing stays quick.
+  delay(dimmer.asleep() && !jingle.playing() && !bleConnected() ? 30 : 2);
 }
