@@ -99,10 +99,33 @@ bool app::pluggedIn() { return battery.present() && battery.pluggedIn(); }
 uint16_t app::batteryMv() { return battery.present() ? battery.millivolts() : 0; }
 bool app::radioOk() { return s_radioOk; }
 
+static bool channelJoined(const ConvKey& k) {
+  if (!g_node) return false;
+  for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
+    ChannelDetails ch;
+    if (g_node->getChannel(i, ch) && ch.name[0] && ConvKey::channel(ch.channel.secret) == k) return true;
+  }
+  return false;
+}
+
+// The badge counts only what the Messages list can show. History keeps a channel's
+// messages after you leave it, and those used to count too, so the badge could say
+// 2 with nothing there to open. Rechecked every few seconds as well, because
+// leaving a channel changes what counts without adding a message.
 uint16_t app::unread() {
-  static uint32_t gen = 0;
+  static uint32_t gen = 0, at = 0;
   static uint16_t cached = 0;
-  if (gen != history.gen) { gen = history.gen; cached = history.totalUnread(); }
+  if (gen == history.gen && at && millis() - at < 5000) return cached;
+  gen = history.gen;
+  at = millis() | 1;
+  ConvKey keys[64];
+  const uint16_t n = history.conversations(keys, 64);
+  uint16_t total = 0;
+  for (uint16_t i = 0; i < n; i++) {
+    if (keys[i].type == CONV_CHANNEL && !channelJoined(keys[i])) continue;
+    total += history.unread(keys[i]);
+  }
+  cached = total;
   return cached;
 }
 
