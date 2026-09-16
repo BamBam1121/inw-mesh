@@ -203,7 +203,7 @@ static void fetchTask(void*) {
     http.setTimeout(4000);
     bool began = https ? http.begin(secure, url) : http.begin(plain, url);
     if (!began) { s_fail++; continue; }
-    http.addHeader("User-Agent", "INW-Pager/1.0 (LilyGo T-Lora Pager mesh firmware; github.com/BamBam1121)");
+    http.addHeader("User-Agent", "SquatchMesh/1.0 (LilyGo T-Lora Pager mesh firmware; github.com/BamBam1121)");
     const int code = http.GET();
     s_lastCode = code;
     bool ok = false;

@@ -467,18 +467,17 @@ static void drawBootLogo() {
     display.drawCircle(NX[i], NY[i], i == 2 ? 13 : 9, theme.greenDim);
   }
   display.setFont(&fonts::FreeSansBold24pt7b);
-  display.setTextSize(2);
+  display.setTextSize(1);                         // "SQUATCH" at size 2 would run off the screen
   display.setTextColor(theme.greenDim);
-  display.drawString("INW", 195, 30);            // offset copy underneath reads as glow
+  display.drawString("SQUATCH", 199, 49);         // offset copy underneath reads as glow
   display.setTextColor(theme.green);
-  display.drawString("INW", 192, 27);
-  display.setTextSize(1);
+  display.drawString("SQUATCH", 196, 46);
   display.setFont(&fonts::FreeSans12pt7b);
   display.setTextColor(theme.txt);
-  display.drawString("M E S H", 196, 128);
+  display.drawString("M E S H", 198, 106);
   display.setFont(&fonts::Font2);
   display.setTextColor(theme.dim);
-  display.drawString("inland northwest  //  " FW_VERSION, 196, 158);
+  display.drawString("inland northwest  //  " FW_VERSION, 198, 146);
   display.drawRect(90, 184, 300, 5, theme.line);
 }
 

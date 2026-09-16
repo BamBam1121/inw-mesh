@@ -641,8 +641,8 @@ static void systemMenu() {
 
 static void aboutPage() {
   nav.push(new TextPageView("About", [](std::vector<String>& out) {
-    out.push_back("INW Pager firmware " FW_VERSION);
-    out.push_back("# for the LilyGo T-Lora Pager, Inland Northwest mesh");
+    out.push_back("Squatch Mesh firmware " FW_VERSION);
+    out.push_back("# for the LilyGo T-Lora Pager, made in the Inland Northwest");
     out.push_back("mesh engine   MeshCore " FIRMWARE_VERSION " (companion)");
     out.push_back("graphics      LovyanGFX");
     out.push_back("ideas from    Wadamesh (layouts, map, tools)");

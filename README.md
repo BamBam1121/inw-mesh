@@ -1,4 +1,4 @@
-# INW Mesh
+# Squatch Mesh
 
 Standalone MeshCore firmware for the LilyGo T-Lora Pager, built for the Inland
 Northwest mesh but usable on any MeshCore network.
@@ -20,7 +20,7 @@ sounds, the vibration, the charging indicator and the plug-in chime.
 
 | | Lock screen | Home |
 |---|---|---|
-| **INW** | ![INW lock](docs/img/lock-inw.png) | ![INW home](docs/img/home-inw.png) |
+| **Squatch** | ![Squatch lock](docs/img/lock-inw.png) | ![Squatch home](docs/img/home-inw.png) |
 | **Blocks** | ![Blocks lock](docs/img/lock-blocks.png) | ![Blocks home](docs/img/home-blocks.png) |
 | **Hero** | ![Hero lock](docs/img/lock-hero.png) | ![Hero home](docs/img/home-hero.png) |
 | **Aurora** | ![Aurora lock](docs/img/lock-aurora.png) | ![Aurora home](docs/img/home-aurora.png) |
@@ -45,7 +45,7 @@ sounds, the vibration, the charging indicator and the plug-in chime.
   version if anything goes wrong. Contacts, keys and settings are untouched.
 - **NFC:** read and write tags, share your contact or a channel invite by tapping
   a phone to the pager.
-- **Themes:** INW, Blocks, Hero and Aurora (see above).
+- **Themes:** Squatch, Blocks, Hero and Aurora (see above).
 - **Lock screen:** a rotating one-liner under the clock, a few hundred of them:
   jokes, mesh tips, per-theme lines and live ones from your own contact list.
 - **Battery:** an accurate percentage from the fuel gauge (the charger is set up so

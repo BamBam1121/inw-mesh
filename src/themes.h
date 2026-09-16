@@ -77,7 +77,7 @@ namespace tunes {
 }
 
 static const ThemeSpec THEMES[] = {
-  { "INW", "terminal green, the walking sasquatch",
+  { "Squatch", "terminal green, the walking sasquatch",
     { 0x060a09, 0x0b120e, 0x16241c, 0x3dffa8, 0x1f6f4e, 0xb9d4c6, 0x5f8074, 0xe6b955,
       0xff5a5a, 0xe8f2ed, 0x161d1a, 0x0f3d33, 0x4da3ff, 0x122a21, 0x3a3012 },
     STYLE_INW, &tunes::INW_BOOT_J, &tunes::INW_MSG_J, &tunes::INW_DM_J, &tunes::INW_MEN_J,
@@ -107,7 +107,7 @@ static const ThemeSpec THEMES[] = {
     { 0x040716, 0x0b1230, 0x18214a, 0x72f5c8, 0x6a4fc2, 0xd6e4ff, 0x7c86b8, 0xffc46b,
       0xff6b8b, 0xffffff, 0x121a3e, 0x1b3a4a, 0x7db8ff, 0x141d45, 0x2c2250 },
     STYLE_AURORA, &tunes::AUR_BOOT_J, &tunes::AUR_MSG_J, &tunes::AUR_DM_J, &tunes::AUR_MEN_J,
-    // Same as INW. Every attempt at a softer, slower Aurora pattern (ramps, pulses,
+    // Same as Squatch. Every attempt at a softer, slower Aurora pattern (ramps, pulses,
     // long gaps, a lighter tick) was too weak to feel on this ERM motor.
     {{14, 0x80 | 22, 14, 0x80 | 22, 14}, 5},
     {{14, 0x80 | 22, 14, 0x80 | 22, 14}, 5},

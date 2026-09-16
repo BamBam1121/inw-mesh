@@ -161,7 +161,7 @@ static void gpsPage() {
 void deviceInfoPage() {
   nav.push(new TextPageView("Device", [](std::vector<String>& out) {
     char b[72];
-    snprintf(b, sizeof(b), "firmware     INW %s  (MeshCore %s)", FW_VERSION, FIRMWARE_VERSION); out.push_back(b);
+    snprintf(b, sizeof(b), "firmware     Squatch Mesh %s  (MeshCore %s)", FW_VERSION, FIRMWARE_VERSION); out.push_back(b);
     if (g_node) {
       char h[20];
       mesh::Utils::toHex(h, g_node->self_id.pub_key, 8);

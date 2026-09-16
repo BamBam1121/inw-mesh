@@ -94,8 +94,8 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t) {
   d.fillRect(0, 0, L::W, 17, t.panel);
   d.drawFastHLine(0, 17, L::W, t.line);
   d.setTextColor(t.green, t.panel);
-  d.drawString("INW", 6, 1);
-  int x = 38;
+  d.drawString("SQUATCH", 6, 1);
+  int x = 6 + d.textWidth("SQUATCH") + 8;
   const uint16_t un = app::unread();
   if (un) {
     char b[12];
