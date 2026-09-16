@@ -12,6 +12,10 @@ http://:8080 {
 	@www host www.squatchmesh.com
 	redir @www https://squatchmesh.com{uri} permanent
 
+	# Cloudflare says how the visitor arrived; send plain http to https.
+	@insecure header Cf-Visitor *"scheme":"http"*
+	redir @insecure https://{host}{uri} permanent
+
 	root * C:/squatchmesh/www
 	encode zstd gzip
 	# Clean addresses: /install serves install.html.
