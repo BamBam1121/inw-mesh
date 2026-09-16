@@ -518,6 +518,7 @@ static void backupsMenu() {
             [] { nav.busy("exporting..."); nav.toast(exportJson(), 4000); });
   });
   m->action("import contacts + channels from sd", [] { nav.busy("importing, one moment..."); nav.toast(importJsonNow(), 4000); });
+  m->action("recover missing contacts from backups", [] { nav.busy("checking backups..."); nav.toast(recoverMissingContacts(), 4000); });
   m->action("restore contacts from sd mirror", [] {
     confirm("Restore from SD?", "replaces contacts + channels with /inw on the card, then reboots", [] {
       if (!sdMount() || !SD.exists("/inw/contacts3")) { nav.toast("no /inw backup on sd"); return; }

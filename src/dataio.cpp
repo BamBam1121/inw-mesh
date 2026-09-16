@@ -3,6 +3,8 @@
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
+#include <algorithm>
+#include <vector>
 #include <esp_heap_caps.h>
 #include <helpers/IdentityStore.h>
 #include "board_pins.h"
@@ -392,6 +394,105 @@ const char* importJsonNow() {
   return msg;
 }
 
+// ---- recovering contacts ---------------------------------------------------------------
+// Adds every contact in a store-format file (152-byte /contacts3 records) that the
+// node doesn't already have. Nothing is removed or overwritten, so it is safe to run
+// against any backup, old or new.
+static uint16_t mergeStoreFile(fs::FS& fs, const char* path, uint16_t& seen) {
+  seen = 0;
+  if (!g_node || !validStore(fs, path, CONTACT_REC)) return 0;
+  File f = fs.open(path, FILE_READ);
+  if (!f) return 0;
+  uint8_t r[CONTACT_REC];
+  uint16_t added = 0;
+  while (f.read(r, CONTACT_REC) == CONTACT_REC) {
+    seen++;
+    if (g_node->contact(r)) continue;
+    ContactInfo ci;
+    memset(&ci, 0, sizeof(ci));
+    ci.id = mesh::Identity(r);
+    memcpy(ci.name, r + 32, sizeof(ci.name));
+    ci.name[sizeof(ci.name) - 1] = 0;
+    ci.type = r[64];
+    ci.flags = r[65];
+    memcpy(&ci.sync_since, r + 67, 4);
+    ci.out_path_len = r[71];
+    memcpy(&ci.last_advert_timestamp, r + 72, 4);
+    memcpy(ci.out_path, r + 76, 64);
+    memcpy(&ci.lastmod, r + 140, 4);
+    memcpy(&ci.gps_lat, r + 144, 4);
+    memcpy(&ci.gps_lon, r + 148, 4);
+    if (!ci.type) continue;
+    if (!g_node->addContact(ci)) break;          // table full
+    added++;
+  }
+  f.close();
+  return added;
+}
+
+static void listDaily(std::vector<String>& out) {
+  out.clear();
+  File dir = SD.open("/inw/daily");
+  if (!dir) return;
+  for (File e = dir.openNextFile(); e; e = dir.openNextFile()) {
+    const String n = e.name();
+    if (!e.isDirectory() && n.indexOf("contacts3-") >= 0) out.push_back(String("/inw/daily/") + n.substring(n.lastIndexOf('/') + 1));
+    e.close();
+  }
+  std::sort(out.begin(), out.end());
+}
+
+const char* recoverMissingContacts() {
+  static char msg[64];
+  if (!g_node) return "node not running";
+  const int before = g_node->getNumContacts();
+  uint16_t added = 0, seen = 0;
+  added += mergeStoreFile(SPIFFS, "/contacts3.bak", seen);
+  if (sdMount()) {
+    added += mergeStoreFile(SD, "/inw/contacts3", seen);
+    std::vector<String> daily;
+    listDaily(daily);
+    for (const String& p : daily) added += mergeStoreFile(SD, p.c_str(), seen);
+    added += mergeStoreFile(SD, "/meshcomod/contacts3", seen);
+  }
+  if (added) g_node->saveContactsNow();
+  logs.add(LOG_INFO, "recover contacts: %d -> %d (+%u from backups)", before, g_node->getNumContacts(), added);
+  snprintf(msg, sizeof(msg), added ? "recovered %u contacts" : "nothing missing from backups", added);
+  return msg;
+}
+
+void storeReport() {
+  auto line = [](const char* what, fs::FS& fs, const char* p) {
+    const size_t s = fileSize(fs, p);
+    Serial.printf("[stores] %-24s %7u bytes  %5u records%s\n", what, (unsigned)s, (unsigned)(s / CONTACT_REC),
+                  s && s % CONTACT_REC ? "  (NOT a whole number of records)" : "");
+  };
+  Serial.printf("[stores] contacts in memory: %d\n", g_node ? g_node->getNumContacts() : -1);
+  line("flash /contacts3", SPIFFS, "/contacts3");
+  line("flash /contacts3.bak", SPIFFS, "/contacts3.bak");
+  if (sdMount()) {
+    line("sd /inw/contacts3", SD, "/inw/contacts3");
+    line("sd /meshcomod/contacts3", SD, "/meshcomod/contacts3");
+    std::vector<String> daily;
+    listDaily(daily);
+    for (const String& p : daily) line(p.c_str() + 11, SD, p.c_str());
+  } else {
+    Serial.println("[stores] no sd card");
+  }
+  Serial.printf("[stores] last sd backup: %lu\n", (unsigned long)ui_settings.lastSdBackup);
+}
+
+// Called after every successful store save. A contact list that shrinks without
+// anyone forgetting contacts is how the 2026-09-16 loss looked, so a drop is logged
+// loudly with both counts; small drops (forgetting a few) are normal.
+void inwStoreSaved(const char* path, size_t bytes) {
+  if (strcmp(path, "/contacts3") != 0) return;
+  static long last = -1;
+  const long n = (long)(bytes / CONTACT_REC);
+  if (last >= 0 && n + 5 < last) logs.add(LOG_WARN, "contacts saved: %ld, was %ld - %ld fewer", n, last, last - n);
+  last = n;
+}
+
 // ---- backups -------------------------------------------------------------------
 // Copies a store file over its backup unless that would throw away a lot of
 // records. A torn save looks exactly like that, and the backup is the way back.
@@ -420,6 +521,20 @@ const char* sdBackupNow(bool force) {
     if (!SD.exists("/inw/identity")) SD.mkdir("/inw/identity");
     s_progress = "copying contacts to sd";
     if (mirrorStore("/contacts3", SD, "/inw/contacts3", CONTACT_REC, force)) n++;
+    // A dated copy too, newest 7 kept. The mirror above can be replaced by a list
+    // that quietly lost a few percent; a dated copy from before never is.
+    if (validStore(SPIFFS, "/contacts3", CONTACT_REC)) {
+      if (!SD.exists("/inw/daily")) SD.mkdir("/inw/daily");
+      const time_t now = rtc_clock.getCurrentTime();
+      struct tm tm;
+      gmtime_r(&now, &tm);
+      char dated[48];
+      snprintf(dated, sizeof(dated), "/inw/daily/contacts3-%04d%02d%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+      copyFile(SPIFFS, "/contacts3", SD, dated);
+      std::vector<String> daily;
+      listDaily(daily);
+      for (size_t i = 0; daily.size() > 7 && i < daily.size() - 7; i++) SD.remove(daily[i].c_str());
+    }
     s_progress = "copying channels to sd";
     if (mirrorStore("/channels2", SD, "/inw/channels2", CHANNEL_REC, force)) n++;
     s_progress = "copying identity to sd";

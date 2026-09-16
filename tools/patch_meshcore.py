@@ -24,6 +24,7 @@ SAVE_BATCH_MS = 6 * 60 * 60 * 1000
 HELPER = r'''
 // --- INW: buffered, atomic store writes (added by tools/patch_meshcore.py) ---
 void inwProgress(const char* what, uint32_t done, uint32_t total);
+void inwStoreSaved(const char* path, size_t bytes);
 
 struct InwBufFile {
   File f;
@@ -60,7 +61,7 @@ struct InwBufFile {
 };
 
 static uint32_t inw_t0;
-static void inwCommit(FILESYSTEM* fs, const char* path, bool ok) {
+static void inwCommit(FILESYSTEM* fs, const char* path, bool ok, size_t bytes) {
   char tmp[48];
   snprintf(tmp, sizeof(tmp), "%s.tmp", path);
   const uint32_t t1 = millis();
@@ -71,6 +72,7 @@ static void inwCommit(FILESYSTEM* fs, const char* path, bool ok) {
     fs->remove(tmp);
   }
   inwProgress(nullptr, 0, 0);
+  if (ok) inwStoreSaved(path, bytes);
   Serial.printf("[save] %s %s: write %lums, swap %lums\n", path, ok ? "ok" : "FAILED",
                 (unsigned long)(t1 - inw_t0), (unsigned long)(millis() - t1));
 }
@@ -88,8 +90,38 @@ def patch_save(src, name, path, label):
     body = body.replace("if (!success) break; // write failed",
                         "if (!success) { inw_ok = false; break; } // write failed")
     body = re.sub(r"file\.close\(\);\n  \}\n\}\n$",
-                  'inw_ok = file.close() && inw_ok;\n'
-                  '    inwCommit(_getContactsChannelsFS(), "%s", inw_ok);\n  }\n}\n' % path, body)
+                  'const size_t inw_bytes = file.len;\n'
+                  '    inw_ok = file.close() && inw_ok;\n'
+                  '    inwCommit(_getContactsChannelsFS(), "%s", inw_ok, inw_bytes);\n  }\n}\n' % path, body)
+    return src[:start] + body + src[end:]
+
+
+def patch_load(src):
+    """A short read before the end of /contacts3 used to end the load as if it were
+    EOF. The shortened list then got saved back, losing every contact after the
+    hiccup. Retry the record, then skip only that record, and stop at the real end."""
+    start = src.index("void DataStore::loadContacts(")
+    end = src.index("\n}\n", start) + 3
+    body = src[start:end]
+    old_loop = "      bool full = false;\n      while (!full) {\n"
+    old_eof = "        if (!success) break; // EOF\n"
+    if body.count(old_loop) != 1 or body.count(old_eof) != 1:
+        raise SystemExit("patch_meshcore.py: DataStore::loadContacts changed upstream, patch did not apply")
+    body = body.replace(old_loop,
+                        "      bool full = false;\n"
+                        "      uint8_t inw_retries = 0;\n"
+                        "      while (!full) {\n"
+                        "        const size_t inw_rec = file.position();\n")
+    body = body.replace(old_eof,
+                        "        if (!success) {\n"
+                        "          if (inw_rec + 152 <= file.size() && inw_retries++ < 3) { file.seek(inw_rec); continue; }\n"
+                        "          if (inw_rec + 152 <= file.size()) {\n"
+                        "            Serial.printf(\"[store] unreadable contact record at %u, skipped\\n\", (unsigned)inw_rec);\n"
+                        "            inw_retries = 0; file.seek(inw_rec + 152); continue;\n"
+                        "          }\n"
+                        "          break; // the real end of the file\n"
+                        "        }\n"
+                        "        inw_retries = 0;\n")
     return src[:start] + body + src[end:]
 
 
@@ -99,6 +131,7 @@ def patch_datastore(src):
     src = src[:anchor] + HELPER + src[anchor:]
     src = patch_save(src, "saveContacts", "/contacts3", "saving contacts")
     src = patch_save(src, "saveChannels", "/channels2", "saving channels")
+    src = patch_load(src)
     if src.count("inwCommit(") != 3 or src.count("InwBufFile file(") != 2 or src.count("inw_ok = file.close()") != 2:
         raise SystemExit("patch_meshcore.py: DataStore.cpp changed upstream, patch did not apply")
     return src

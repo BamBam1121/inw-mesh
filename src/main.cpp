@@ -417,7 +417,12 @@ static void usbCommands() {
     n = 0;
     if (!line[0]) continue;
     dimmer.note();
-    if (!strcmp(line, "shot")) {
+    if (!strcmp(line, "stores")) {
+      storeReport();
+    } else if (!strcmp(line, "recover")) {
+      Serial.printf("[stores] %s\n", recoverMissingContacts());
+      storeReport();
+    } else if (!strcmp(line, "shot")) {
       // Compose the current screen into the canvas and send that: exact
       // colours, unlike reading the panel back.
       View* v = nav.top();

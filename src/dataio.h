@@ -24,6 +24,10 @@ void importPrefsAfterNode(char* report, size_t cap);
 const char* sdBackupNow(bool force = true);
 const char* exportJson();
 const char* importJsonNow();     // merge contacts/channels from the newest export
+// Adds back any contact found in the flash backup, the SD mirror, the dated SD
+// copies or a Wadamesh store that isn't on the node. Only adds, never removes.
+const char* recoverMissingContacts();
+void storeReport();              // record counts of every contact store, over USB serial
 // Copies the identity, channels and mesh prefs into NVS, which survives a
 // partition layout change. Cheap when nothing changed.
 void keepEssentials();
