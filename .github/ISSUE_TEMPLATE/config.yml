@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/BamBam1121/inw-mesh/discussions/categories/q-a
+    about: Setup help, "how do I...", and anything that isn't a bug.
+  - name: Help and guides
+    url: https://squatchmesh.com/help
+    about: The guide, troubleshooting and common questions.

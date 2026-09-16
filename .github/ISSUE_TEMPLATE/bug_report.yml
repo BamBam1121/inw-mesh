@@ -1,0 +1,56 @@
+name: Bug report
+description: Something on the pager or the installer isn't working right.
+title: "[bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please don't paste private keys, exported backups or channel secrets here - this page is public.
+  - type: input
+    id: version
+    attributes:
+      label: Firmware version
+      description: On the pager, Settings > System > version (for example 1.1.15).
+      placeholder: "1.1.15"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where is the problem?
+      options:
+        - Messages / channels
+        - Contacts
+        - Map / GPS
+        - Battery / charging / sleep
+        - Wi-Fi updates
+        - Web installer (flashing)
+        - Themes / sound / vibration
+        - Repeater tools
+        - NFC / phone app
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: "1. Open Messages\n2. ...\n3. ..."
+  - type: dropdown
+    id: often
+    attributes:
+      label: How often?
+      options: [Every time, Sometimes, Only once]
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Theme, whether it was plugged in, screenshots, or the serial log if you have one.
