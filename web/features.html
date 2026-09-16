@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Features &middot; Squatch Mesh</title>
+<meta name="description" content="Messaging, offline maps, repeater tools, accurate battery, signed Wi-Fi updates and NFC sharing on the LilyGo T-Lora Pager.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css?v=2">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://squatchmesh.com/features">
+<meta name="theme-color" content="#060a09">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Squatch Mesh">
+<meta property="og:title" content="Features - Squatch Mesh">
+<meta property="og:description" content="Messaging, offline maps, repeater tools, accurate battery, signed Wi-Fi updates and NFC sharing on the LilyGo T-Lora Pager.">
+<meta property="og:url" content="https://squatchmesh.com/features">
+<meta property="og:image" content="https://squatchmesh.com/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; align-items: center; margin: 30px 0; }
+  .row.flip > :first-child { order: 2; }
+  .bubble { background: #16241c; border: 1px solid var(--line); border-radius: 12px 12px 12px 3px; padding: 10px 14px; max-width: 84%; }
+  .bubble.out { margin-left: auto; border-radius: 12px 12px 3px 12px; background: #0f3d33; }
+  .bubble .st { color: var(--muted); font-size: 11px; display: block; margin-top: 4px; }
+  .hop { display: flex; gap: 10px; font-size: 13px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .hop b { color: var(--accent-dim); font-weight: 400; width: 44px; }
+  .newline { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+  .newline::before, .newline::after { content: ""; height: 2px; background: #ff5a5a; flex: 1; }
+  .newline span { color: #fff; background: #ff5a5a; font-size: 10px; padding: 1px 7px; border-radius: 6px; letter-spacing: .1em; }
+  .bar { height: 10px; border: 1px solid var(--muted); border-radius: 2px; width: 70px; position: relative; }
+  .bar i { position: absolute; inset: 2px auto 2px 2px; width: 55%; background: var(--accent); display: block; animation: breathe 1.8s ease-in-out infinite; }
+  @keyframes breathe { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
+  @media (max-width: 860px) { .row { grid-template-columns: 1fr; } .row.flip > :first-child { order: 0; } }
+  @media (prefers-reduced-motion: reduce) { .bar i { animation: none; } }
+</style>
+</head>
+<body>
+<canvas id="mesh-bg"></canvas>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="logo" href="index.html">
+      <span class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      SQUATCH MESH
+    </a>
+    <div class="spacer"></div>
+    <nav class="nav-links">
+      <a class="link" href="features.html">Features</a>
+      <a class="link" href="themes.html">Themes</a>
+      <a class="link" href="install.html">Install</a>
+      <a class="link" href="guide.html">Guide</a>
+      <a class="link" href="mesh.html">Mesh</a>
+      <a class="link" href="hardware.html">Hardware</a>
+      <a class="link" href="releases.html">Releases</a>
+    </nav>
+    <a class="btn solid" href="install.html">Install</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="tag" style="margin-top:46px">features</div>
+  <h1>What it actually does</h1>
+  <p class="sub">All of this runs on the pager itself. The phone app is optional.</p>
+
+  <div class="row reveal">
+    <div>
+      <h3>Messaging</h3>
+      <p class="sub" style="font-size:14px">Channels, direct messages and room servers. Delivery ticks,
+      automatic retries, and a count of how many repeaters were heard passing your post along, so you
+      know it actually left the neighbourhood.</p>
+    </div>
+    <div class="panel">
+      <div class="bubble">Anyone up on the ridge tonight?<span class="st">2 hops &middot; 6.5 dB</span></div>
+      <div class="bubble out" style="margin-top:8px">On my way<span class="st">sent &middot; heard x3</span></div>
+    </div>
+  </div>
+
+  <div class="row flip reveal">
+    <div class="panel">
+      <div class="bubble">yeah we're at the lookout<span class="st">1 hop</span></div>
+      <div class="newline"><span>NEW</span></div>
+      <div class="bubble">bring the good antenna<span class="st">1 hop</span></div>
+    </div>
+    <div>
+      <h3>Never lose your place</h3>
+      <p class="sub" style="font-size:14px">A red NEW line marks where your unread messages start, and it
+      stays put while you read rather than vanishing the moment you open the chat. Plus colour emoji,
+      @mentions that stand out, and quick replies for one-handed answers.</p>
+    </div>
+  </div>
+
+  <div class="row reveal">
+    <div>
+      <h3>Per-chat notifications</h3>
+      <p class="sub" style="font-size:14px">Every channel, contact and room can follow the global setting
+      or be set to all messages, @mentions only, silent, or muted. Quiet hours sit on top of all of it.
+      Muted chats still count unread, they just stop shouting.</p>
+    </div>
+    <div class="panel">
+      <table>
+        <tr><th>mode</th><th>what happens</th></tr>
+        <tr><td>all</td><td>sound + vibration, every message</td></tr>
+        <tr><td>@mentions</td><td>only when you are named</td></tr>
+        <tr><td>silent</td><td>banner only, no sound</td></tr>
+        <tr><td>muted</td><td>nothing, still counted</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="row flip reveal">
+    <div class="panel">
+      <div class="hop"><b>route</b> 3 hops</div>
+      <div class="hop"><b>hop 1</b> a4 &nbsp;CottonWoodBay-1W</div>
+      <div class="hop"><b>hop 2</b> 7f &nbsp;HotSignals</div>
+      <div class="hop"><b>hop 3</b> 22 &nbsp;(unknown)</div>
+      <div class="hop" style="border:0"><b>signal</b> 6.5 dB SNR</div>
+    </div>
+    <div>
+      <h3>See which repeaters carried it</h3>
+      <p class="sub" style="font-size:14px">Open any received message and it lists the repeaters that
+      relayed it, named from your contacts. Useful for working out which node is actually holding your
+      corner of the mesh together, and which one quietly died.</p>
+    </div>
+  </div>
+
+  <div class="row reveal">
+    <div>
+      <h3>Map</h3>
+      <p class="sub" style="font-size:14px">Offline tiles from the SD card, with every node that shares a
+      position drawn on it. Missing tiles download in the background while you are on Wi-Fi, so the map
+      fills in at home and works in the field.</p>
+    </div>
+    <div class="panel"><p class="sub" style="font-size:13px;margin:0">Repeaters, rooms and people are drawn
+    differently, and the map remembers where you were looking. <code>wasd</code> pans, the wheel zooms,
+    <code>n</code> jumps to the next node.</p></div>
+  </div>
+
+  <div class="row flip reveal">
+    <div class="panel">
+      <p style="font-family:var(--mono);font-size:12.5px;color:var(--muted);margin:0">
+        &gt; ver<br>
+        <span style="color:var(--accent)">MeshCore v1.17.1</span><br>
+        &gt; neighbors<br>
+        <span style="color:var(--accent)">3 known, 2 direct</span><br>
+        &gt; get radio<br>
+        <span style="color:var(--accent)">910.525 62.5 sf7 cr5</span>
+      </p>
+    </div>
+    <div>
+      <h3>Repeater tools</h3>
+      <p class="sub" style="font-size:14px">Log in to a repeater, read its status and telemetry, trace a
+      route hop by hop, run CLI commands from a console on the device, discover what is in range, and
+      watch raw packets go by in a sniffer.</p>
+    </div>
+  </div>
+
+  <div class="row reveal">
+    <div>
+      <h3>A battery that tells the truth</h3>
+      <p class="sub" style="font-size:14px">The percentage comes from the fuel gauge, and the charger is
+      configured so the gauge actually sees a charge finish, which is what makes it accurate. Optimised
+      charging holds at 80% until shortly before you normally unplug. Battery saver turns off GPS,
+      Bluetooth and Wi-Fi at 20% and gets out of the way again once charged.</p>
+    </div>
+    <div class="panel" style="display:flex;align-items:center;gap:14px">
+      <div class="bar"><i></i></div>
+      <div class="sub" style="font-size:13px;margin:0">charging, held at 80%</div>
+    </div>
+  </div>
+
+  <div class="row flip reveal">
+    <div class="panel">
+      <p class="sub" style="font-size:13px;margin:0">
+        downloading 1.1.8 &nbsp;&rarr;&nbsp; verifying signature &nbsp;&rarr;&nbsp; restarting</p>
+    </div>
+    <div>
+      <h3>Updates over Wi-Fi</h3>
+      <p class="sub" style="font-size:14px">The pager checks on start and asks before installing anything.
+      Releases are signed, the download is hash-checked, and it installs into a spare slot so the version
+      you are running stays intact if anything fails. Contacts and keys are never touched.</p>
+    </div>
+  </div>
+
+  <div class="row reveal">
+    <div>
+      <h3>Built not to lose your data</h3>
+      <p class="sub" style="font-size:14px">Contact and channel saves are crash-safe: written to a
+      temporary file and swapped in, so a power cut mid-save cannot shorten your contact list. Backups run
+      daily to flash and the SD card, and a copy of your keys and channels lives somewhere a reinstall
+      does not reach.</p>
+    </div>
+    <div class="panel"><p class="sub" style="font-size:13px;margin:0">Up to 2000 contacts and 40 channels.
+    A torn store is repaired on boot from the newest good copy.</p></div>
+  </div>
+
+  <div class="row flip reveal">
+    <div class="panel"><p class="sub" style="font-size:13px;margin:0">
+      "Somewhere a repeater on a roof is judging you."<br><br>
+      "Tip: height beats power. Lift the antenna before the watts."<br><br>
+      "41 nodes checked in over the last day."</p></div>
+    <div>
+      <h3>A lock screen with something to say</h3>
+      <p class="sub" style="font-size:14px">A few hundred rotating one-liners under the clock: jokes, real
+      mesh tips, per-theme lines, and live ones drawn from your own contacts. It works through the whole
+      set before repeating.</p>
+    </div>
+  </div>
+
+  <div class="row reveal">
+    <div>
+      <h3>NFC and the phone app</h3>
+      <p class="sub" style="font-size:14px">Tap a phone to the pager to hand over your contact or a channel
+      invite, read and write NFC tags, and emulate a tag. And it still pairs with the official MeshCore app
+      over Bluetooth if you want a big screen.</p>
+    </div>
+    <div class="panel"><p class="sub" style="font-size:13px;margin:0">NFC links use the standard MeshCore
+    QR format, so they work with other clients too.</p></div>
+  </div>
+
+  <div class="panel reveal" style="display:flex;gap:22px;align-items:center;flex-wrap:wrap;margin-top:40px">
+    <div style="flex:1;min-width:260px"><p class="sub" style="margin:0">Flash it from your browser. Update
+    keeps everything you have.</p></div>
+    <a class="btn solid" href="install.html">Open the installer</a>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    Open-source MeshCore firmware &middot; made in the Inland Northwest &middot;
+    <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a> &middot;
+    <a href="releases.html">Releases</a> &middot;
+    <a href="https://meshcore.co.uk">MeshCore</a> &middot;
+    <a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a> &middot;
+    GPL-3.0
+  </div>
+</footer>
+
+<script src="assets/mesh.js?v=2"></script>
+<script src="assets/app.js?v=2"></script>
+</body>
+</html>

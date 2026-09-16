@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Squatch Mesh &middot; off-grid messaging, open firmware</title>
+<meta name="description" content="Squatch Mesh is open-source MeshCore firmware with a full standalone interface. No cell service, no internet, no subscription. Runs on the LilyGo T-Lora Pager.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css?v=2">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://squatchmesh.com/">
+<meta name="theme-color" content="#060a09">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Squatch Mesh">
+<meta property="og:title" content="Squatch Mesh - off-grid messaging, open firmware">
+<meta property="og:description" content="Squatch Mesh is open-source MeshCore firmware with a full standalone interface. No cell service, no internet, no subscription. Runs on the LilyGo T-Lora Pager.">
+<meta property="og:url" content="https://squatchmesh.com/">
+<meta property="og:image" content="https://squatchmesh.com/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+<body>
+<canvas id="mesh-bg"></canvas>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="logo" href="index.html">
+      <span class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      SQUATCH MESH
+    </a>
+    <div class="spacer"></div>
+    <nav class="nav-links">
+      <a class="link" href="features.html">Features</a>
+      <a class="link" href="themes.html">Themes</a>
+      <a class="link" href="install.html">Install</a>
+      <a class="link" href="guide.html">Guide</a>
+      <a class="link" href="mesh.html">Mesh</a>
+      <a class="link" href="hardware.html">Hardware</a>
+      <a class="link" href="releases.html">Releases</a>
+    </nav>
+    <a class="btn solid" href="install.html">Install</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <div>
+      <div class="tag">open-source meshcore firmware</div>
+      <h1>Off-grid messaging,<br>open firmware.</h1>
+      <p class="sub">A full standalone interface on the device itself: channels, DMs, maps,
+      repeater tools. No cell service, no internet, no subscription. Runs on the
+      LilyGo T-Lora Pager, and still pairs with the MeshCore phone app.</p>
+      <p style="margin-top:22px">
+        <a class="btn solid" href="install.html">Install in your browser</a>
+        <a class="btn" href="https://github.com/BamBam1121/inw-mesh">View on GitHub</a>
+      </p>
+      <div class="meta"><span data-version>v1.1.x</span> &middot; GPL-3.0 &middot; updates over Wi-Fi</div>
+    </div>
+    <div class="hero-art">
+      <img class="pager" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/themes.png" alt="">
+      <figure>
+        <img class="screen float" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-aurora.png"
+             alt="The Aurora lock screen: northern lights over a ridge, clock, and a rotating one-liner">
+        <figcaption>Aurora lock screen, straight off the device</figcaption>
+      </figure>
+    </div>
+  </section>
+</main>
+
+<div class="ticker">
+  <div class="run">
+    <span><b>rx</b> GRP_TXT flood 2h -94dBm 6.5dB</span>
+    <span><b>TX</b> ADVERT flood 0h</span>
+    <span><b>rx</b> ACK direct</span>
+    <span><b>rx</b> GRP_TXT flood 4h -101dBm 2.0dB</span>
+    <span><b>TX</b> TXT_MSG direct 1h</span>
+    <span><b>rx</b> ADVERT flood 3h -88dBm 9.5dB</span>
+    <span><b>rx</b> PATH direct</span>
+    <span style="color:var(--accent-dim)">simulated traffic</span>
+    <span><b>rx</b> GRP_TXT flood 2h -94dBm 6.5dB</span>
+    <span><b>TX</b> ADVERT flood 0h</span>
+    <span><b>rx</b> ACK direct</span>
+    <span><b>rx</b> GRP_TXT flood 4h -101dBm 2.0dB</span>
+    <span><b>TX</b> TXT_MSG direct 1h</span>
+    <span><b>rx</b> ADVERT flood 3h -88dBm 9.5dB</span>
+    <span><b>rx</b> PATH direct</span>
+    <span style="color:var(--accent-dim)">simulated traffic</span>
+  </div>
+</div>
+
+<main class="wrap">
+  <h2>Four themes</h2>
+  <p class="sub reveal">Every sound, colour, lock scene, vibration pattern and even the
+  charging icon changes with the theme.</p>
+  <div class="grid c4 reveal" style="margin-top:18px">
+    <figure><a href="themes.html"><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-inw.png" alt="Squatch theme lock screen"></a><figcaption>Squatch</figcaption></figure>
+    <figure><a href="themes.html"><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-blocks.png" alt="Blocks theme lock screen"></a><figcaption>Blocks</figcaption></figure>
+    <figure><a href="themes.html"><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-hero.png" alt="Hero theme lock screen"></a><figcaption>Hero</figcaption></figure>
+    <figure><a href="themes.html"><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-aurora.png" alt="Aurora theme lock screen"></a><figcaption>Aurora</figcaption></figure>
+  </div>
+
+  <h2>How a mesh works</h2>
+  <div class="grid c3">
+    <div class="panel reveal">
+      <div class="tag">01</div>
+      <h3>You send</h3>
+      <p class="sub" style="font-size:14px">Your pager transmits a few hundred bytes over LoRa. No tower, no SIM, no account.</p>
+    </div>
+    <div class="panel reveal">
+      <div class="tag">02</div>
+      <h3>Repeaters relay</h3>
+      <p class="sub" style="font-size:14px">Nodes on hills hear it and pass it on. Each one relays a given packet once, so it spreads without looping.</p>
+    </div>
+    <div class="panel reveal">
+      <div class="tag">03</div>
+      <h3>It arrives</h3>
+      <p class="sub" style="font-size:14px">Miles away, someone's pager buzzes. The reply comes back the same way, often by a shorter direct path.</p>
+    </div>
+  </div>
+
+  <h2>What it does</h2>
+  <div class="grid c4">
+    <a class="card reveal" href="features.html"><div class="k">Messaging</div><p>Channels, DMs, rooms. Delivery ticks, retries, repeats heard, @mentions, emoji.</p></a>
+    <a class="card reveal" href="features.html"><div class="k">Map</div><p>Offline SD tiles, every node that shares a position, tiles fetched over Wi-Fi.</p></a>
+    <a class="card reveal" href="features.html"><div class="k">Repeater tools</div><p>Login, status, telemetry, trace route, remote console, discovery, sniffer.</p></a>
+    <a class="card reveal" href="themes.html"><div class="k">Themes</div><p>Four, each with its own scene, sounds, vibration and charging indicator.</p></a>
+    <a class="card reveal" href="features.html"><div class="k">Battery</div><p>An accurate percentage, optimised charging, and a saver that kicks in at 20%.</p></a>
+    <a class="card reveal" href="features.html"><div class="k">Wi-Fi updates</div><p>Signed releases, verified before install, and the old version stays if anything fails.</p></a>
+    <a class="card reveal" href="features.html"><div class="k">NFC</div><p>Tap a phone to share a contact or hand over a channel invite.</p></a>
+    <a class="card reveal" href="features.html"><div class="k">Phone app</div><p>Still pairs with the official MeshCore app over Bluetooth.</p></a>
+  </div>
+
+  <h2>Put it on your pager</h2>
+  <div class="panel reveal" style="display:flex;gap:22px;align-items:center;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px">
+      <p class="sub">Flash it from the browser over USB. Chrome or Edge, no tools to install,
+      and it never touches your contacts on an update.</p>
+    </div>
+    <a class="btn solid" href="install.html">Open the installer</a>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    Open-source MeshCore firmware &middot; made in the Inland Northwest &middot;
+    <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a> &middot;
+    <a href="releases.html">Releases</a> &middot;
+    <a href="https://meshcore.co.uk">MeshCore</a> &middot;
+    <a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a> &middot;
+    GPL-3.0
+  </div>
+</footer>
+
+<script src="assets/mesh.js?v=2"></script>
+<script src="assets/app.js?v=2"></script>
+</body>
+</html>

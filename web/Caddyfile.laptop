@@ -1,0 +1,44 @@
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+# Only reachable from this laptop: Cloudflare's tunnel connects here and carries
+# the public traffic for squatchmesh.com. Nothing is opened on the router.
+http://:8080 {
+	bind 127.0.0.1
+
+	@www host www.squatchmesh.com
+	redir @www https://squatchmesh.com{uri} permanent
+
+	root * C:/squatchmesh/www
+	encode zstd gzip
+	# Clean addresses: /install serves install.html.
+	try_files {path} {path}.html
+	file_server
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options SAMEORIGIN
+		-Server
+	}
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=604800"
+
+	handle_errors {
+		@notfound expression {err.status_code} == 404
+		handle @notfound {
+			rewrite * /404.html
+			file_server
+		}
+	}
+
+	log {
+		output file C:/squatchmesh/logs/access.log {
+			roll_size 5MiB
+			roll_keep 3
+		}
+	}
+}

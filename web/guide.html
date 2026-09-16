@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guide &middot; Squatch Mesh</title>
+<meta name="description" content="Keys, first start, updates, battery, notifications, SD card layout and radio defaults for Squatch Mesh on the LilyGo T-Lora Pager.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css?v=2">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://squatchmesh.com/guide">
+<meta name="theme-color" content="#060a09">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Squatch Mesh">
+<meta property="og:title" content="Guide - Squatch Mesh">
+<meta property="og:description" content="Keys, first start, updates, battery, notifications, SD card layout and radio defaults for Squatch Mesh on the LilyGo T-Lora Pager.">
+<meta property="og:url" content="https://squatchmesh.com/guide">
+<meta property="og:image" content="https://squatchmesh.com/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  .doc { display: grid; grid-template-columns: 190px 1fr; gap: 34px; align-items: start; }
+  .toc { position: sticky; top: 80px; font-size: 13px; }
+  .toc a { display: block; color: var(--muted); text-decoration: none; padding: 4px 0; border-left: 1px solid var(--line); padding-left: 12px; }
+  .toc a:hover { color: var(--accent); border-left-color: var(--accent-dim); }
+  .doc h2:first-of-type { margin-top: 0; }
+  @media (max-width: 860px) { .doc { grid-template-columns: 1fr; } .toc { position: static; } }
+</style>
+</head>
+<body>
+<canvas id="mesh-bg"></canvas>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="logo" href="index.html">
+      <span class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      SQUATCH MESH
+    </a>
+    <div class="spacer"></div>
+    <nav class="nav-links">
+      <a class="link" href="features.html">Features</a>
+      <a class="link" href="themes.html">Themes</a>
+      <a class="link" href="install.html">Install</a>
+      <a class="link" href="guide.html">Guide</a>
+      <a class="link" href="mesh.html">Mesh</a>
+      <a class="link" href="hardware.html">Hardware</a>
+      <a class="link" href="releases.html">Releases</a>
+    </nav>
+    <a class="btn solid" href="install.html">Install</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="tag" style="margin-top:46px">guide</div>
+  <h1>Living with it</h1>
+  <p class="sub" style="margin-bottom:34px">Everything you need in the first ten minutes, and the
+  handful of things worth knowing later.</p>
+
+  <div class="doc">
+    <nav class="toc">
+      <a href="#keys">Keys</a>
+      <a href="#first">First start</a>
+      <a href="#updates">Updates</a>
+      <a href="#battery">Battery</a>
+      <a href="#notify">Notifications</a>
+      <a href="#sd">SD card</a>
+      <a href="#radio">Radio defaults</a>
+      <a href="#privacy">Privacy</a>
+    </nav>
+
+    <div>
+      <h2 id="keys">Keys</h2>
+      <div class="panel reveal">
+        <table>
+          <tr><td><span class="kbd">wheel</span></td><td>turn to move, press to select</td></tr>
+          <tr><td><span class="kbd">Backspace</span></td><td>back, or delete while typing</td></tr>
+          <tr><td><span class="kbd">Enter</span></td><td>send, or select</td></tr>
+          <tr><td><span class="kbd">orange</span> (hold)</td><td>numbers and symbols</td></tr>
+          <tr><td>on home</td><td><span class="kbd">m</span> messages &nbsp;<span class="kbd">c</span> contacts &nbsp;<span class="kbd">p</span> map &nbsp;<span class="kbd">t</span> tools &nbsp;<span class="kbd">s</span> settings &nbsp;<span class="kbd">n</span> NFC &nbsp;<span class="kbd">l</span> lock</td></tr>
+          <tr><td>in a chat</td><td>press the wheel for emoji and quick replies</td></tr>
+          <tr><td>on the map</td><td>wheel zooms, <span class="kbd">wasd</span> pans, <span class="kbd">n</span> next node, <span class="kbd">c</span> centre on you</td></tr>
+        </table>
+      </div>
+
+      <h2 id="first">First start</h2>
+      <div class="panel reveal">
+        <p class="sub" style="font-size:14px;margin:0">Give the node a name when it asks; that is how you
+        appear to everyone else. Then check <b>Settings &rarr; Radio &amp; Mesh</b> and pick the preset for
+        your area if it is not already set. A fresh install formats storage first, which takes a few
+        minutes and only ever happens once.</p>
+      </div>
+
+      <h2 id="updates">Updates</h2>
+      <div class="panel reveal">
+        <p class="sub" style="font-size:14px;margin:0"><b>Settings &rarr; System &rarr; check for updates</b>,
+        or leave "check on start" on and it will offer them when a new release appears. It always asks
+        first. Turning on <b>beta updates</b> gets you builds before they are released, which is useful if
+        you want to help find problems and tolerable only if you do.</p>
+      </div>
+
+      <h2 id="battery">Battery</h2>
+      <div class="panel reveal">
+        <p class="sub" style="font-size:14px;margin:0"><b>Settings &rarr; Battery</b> shows charge and
+        battery health, and holds the two power features. <b>Optimised charging</b> learns roughly when you
+        unplug and holds at 80% until shortly before, which is easier on the cell; it needs a few days of
+        routine before it does anything. <b>Battery saver</b> switches on at 20% and turns off GPS,
+        Bluetooth and Wi-Fi until you are back above 80%. If health looks wrong on a new battery, use
+        <b>reset battery learning</b> and let it do one full charge and one good discharge.</p>
+      </div>
+
+      <h2 id="notify">Notifications</h2>
+      <div class="panel reveal">
+        <p class="sub" style="font-size:14px;margin:0">Global settings live in
+        <b>Settings &rarr; Notifications</b>, including quiet hours. Any single chat can override them from
+        its own menu, or from the menu on any message in it: all messages, @mentions only, silent, or
+        muted. Muted chats still count as unread.</p>
+      </div>
+
+      <h2 id="sd">SD card</h2>
+      <div class="panel reveal">
+        <table>
+          <tr><td><code>/tiles/z/x/y.jpg</code></td><td>offline map tiles</td></tr>
+          <tr><td><code>/meshcore-backup.json</code></td><td>imported on first start</td></tr>
+          <tr><td><code>/inw/</code></td><td>daily backups written by the pager</td></tr>
+          <tr><td><code>/screenshots/</code></td><td>screenshots taken from Tools</td></tr>
+        </table>
+        <p class="sub" style="font-size:13px;margin:12px 0 0">Keep a card in it. A first install formats
+        internal storage, and the card is what brings your contacts back.</p>
+      </div>
+
+      <h2 id="radio">Radio defaults</h2>
+      <div class="panel reveal">
+        <p class="sub" style="font-size:14px;margin:0">Ships with the Inland Northwest preset:
+        <code>910.5250244 MHz</code>, <code>62.5 kHz</code>, <code>SF7</code>, <code>CR 4/5</code>. Any
+        MeshCore radio settings work, so set whatever your local mesh uses. Everyone on a mesh has to
+        agree on these or you will hear nothing.</p>
+      </div>
+
+      <h2 id="privacy">Privacy</h2>
+      <div class="panel warn reveal">
+        <p class="sub" style="font-size:14px;margin:0">Position sharing is off until you turn it on.
+        Channel keys are derived from the channel name, so sharing a name is sharing access. And an
+        <b>export contains your private key</b> â€” anyone holding that file can be you on the mesh, so treat
+        it like a password.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    Open-source MeshCore firmware &middot; made in the Inland Northwest &middot;
+    <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a> &middot;
+    <a href="releases.html">Releases</a> &middot;
+    <a href="https://meshcore.co.uk">MeshCore</a> &middot;
+    <a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a> &middot;
+    GPL-3.0
+  </div>
+</footer>
+
+<script src="assets/mesh.js?v=2"></script>
+<script src="assets/app.js?v=2"></script>
+</body>
+</html>

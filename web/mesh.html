@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Mesh &middot; Squatch Mesh</title>
+<meta name="description" content="What a LoRa mesh is, how MeshCore moves a message, and what it takes to join the Inland Northwest mesh.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css?v=2">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://squatchmesh.com/mesh">
+<meta name="theme-color" content="#060a09">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Squatch Mesh">
+<meta property="og:title" content="The Mesh - Squatch Mesh">
+<meta property="og:description" content="What a LoRa mesh is, how MeshCore moves a message, and what it takes to join the Inland Northwest mesh.">
+<meta property="og:url" content="https://squatchmesh.com/mesh">
+<meta property="og:image" content="https://squatchmesh.com/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  .hops { display: grid; gap: 10px; margin: 0; }
+  .hopstep { display: grid; grid-template-columns: 26px 1fr; gap: 14px; align-items: start; }
+  .hopstep b { font-family: var(--mono); color: var(--accent); font-weight: 400; font-size: 13px; padding-top: 1px; }
+  .roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+</style>
+</head>
+<body>
+<canvas id="mesh-bg"></canvas>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="logo" href="index.html">
+      <span class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      SQUATCH MESH
+    </a>
+    <div class="spacer"></div>
+    <nav class="nav-links">
+      <a class="link" href="features.html">Features</a>
+      <a class="link" href="themes.html">Themes</a>
+      <a class="link" href="install.html">Install</a>
+      <a class="link" href="guide.html">Guide</a>
+      <a class="link" href="mesh.html">Mesh</a>
+      <a class="link" href="hardware.html">Hardware</a>
+      <a class="link" href="releases.html">Releases</a>
+    </nav>
+    <a class="btn solid" href="install.html">Install</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="tag" style="margin-top:46px">the mesh</div>
+  <h1>No towers, no bill, no account</h1>
+  <p class="sub">A LoRa mesh is a few dozen small radios that agree on a frequency and pass each
+  other's messages along. There is no company in the middle. If the internet goes out, the mesh
+  does not notice.</p>
+
+  <h2>How a message gets there</h2>
+  <div class="panel reveal">
+    <div class="hops">
+      <div class="hopstep"><b>01</b><div><b>You send.</b> The pager encrypts it and transmits a
+        short burst. Anything in earshot hears it &mdash; typically a few miles, much further from a ridge.</div></div>
+      <div class="hopstep"><b>02</b><div><b>Repeaters rebroadcast.</b> A repeater that hears something
+        new passes it on once, adding itself to the path. Your pager shows you how many did.</div></div>
+      <div class="hopstep"><b>03</b><div><b>It stops.</b> Each rebroadcast decrements a hop limit, and
+        every node remembers what it has already heard, so a message crosses the mesh instead of
+        echoing around it forever.</div></div>
+      <div class="hopstep"><b>04</b><div><b>The reply learns the way back.</b> Once a route is known,
+        later messages follow it directly rather than flooding, which is why a conversation gets
+        faster after the first exchange.</div></div>
+    </div>
+  </div>
+
+  <h2>What is on a mesh</h2>
+  <div class="roles">
+    <div class="panel reveal"><h3>Companions</h3><p class="sub" style="font-size:14px">The thing in
+    your pocket. Sends and receives, shows the map, holds your contacts. A pager is one.</p></div>
+    <div class="panel reveal"><h3>Repeaters</h3><p class="sub" style="font-size:14px">Usually solar,
+    usually somewhere high and inconvenient. They carry everyone else's traffic and are the reason
+    the mesh has reach at all.</p></div>
+    <div class="panel reveal"><h3>Room servers</h3><p class="sub" style="font-size:14px">Hold recent
+    messages so you can catch up after being away or out of range, instead of missing them.</p></div>
+  </div>
+
+  <h2>Joining</h2>
+  <div class="panel reveal">
+    <p class="sub" style="font-size:14px;margin:0">Match the radio settings your local mesh uses and
+    you are on it. Around the Inland Northwest that is
+    <code>910.5250244 MHz</code>, <code>62.5 kHz</code>, <code>SF7</code>, <code>CR 4/5</code>,
+    which is what this firmware ships with. Elsewhere, ask whoever runs your local mesh &mdash; the
+    numbers have to match exactly or you will sit there hearing nothing.</p>
+  </div>
+
+  <h2>Two things worth knowing early</h2>
+  <div class="grid c2">
+    <div class="panel reveal">
+      <h3>Channels are only as private as their name</h3>
+      <p class="sub" style="font-size:14px">A channel key is derived from its name, so anyone who
+      knows the name can read it. Direct messages are different: those are encrypted to the other
+      person's key and nobody in between can read them.</p>
+    </div>
+    <div class="panel reveal">
+      <h3>Airtime is shared</h3>
+      <p class="sub" style="font-size:14px">Everyone is taking turns on one frequency. Frequent
+      position beacons and chatty automation cost everybody range. Send what matters and the mesh
+      stays useful for the people who need it.</p>
+    </div>
+  </div>
+
+  <div class="panel warn reveal" style="margin-top:18px">
+    This is unlicensed ISM band, not amateur radio &mdash; no callsign required, and equally, no
+    licensed power levels. Keep to what your hardware and local rules allow.
+  </div>
+
+  <div class="panel reveal" style="display:flex;gap:22px;align-items:center;flex-wrap:wrap;margin-top:34px">
+    <div style="flex:1;min-width:260px"><p class="sub" style="margin:0">Got a pager? It takes about
+    two minutes to get on the air.</p></div>
+    <a class="btn solid" href="install.html">Open the installer</a>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    Open-source MeshCore firmware &middot; made in the Inland Northwest &middot;
+    <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a> &middot;
+    <a href="releases.html">Releases</a> &middot;
+    <a href="https://meshcore.co.uk">MeshCore</a> &middot;
+    <a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a> &middot;
+    GPL-3.0
+  </div>
+</footer>
+
+<script src="assets/mesh.js?v=2"></script>
+<script src="assets/app.js?v=2"></script>
+</body>
+</html>
