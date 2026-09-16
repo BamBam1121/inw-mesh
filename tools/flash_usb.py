@@ -29,8 +29,9 @@ BUILD = os.path.join(HERE, "..", ".pio", "build", "t-lora-pager")
 FW = sys.argv[1] if len(sys.argv) > 1 else os.path.join(BUILD, "firmware.bin")
 PORT = sys.argv[2] if len(sys.argv) > 2 else "COM5"
 ESPTOOL = os.path.expanduser("~/.platformio/packages/tool-esptoolpy/esptool.py")
-# The IDF bootloader that actually runs on this board; ours crash-loops.
-BOOTLOADER = os.path.join(HERE, "..", "site", "firmware", "bootloader.bin")
+# Our own bootloader. It boots this board now that the build stamps it 16MB
+# (board_upload.flash_size); the old 8MB one reset forever.
+BOOTLOADER = os.path.join(BUILD, "bootloader.bin")
 PARTITIONS = os.path.join(BUILD, "partitions.bin")
 
 

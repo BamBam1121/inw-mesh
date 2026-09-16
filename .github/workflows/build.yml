@@ -64,6 +64,11 @@ jobs:
           NOTES=$(git log -1 --format=%s)
           # 0xFF over otadata makes the bootloader start app0 after a USB install.
           python -c "open('$F/otadata-blank.bin','wb').write(bytes([255])*8192)"
+          # Our own bootloader, padded with 0xFF to the full 32KB region so an install
+          # leaves nothing behind from whatever was there before. It must say 16MB
+          # (header byte 3 = 0x4_): an 8MB one rejects our partition table and resets
+          # forever, which is why this board once needed Launcher's bootloader.
+          python -c "b=open('$B/bootloader.bin','rb').read(); assert b[0]==0xE9 and b[3]>>4==4, 'bootloader is not a 16MB image'; open('$F/bootloader.bin','wb').write(b+bytes([255])*(32768-len(b)))"
 
           # beta: this build
           cp "$B/firmware.bin" "$F/firmware-beta.bin"
@@ -115,6 +120,7 @@ jobs:
             site/firmware/firmware.bin
             site/firmware/partitions.bin
             site/firmware/otadata-blank.bin
+            site/firmware/bootloader.bin
 
       # Pages only deploys from main, so hand over to a main run, which picks up
       # this release as stable.
