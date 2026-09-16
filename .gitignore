@@ -18,3 +18,4 @@ src/identity_seed.h
 # python bytecode from tools/
 __pycache__/
 *.pyc
+.claude/

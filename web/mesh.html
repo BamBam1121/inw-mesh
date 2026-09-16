@@ -7,11 +7,11 @@
 <meta name="description" content="What a LoRa mesh is, how MeshCore moves a message, and what it takes to join the Inland Northwest mesh.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=3">
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css?v=6">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://squatchmesh.com/mesh">
-<meta name="theme-color" content="#060a09">
+<meta name="theme-color" content="#070b0a">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Squatch Mesh">
 <meta property="og:title" content="The Mesh - Squatch Mesh">
@@ -27,29 +27,23 @@
 </style>
 </head>
 <body>
-<canvas id="mesh-bg"></canvas>
+<a class="skip" href="#main">Skip to content</a>
 
 <header class="nav">
   <div class="wrap nav-inner">
-    <a class="logo" href="index.html">
-      <span class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></span>
-      SQUATCH MESH
-    </a>
-    <div class="spacer"></div>
-    <nav class="nav-links">
-      <a class="link" href="features.html">Features</a>
-      <a class="link" href="themes.html">Themes</a>
-      <a class="link" href="install.html">Install</a>
-      <a class="link" href="guide.html">Guide</a>
-      <a class="link" href="mesh.html">Mesh</a>
-      <a class="link" href="hardware.html">Hardware</a>
-      <a class="link" href="releases.html">Releases</a>
+    <a class="logo" href="/" aria-label="Squatch Mesh home"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu"><span></span></button>
+    <nav id="site-nav" class="nav-links" aria-label="Main">
+      <a class="link" href="/features">Features</a>
+      <a class="link" href="/themes">Themes</a>
+      <a class="link" href="/guide">Guide</a>
+      <a class="link" href="/releases">Releases</a>
+      <a class="btn solid" href="/install">Install</a>
     </nav>
-    <a class="btn solid" href="install.html">Install</a>
   </div>
 </header>
 
-<main class="wrap">
+<main id="main" class="wrap">
   <div class="tag" style="margin-top:46px">the mesh</div>
   <h1>No towers, no bill, no account</h1>
   <p class="sub">A LoRa mesh is a few dozen small radios that agree on a frequency and pass each
@@ -116,23 +110,29 @@
   <div class="panel reveal" style="display:flex;gap:22px;align-items:center;flex-wrap:wrap;margin-top:34px">
     <div style="flex:1;min-width:260px"><p class="sub" style="margin:0">Got a pager? It takes about
     two minutes to get on the air.</p></div>
-    <a class="btn solid" href="install.html">Open the installer</a>
+    <a class="btn solid" href="/install">Open the installer</a>
   </div>
 </main>
 
-<footer>
-  <div class="wrap">
-    Open-source MeshCore firmware &middot; made in the Inland Northwest &middot;
-    <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a> &middot;
-    <a href="releases.html">Releases</a> &middot;
-    <a href="https://meshcore.co.uk">MeshCore</a> &middot;
-    <a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a> &middot;
-    <a href="privacy.html">Privacy</a> &middot;
-    GPL-3.0
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="logo" href="/"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+      <p>Free, open-source MeshCore firmware for the LilyGo T-Lora Pager. Made in the Inland Northwest.</p>
+    </div>
+    <nav class="footer-col" aria-label="Product"><h4>Product</h4>
+      <a href="/features">Features</a><a href="/themes">Themes</a><a href="/install">Install</a><a href="/releases">Releases</a></nav>
+    <nav class="footer-col" aria-label="Learn"><h4>Learn</h4>
+      <a href="/guide">Guide</a><a href="/mesh">How the mesh works</a><a href="/hardware">Hardware</a></nav>
+    <nav class="footer-col" aria-label="Project"><h4>Project</h4>
+      <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a><a href="https://meshcore.io">MeshCore</a><a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a><a href="/privacy">Privacy</a></nav>
+  </div>
+  <div class="wrap footer-base">
+    <span>GPL-3.0 &middot; <span data-version>latest release</span></span>
+    <span>Independent project. Not affiliated with LilyGo or the MeshCore project.</span>
   </div>
 </footer>
 
-<script src="assets/mesh.js?v=2"></script>
-<script src="assets/app.js?v=2"></script>
+<script src="/assets/app.js?v=6" defer></script>
 </body>
 </html>

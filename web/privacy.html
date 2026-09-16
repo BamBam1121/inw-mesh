@@ -7,11 +7,11 @@
 <meta name="description" content="What squatchmesh.com and the Squatch Mesh firmware collect: nothing of their own, and the outside services involved.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=3">
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css?v=6">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://squatchmesh.com/privacy">
-<meta name="theme-color" content="#060a09">
+<meta name="theme-color" content="#070b0a">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Squatch Mesh">
 <meta property="og:title" content="Privacy - Squatch Mesh">
@@ -21,33 +21,28 @@
 <meta name="twitter:card" content="summary_large_image">
 </head>
 <body>
-<canvas id="mesh-bg"></canvas>
+<a class="skip" href="#main">Skip to content</a>
 
 <header class="nav">
   <div class="wrap nav-inner">
-    <a class="logo" href="index.html">
-      <span class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></span>
-      SQUATCH MESH
-    </a>
-    <div class="spacer"></div>
-    <nav class="nav-links">
-      <a class="link" href="features.html">Features</a>
-      <a class="link" href="themes.html">Themes</a>
-      <a class="link" href="install.html">Install</a>
-      <a class="link" href="guide.html">Guide</a>
-      <a class="link" href="mesh.html">Mesh</a>
-      <a class="link" href="hardware.html">Hardware</a>
-      <a class="link" href="releases.html">Releases</a>
+    <a class="logo" href="/" aria-label="Squatch Mesh home"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu"><span></span></button>
+    <nav id="site-nav" class="nav-links" aria-label="Main">
+      <a class="link" href="/features">Features</a>
+      <a class="link" href="/themes">Themes</a>
+      <a class="link" href="/guide">Guide</a>
+      <a class="link" href="/releases">Releases</a>
+      <a class="btn solid" href="/install">Install</a>
     </nav>
-    <a class="btn solid" href="install.html">Install</a>
   </div>
 </header>
 
-<main class="wrap" style="max-width:780px">
+<main id="main" class="wrap" style="max-width:780px">
   <div class="tag" style="margin-top:46px">privacy</div>
   <h1>What we collect</h1>
   <p class="sub">Short version: nothing of our own. No accounts, no sign-up forms, no cookies, no
-  analytics, no ads. Last updated 16 September 2026.</p>
+  analytics, no ads. The one exception: Cloudflare may set a short-lived security cookie if it
+  needs to check a visitor is not a bot. Last updated 16 September 2026.</p>
 
   <h2>This website</h2>
   <div class="panel reveal">
@@ -62,7 +57,7 @@
     <table>
       <tr><td>Cloudflare</td><td>carries all traffic to this site and protects it from attacks; it sees your IP address like any network provider. See <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare's privacy policy</a>.</td></tr>
       <tr><td>Google Fonts</td><td>the page fonts load from Google, which receives a normal web request. See <a href="https://policies.google.com/privacy">Google's privacy policy</a>.</td></tr>
-      <tr><td>GitHub</td><td>screenshots, the release list and the firmware files come from GitHub. See <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub's privacy statement</a>.</td></tr>
+      <tr><td>GitHub</td><td>the release list, the version number and the firmware files come from GitHub. See <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub's privacy statement</a>.</td></tr>
       <tr><td>unpkg</td><td>the install page loads the open-source ESP Web Tools flasher from unpkg.</td></tr>
     </table>
   </div>
@@ -73,7 +68,8 @@
     own browser. Firmware is downloaded to your computer and written to the device; nothing is read off
     the pager or sent anywhere. The releases page keeps the release list in your browser for ten
     minutes so it doesn't ask GitHub again on every visit. That is not a cookie, and it never leaves your
-    computer.</p>
+    computer. Closing the privacy notice is remembered the same way, in your browser, so it doesn't
+    show again.</p>
   </div>
 
   <h2>The firmware</h2>
@@ -92,19 +88,25 @@
   </div>
 </main>
 
-<footer>
-  <div class="wrap">
-    Open-source MeshCore firmware &middot; made in the Inland Northwest &middot;
-    <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a> &middot;
-    <a href="releases.html">Releases</a> &middot;
-    <a href="https://meshcore.co.uk">MeshCore</a> &middot;
-    <a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a> &middot;
-    <a href="privacy.html">Privacy</a> &middot;
-    GPL-3.0
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="logo" href="/"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+      <p>Free, open-source MeshCore firmware for the LilyGo T-Lora Pager. Made in the Inland Northwest.</p>
+    </div>
+    <nav class="footer-col" aria-label="Product"><h4>Product</h4>
+      <a href="/features">Features</a><a href="/themes">Themes</a><a href="/install">Install</a><a href="/releases">Releases</a></nav>
+    <nav class="footer-col" aria-label="Learn"><h4>Learn</h4>
+      <a href="/guide">Guide</a><a href="/mesh">How the mesh works</a><a href="/hardware">Hardware</a></nav>
+    <nav class="footer-col" aria-label="Project"><h4>Project</h4>
+      <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a><a href="https://meshcore.io">MeshCore</a><a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a><a href="/privacy">Privacy</a></nav>
+  </div>
+  <div class="wrap footer-base">
+    <span>GPL-3.0 &middot; <span data-version>latest release</span></span>
+    <span>Independent project. Not affiliated with LilyGo or the MeshCore project.</span>
   </div>
 </footer>
 
-<script src="assets/mesh.js?v=2"></script>
-<script src="assets/app.js?v=2"></script>
+<script src="/assets/app.js?v=6" defer></script>
 </body>
 </html>

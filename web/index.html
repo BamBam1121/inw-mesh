@@ -3,157 +3,239 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Squatch Mesh &middot; off-grid messaging, open firmware</title>
-<meta name="description" content="Squatch Mesh is open-source MeshCore firmware with a full standalone interface. No cell service, no internet, no subscription. Runs on the LilyGo T-Lora Pager.">
+<title>Squatch Mesh - off-grid messaging for the LilyGo T-Lora Pager</title>
+<meta name="description" content="Squatch Mesh is free, open-source MeshCore firmware that turns the LilyGo T-Lora Pager into a standalone off-grid messenger. No cell service, no internet, no subscription.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=3">
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css?v=6">
+<link rel="preload" as="image" href="/assets/img/lock-aurora.png" fetchpriority="high">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://squatchmesh.com/">
-<meta name="theme-color" content="#060a09">
+<meta name="theme-color" content="#070b0a">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Squatch Mesh">
-<meta property="og:title" content="Squatch Mesh - off-grid messaging, open firmware">
-<meta property="og:description" content="Squatch Mesh is open-source MeshCore firmware with a full standalone interface. No cell service, no internet, no subscription. Runs on the LilyGo T-Lora Pager.">
+<meta property="og:title" content="Squatch Mesh - off-grid messaging for the LilyGo T-Lora Pager">
+<meta property="og:description" content="Free, open-source MeshCore firmware that turns the T-Lora Pager into a standalone off-grid messenger. No cell service, no internet, no subscription.">
 <meta property="og:url" content="https://squatchmesh.com/">
 <meta property="og:image" content="https://squatchmesh.com/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
 </head>
 <body>
-<canvas id="mesh-bg"></canvas>
+<a class="skip" href="#main">Skip to content</a>
 
 <header class="nav">
   <div class="wrap nav-inner">
-    <a class="logo" href="index.html">
-      <span class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></span>
-      SQUATCH MESH
-    </a>
-    <div class="spacer"></div>
-    <nav class="nav-links">
-      <a class="link" href="features.html">Features</a>
-      <a class="link" href="themes.html">Themes</a>
-      <a class="link" href="install.html">Install</a>
-      <a class="link" href="guide.html">Guide</a>
-      <a class="link" href="mesh.html">Mesh</a>
-      <a class="link" href="hardware.html">Hardware</a>
-      <a class="link" href="releases.html">Releases</a>
+    <a class="logo" href="/" aria-label="Squatch Mesh home"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu"><span></span></button>
+    <nav id="site-nav" class="nav-links" aria-label="Main">
+      <a class="link" href="/features">Features</a>
+      <a class="link" href="/themes">Themes</a>
+      <a class="link" href="/guide">Guide</a>
+      <a class="link" href="/releases">Releases</a>
+      <a class="btn solid" href="/install">Install</a>
     </nav>
-    <a class="btn solid" href="install.html">Install</a>
   </div>
 </header>
 
-<main class="wrap">
+<main id="main">
+
+  <!-- HERO: one promise, one main action, the real product -->
   <section class="hero">
-    <div>
-      <div class="tag">open-source meshcore firmware</div>
-      <h1>Off-grid messaging,<br>open firmware.</h1>
-      <p class="sub">A full standalone interface on the device itself: channels, DMs, maps,
-      repeater tools. No cell service, no internet, no subscription. Runs on the
-      LilyGo T-Lora Pager, and still pairs with the MeshCore phone app.</p>
-      <p style="margin-top:22px">
-        <a class="btn solid" href="install.html">Install in your browser</a>
-        <a class="btn" href="https://github.com/BamBam1121/inw-mesh">View on GitHub</a>
-      </p>
-      <div class="meta"><span data-version>v1.1.x</span> &middot; GPL-3.0 &middot; updates over Wi-Fi</div>
-    </div>
-    <div class="hero-art">
-      <img class="pager" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/themes.png" alt="">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">Free firmware for the LilyGo T-Lora Pager</span>
+        <h1>Text anyone on the mesh. <em>No cell service needed.</em></h1>
+        <p class="lead">Squatch Mesh turns your pager into a standalone off-grid messenger: channels,
+        direct messages, maps and repeater tools, right on the device. No phone, no internet, no subscription.</p>
+        <div class="hero-cta">
+          <a class="btn solid lg" href="/install">Install in your browser</a>
+          <a class="textlink" href="#features">See what it does</a>
+        </div>
+        <ul class="trust">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Free &amp; open source (GPL-3.0)</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Signed Wi-Fi updates</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Works with the MeshCore app</li>
+        </ul>
+      </div>
       <figure>
-        <img class="screen float" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-aurora.png"
-             alt="The Aurora lock screen: northern lights over a ridge, clock, and a rotating one-liner">
-        <figcaption>Aurora lock screen, straight off the device</figcaption>
+        <div class="device">
+          <img class="screen" src="/assets/img/lock-aurora.png" width="480" height="222"
+               alt="The Aurora lock screen on the pager: northern lights over a ridge, the time, and unread messages">
+        </div>
+        <figcaption class="device-cap">Real screenshot from the pager &middot; <span data-version>latest release</span></figcaption>
       </figure>
     </div>
   </section>
+
+  <!-- PROOF: concrete numbers -->
+  <section aria-label="At a glance">
+    <div class="wrap">
+      <div class="stats">
+        <div class="stat"><b>2,000</b><span>contacts on the device</span></div>
+        <div class="stat"><b>40</b><span>channels</span></div>
+        <div class="stat"><b>4</b><span>themes, sounds included</span></div>
+        <div class="stat"><b>$0</b><span>forever, no subscription</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GET STARTED: three steps -->
+  <section class="section">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Get started</span>
+        <h2>On the air in a few minutes</h2>
+        <p class="lead">No tools to download. You only need the pager, a USB-C cable and Chrome or Edge.</p>
+      </div>
+      <div class="grid c3 steps">
+        <div class="panel step"><h3>Flash it from your browser</h3><p class="sub">Plug the pager in, click Install, pick its port. Your contacts are kept when you update.</p></div>
+        <div class="panel step"><h3>Name your node</h3><p class="sub">Pick how you appear to everyone else. The Inland Northwest radio preset is ready; any MeshCore settings work.</p></div>
+        <div class="panel step"><h3>Message the mesh</h3><p class="sub">Join a channel or message a contact. Repeaters on hills carry it for miles.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="section band" id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">What it does</span>
+        <h2>A full messenger on the device itself</h2>
+        <p class="lead">Everything runs on the pager. The phone app is optional.</p>
+      </div>
+      <div class="grid c3">
+        <a class="card" href="/features">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+          <div class="k">Messaging</div><p>Channels, direct messages and rooms, with delivery ticks, retries, @mentions and emoji.</p></a>
+        <a class="card" href="/features">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3z"/><path d="M9 3v15M15 6v15"/></svg></div>
+          <div class="k">Offline maps</div><p>Map tiles from the SD card, with every node that shares its position drawn on top.</p></a>
+        <a class="card" href="/features">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14 0M1.4 9a16 16 0 0 1 21.2 0M8.5 16.4a6 6 0 0 1 7 0"/><circle cx="12" cy="20" r="1"/></svg></div>
+          <div class="k">Repeater tools</div><p>Log in to repeaters, read status and telemetry, trace routes and see which repeaters carried a message.</p></a>
+        <a class="card" href="/features">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 11v2M6 11h4"/></svg></div>
+          <div class="k">Battery that lasts</div><p>GPS and the screen power down when you're not looking, charging holds at 80%, and a saver kicks in when low.</p></a>
+        <a class="card" href="/features">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <div class="k">Safe Wi-Fi updates</div><p>Releases are signed and checked before installing, and your contacts and keys are left alone.</p></a>
+        <a class="card" href="/features">
+          <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg></div>
+          <div class="k">NFC &amp; phone app</div><p>Tap a phone to share your contact or a channel, and pair with the MeshCore app over Bluetooth.</p></a>
+      </div>
+      <p style="margin-top:26px"><a class="textlink" href="/features">All features</a></p>
+    </div>
+  </section>
+
+  <!-- THEMES -->
+  <section class="section">
+    <div class="wrap themes" data-theme-switcher>
+      <div>
+        <span class="eyebrow">Make it yours</span>
+        <h2 style="margin-top:10px">Four themes, top to bottom</h2>
+        <p class="lead">Each one changes the colours, the lock-screen scene, the message sounds and even the charging icon.</p>
+        <div class="theme-tabs" role="tablist" aria-label="Themes">
+          <button type="button" role="tab" id="t-squatch" aria-controls="p-squatch" aria-selected="true">Squatch</button>
+          <button type="button" role="tab" id="t-aurora" aria-controls="p-aurora" aria-selected="false">Aurora</button>
+          <button type="button" role="tab" id="t-blocks" aria-controls="p-blocks" aria-selected="false">Blocks</button>
+          <button type="button" role="tab" id="t-hero" aria-controls="p-hero" aria-selected="false">Hero</button>
+        </div>
+        <a class="textlink" href="/themes">Compare the themes</a>
+      </div>
+      <div>
+        <div class="theme-panel" role="tabpanel" id="p-squatch" aria-labelledby="t-squatch">
+          <div class="device"><img class="screen" src="/assets/img/lock-inw.png" width="480" height="222" alt="Squatch theme: pines, mountains and a walking sasquatch in terminal green"></div>
+          <p style="margin-top:14px">Terminal green, pines and a sasquatch walking the ridge.</p>
+        </div>
+        <div class="theme-panel" role="tabpanel" id="p-aurora" aria-labelledby="t-aurora" hidden>
+          <div class="device"><img class="screen" src="/assets/img/lock-aurora.png" width="480" height="222" alt="Aurora theme: northern lights over a dark ridge"></div>
+          <p style="margin-top:14px">Curtains of light over a dark ridge, with slow bell tones.</p>
+        </div>
+        <div class="theme-panel" role="tabpanel" id="p-blocks" aria-labelledby="t-blocks" hidden>
+          <div class="device"><img class="screen" src="/assets/img/lock-blocks.png" width="480" height="222" alt="Blocks theme: a blocky world of grass and dirt under a pixel sky"></div>
+          <p style="margin-top:14px">A blocky world under a pixel moon, with soft piano notes.</p>
+        </div>
+        <div class="theme-panel" role="tabpanel" id="p-hero" aria-labelledby="t-hero" hidden>
+          <div class="device"><img class="screen" src="/assets/img/lock-hero.png" width="480" height="222" alt="Hero theme: night hills, a castle and a row of hearts showing the battery"></div>
+          <p style="margin-top:14px">Night hills, a castle and hearts that track your battery.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW THE MESH WORKS -->
+  <section class="section band">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">How it works</span>
+        <h2>No towers. Just radios passing it on.</h2>
+      </div>
+      <div class="grid c3">
+        <div class="panel"><h3>You send</h3><p class="sub">Your pager transmits a short, encrypted burst over LoRa radio. No SIM, no account.</p></div>
+        <div class="panel"><h3>Repeaters relay</h3><p class="sub">Radios on hills hear it and pass it on once each, so it spreads across the region without looping.</p></div>
+        <div class="panel"><h3>It arrives</h3><p class="sub">Miles away someone's pager buzzes, and replies find the quickest way back.</p></div>
+      </div>
+      <p style="margin-top:26px"><a class="textlink" href="/mesh">More about the mesh</a></p>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">Questions</span>
+        <h2>Frequently asked</h2>
+      </div>
+      <div class="faq">
+        <details><summary>Which devices does it run on?</summary>
+          <p>The LilyGo T-Lora Pager. The mesh itself is <a href="https://meshcore.io">MeshCore</a>, so you can talk to anyone on a MeshCore network, whatever device they use.</p></details>
+        <details><summary>Does it cost anything?</summary>
+          <p>No. Squatch Mesh is free and open source under GPL-3.0, and the mesh has no subscription or fees. You only need the pager.</p></details>
+        <details><summary>Will I lose my contacts when I update?</summary>
+          <p>No. Updates over Wi-Fi or from the website keep your contacts, channels, messages and settings. Only tick "erase device" in the installer if you mean to wipe everything.</p></details>
+        <details><summary>Does it still work with the MeshCore phone app?</summary>
+          <p>Yes. Pair it over Bluetooth like any MeshCore companion, and the phone and pager share the same contacts and settings.</p></details>
+        <details><summary>Do I need a ham radio licence?</summary>
+          <p>No. MeshCore uses unlicensed ISM radio bands, so no callsign is needed. Stay within your region's power limits.</p></details>
+        <details><summary>What if something goes wrong while flashing?</summary>
+          <p>Hold BOOT, tap RESET, release BOOT, and run First Install again. It writes everything the pager needs to start, even on a blank chip. See the <a href="/install">install page</a>.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
+  <section class="section" style="padding-top:0">
+    <div class="wrap">
+      <div class="cta">
+        <h2>Ready to get off the grid?</h2>
+        <p class="lead">Flash Squatch Mesh from your browser in a few minutes. Free, open source, and yours to change.</p>
+        <a class="btn solid lg" href="/install">Install Squatch Mesh</a>
+      </div>
+    </div>
+  </section>
+
 </main>
 
-<div class="ticker">
-  <div class="run">
-    <span><b>rx</b> GRP_TXT flood 2h -94dBm 6.5dB</span>
-    <span><b>TX</b> ADVERT flood 0h</span>
-    <span><b>rx</b> ACK direct</span>
-    <span><b>rx</b> GRP_TXT flood 4h -101dBm 2.0dB</span>
-    <span><b>TX</b> TXT_MSG direct 1h</span>
-    <span><b>rx</b> ADVERT flood 3h -88dBm 9.5dB</span>
-    <span><b>rx</b> PATH direct</span>
-    <span style="color:var(--accent-dim)">simulated traffic</span>
-    <span><b>rx</b> GRP_TXT flood 2h -94dBm 6.5dB</span>
-    <span><b>TX</b> ADVERT flood 0h</span>
-    <span><b>rx</b> ACK direct</span>
-    <span><b>rx</b> GRP_TXT flood 4h -101dBm 2.0dB</span>
-    <span><b>TX</b> TXT_MSG direct 1h</span>
-    <span><b>rx</b> ADVERT flood 3h -88dBm 9.5dB</span>
-    <span><b>rx</b> PATH direct</span>
-    <span style="color:var(--accent-dim)">simulated traffic</span>
-  </div>
-</div>
-
-<main class="wrap">
-  <h2>Four themes</h2>
-  <p class="sub reveal">Every sound, colour, lock scene, vibration pattern and even the
-  charging icon changes with the theme.</p>
-  <div class="grid c4 reveal" style="margin-top:18px">
-    <figure><a href="themes.html"><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-inw.png" alt="Squatch theme lock screen"></a><figcaption>Squatch</figcaption></figure>
-    <figure><a href="themes.html"><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-blocks.png" alt="Blocks theme lock screen"></a><figcaption>Blocks</figcaption></figure>
-    <figure><a href="themes.html"><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-hero.png" alt="Hero theme lock screen"></a><figcaption>Hero</figcaption></figure>
-    <figure><a href="themes.html"><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-aurora.png" alt="Aurora theme lock screen"></a><figcaption>Aurora</figcaption></figure>
-  </div>
-
-  <h2>How a mesh works</h2>
-  <div class="grid c3">
-    <div class="panel reveal">
-      <div class="tag">01</div>
-      <h3>You send</h3>
-      <p class="sub" style="font-size:14px">Your pager transmits a few hundred bytes over LoRa. No tower, no SIM, no account.</p>
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="logo" href="/"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+      <p>Free, open-source MeshCore firmware for the LilyGo T-Lora Pager. Made in the Inland Northwest.</p>
     </div>
-    <div class="panel reveal">
-      <div class="tag">02</div>
-      <h3>Repeaters relay</h3>
-      <p class="sub" style="font-size:14px">Nodes on hills hear it and pass it on. Each one relays a given packet once, so it spreads without looping.</p>
-    </div>
-    <div class="panel reveal">
-      <div class="tag">03</div>
-      <h3>It arrives</h3>
-      <p class="sub" style="font-size:14px">Miles away, someone's pager buzzes. The reply comes back the same way, often by a shorter direct path.</p>
-    </div>
+    <nav class="footer-col" aria-label="Product"><h4>Product</h4>
+      <a href="/features">Features</a><a href="/themes">Themes</a><a href="/install">Install</a><a href="/releases">Releases</a></nav>
+    <nav class="footer-col" aria-label="Learn"><h4>Learn</h4>
+      <a href="/guide">Guide</a><a href="/mesh">How the mesh works</a><a href="/hardware">Hardware</a></nav>
+    <nav class="footer-col" aria-label="Project"><h4>Project</h4>
+      <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a><a href="https://meshcore.io">MeshCore</a><a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a><a href="/privacy">Privacy</a></nav>
   </div>
-
-  <h2>What it does</h2>
-  <div class="grid c4">
-    <a class="card reveal" href="features.html"><div class="k">Messaging</div><p>Channels, DMs, rooms. Delivery ticks, retries, repeats heard, @mentions, emoji.</p></a>
-    <a class="card reveal" href="features.html"><div class="k">Map</div><p>Offline SD tiles, every node that shares a position, tiles fetched over Wi-Fi.</p></a>
-    <a class="card reveal" href="features.html"><div class="k">Repeater tools</div><p>Login, status, telemetry, trace route, remote console, discovery, sniffer.</p></a>
-    <a class="card reveal" href="themes.html"><div class="k">Themes</div><p>Four, each with its own scene, sounds, vibration and charging indicator.</p></a>
-    <a class="card reveal" href="features.html"><div class="k">Battery</div><p>A fuel-gauge percentage, optimised charging, and a saver that kicks in at 20%.</p></a>
-    <a class="card reveal" href="features.html"><div class="k">Wi-Fi updates</div><p>Signed releases, verified before install, and the old version stays if anything fails.</p></a>
-    <a class="card reveal" href="features.html"><div class="k">NFC</div><p>Tap a phone to share a contact or hand over a channel invite.</p></a>
-    <a class="card reveal" href="features.html"><div class="k">Phone app</div><p>Still pairs with the official MeshCore app over Bluetooth.</p></a>
-  </div>
-
-  <h2>Put it on your pager</h2>
-  <div class="panel reveal" style="display:flex;gap:22px;align-items:center;flex-wrap:wrap">
-    <div style="flex:1;min-width:260px">
-      <p class="sub">Flash it from the browser over USB. Chrome or Edge, no tools to install,
-      and it never touches your contacts on an update.</p>
-    </div>
-    <a class="btn solid" href="install.html">Open the installer</a>
-  </div>
-</main>
-
-<footer>
-  <div class="wrap">
-    Open-source MeshCore firmware &middot; made in the Inland Northwest &middot;
-    <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a> &middot;
-    <a href="releases.html">Releases</a> &middot;
-    <a href="https://meshcore.co.uk">MeshCore</a> &middot;
-    <a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a> &middot;
-    <a href="privacy.html">Privacy</a> &middot;
-    GPL-3.0
+  <div class="wrap footer-base">
+    <span>GPL-3.0 &middot; <span data-version>latest release</span></span>
+    <span>Independent project. Not affiliated with LilyGo or the MeshCore project.</span>
   </div>
 </footer>
 
-<script src="assets/mesh.js?v=2"></script>
-<script src="assets/app.js?v=2"></script>
+<script src="/assets/app.js?v=6" defer></script>
 </body>
 </html>

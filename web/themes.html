@@ -7,11 +7,11 @@
 <meta name="description" content="Four themes for the LilyGo T-Lora Pager: Squatch, Blocks, Hero and Aurora. Each changes colours, the lock scene, sounds, vibration, the charging icon and the plug-in chime.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=3">
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css?v=6">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://squatchmesh.com/themes">
-<meta name="theme-color" content="#060a09">
+<meta name="theme-color" content="#070b0a">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Squatch Mesh">
 <meta property="og:title" content="Themes - Squatch Mesh">
@@ -29,29 +29,23 @@
 </style>
 </head>
 <body>
-<canvas id="mesh-bg"></canvas>
+<a class="skip" href="#main">Skip to content</a>
 
 <header class="nav">
   <div class="wrap nav-inner">
-    <a class="logo" href="index.html">
-      <span class="dots"><i></i><i></i><i></i><i></i><i></i><i></i></span>
-      SQUATCH MESH
-    </a>
-    <div class="spacer"></div>
-    <nav class="nav-links">
-      <a class="link" href="features.html">Features</a>
-      <a class="link" href="themes.html">Themes</a>
-      <a class="link" href="install.html">Install</a>
-      <a class="link" href="guide.html">Guide</a>
-      <a class="link" href="mesh.html">Mesh</a>
-      <a class="link" href="hardware.html">Hardware</a>
-      <a class="link" href="releases.html">Releases</a>
+    <a class="logo" href="/" aria-label="Squatch Mesh home"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu"><span></span></button>
+    <nav id="site-nav" class="nav-links" aria-label="Main">
+      <a class="link" href="/features">Features</a>
+      <a class="link" href="/themes">Themes</a>
+      <a class="link" href="/guide">Guide</a>
+      <a class="link" href="/releases">Releases</a>
+      <a class="btn solid" href="/install">Install</a>
     </nav>
-    <a class="btn solid" href="install.html">Install</a>
   </div>
 </header>
 
-<main class="wrap">
+<main id="main" class="wrap">
   <div class="tag" style="margin-top:46px">themes</div>
   <h1>Four of them</h1>
   <p class="sub">A theme is not a colour swap. Each one changes the palette, the lock-screen
@@ -59,7 +53,7 @@
   and the chime when you plug it in. Every screenshot here came straight off the device.</p>
 
   <figure style="margin:26px 0 10px">
-    <img class="screen" style="aspect-ratio:auto" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/themes.png" alt="All four lock screens: Squatch, Blocks, Hero and Aurora">
+    <img class="screen" style="aspect-ratio:auto" width="1992" height="960" src="/assets/img/themes.png" alt="All four lock screens: Squatch, Blocks, Hero and Aurora">
     <figcaption>All four lock screens</figcaption>
   </figure>
 
@@ -67,8 +61,8 @@
   <p class="sub">Pines, mountains and a sasquatch walking the ridge. Clean sine chimes, a steady
   double buzz, and a lightning bolt on the battery while it charges.</p>
   <div class="theme-row reveal">
-    <figure><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-inw.png" alt="Squatch lock screen"><figcaption>Lock</figcaption></figure>
-    <figure><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/home-inw.png" alt="Squatch home screen"><figcaption>Home</figcaption></figure>
+    <figure><img class="screen" width="480" height="222" src="/assets/img/lock-inw.png" alt="Squatch lock screen"><figcaption>Lock</figcaption></figure>
+    <figure><img class="screen" width="480" height="190" src="/assets/img/home-inw.png" alt="Squatch home screen"><figcaption>Home</figcaption></figure>
   </div>
   <div class="swatches"><i style="background:#060a09"></i><i style="background:#3dffa8"></i><i style="background:#1f6f4e"></i><i style="background:#b9d4c6"></i><i style="background:#e6b955"></i></div>
 
@@ -76,8 +70,8 @@
   <p class="sub">A blocky world under a pixel moon. Soft decaying piano notes, quick taps like
   chipping at a block, and a stepped pixel bolt when charging.</p>
   <div class="theme-row reveal">
-    <figure><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-blocks.png" alt="Blocks lock screen"><figcaption>Lock</figcaption></figure>
-    <figure><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/home-blocks.png" alt="Blocks home screen"><figcaption>Home</figcaption></figure>
+    <figure><img class="screen" width="480" height="222" src="/assets/img/lock-blocks.png" alt="Blocks lock screen"><figcaption>Lock</figcaption></figure>
+    <figure><img class="screen" width="480" height="190" src="/assets/img/home-blocks.png" alt="Blocks home screen"><figcaption>Home</figcaption></figure>
   </div>
   <div class="swatches"><i style="background:#0e1622"></i><i style="background:#6cc24a"></i><i style="background:#45362a"></i><i style="background:#f2b233"></i><i style="background:#5aa9e6"></i></div>
 
@@ -85,8 +79,8 @@
   <p class="sub">A castle on the horizon, a hooded figure, and a row of hearts that tracks your
   battery. Square-wave fanfares, and the charging mark is a little heart.</p>
   <div class="theme-row reveal">
-    <figure><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-hero.png" alt="Hero lock screen"><figcaption>Lock</figcaption></figure>
-    <figure><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/home-hero.png" alt="Hero home screen"><figcaption>Home</figcaption></figure>
+    <figure><img class="screen" width="480" height="222" src="/assets/img/lock-hero.png" alt="Hero lock screen"><figcaption>Lock</figcaption></figure>
+    <figure><img class="screen" width="480" height="190" src="/assets/img/home-hero.png" alt="Hero home screen"><figcaption>Home</figcaption></figure>
   </div>
   <div class="swatches"><i style="background:#081420"></i><i style="background:#f2c14e"></i><i style="background:#2e7d4f"></i><i style="background:#e84a5f"></i><i style="background:#5cc8ff"></i></div>
 
@@ -94,8 +88,8 @@
   <p class="sub">Curtains of light over a dark ridge. Slow bell tones, long gentle vibration, and a
   four-point star on the battery that drifts through the sky's colours while it charges.</p>
   <div class="theme-row reveal">
-    <figure><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/lock-aurora.png" alt="Aurora lock screen"><figcaption>Lock</figcaption></figure>
-    <figure><img class="screen" src="https://raw.githubusercontent.com/BamBam1121/inw-mesh/main/docs/img/home-aurora.png" alt="Aurora home screen"><figcaption>Home</figcaption></figure>
+    <figure><img class="screen" width="480" height="222" src="/assets/img/lock-aurora.png" alt="Aurora lock screen"><figcaption>Lock</figcaption></figure>
+    <figure><img class="screen" width="480" height="190" src="/assets/img/home-aurora.png" alt="Aurora home screen"><figcaption>Home</figcaption></figure>
   </div>
   <div class="swatches"><i style="background:#040716"></i><i style="background:#72f5c8"></i><i style="background:#6a4fc2"></i><i style="background:#ff6b8b"></i><i style="background:#7db8ff"></i></div>
 
@@ -107,19 +101,25 @@
   </div>
 </main>
 
-<footer>
-  <div class="wrap">
-    Open-source MeshCore firmware &middot; made in the Inland Northwest &middot;
-    <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a> &middot;
-    <a href="releases.html">Releases</a> &middot;
-    <a href="https://meshcore.co.uk">MeshCore</a> &middot;
-    <a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a> &middot;
-    <a href="privacy.html">Privacy</a> &middot;
-    GPL-3.0
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="logo" href="/"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+      <p>Free, open-source MeshCore firmware for the LilyGo T-Lora Pager. Made in the Inland Northwest.</p>
+    </div>
+    <nav class="footer-col" aria-label="Product"><h4>Product</h4>
+      <a href="/features">Features</a><a href="/themes">Themes</a><a href="/install">Install</a><a href="/releases">Releases</a></nav>
+    <nav class="footer-col" aria-label="Learn"><h4>Learn</h4>
+      <a href="/guide">Guide</a><a href="/mesh">How the mesh works</a><a href="/hardware">Hardware</a></nav>
+    <nav class="footer-col" aria-label="Project"><h4>Project</h4>
+      <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a><a href="https://meshcore.io">MeshCore</a><a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a><a href="/privacy">Privacy</a></nav>
+  </div>
+  <div class="wrap footer-base">
+    <span>GPL-3.0 &middot; <span data-version>latest release</span></span>
+    <span>Independent project. Not affiliated with LilyGo or the MeshCore project.</span>
   </div>
 </footer>
 
-<script src="assets/mesh.js?v=2"></script>
-<script src="assets/app.js?v=2"></script>
+<script src="/assets/app.js?v=6" defer></script>
 </body>
 </html>
