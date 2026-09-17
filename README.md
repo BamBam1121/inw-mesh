@@ -11,7 +11,7 @@ stock firmware.
 **Install from your browser:** https://squatchmesh.com/install &middot;
 **Help and feedback:** https://squatchmesh.com/help
 
-![Aurora lock screen, animated](web/assets/img/anim-aurora.webp)
+![Aurora lock screen, animated](web/assets/img/anim-aurora-v2.webp)
 
 ## Themes
 
@@ -21,10 +21,10 @@ sounds, the vibration, the charging indicator and the plug-in chime.
 
 | | Lock screen | Home |
 |---|---|---|
-| **Squatch** | ![Squatch lock](web/assets/img/anim-squatch.webp) | ![Squatch home](docs/img/home-inw.png) |
-| **Blocks** | ![Blocks lock](web/assets/img/anim-blocks.webp) | ![Blocks home](docs/img/home-blocks.png) |
-| **Hero** | ![Hero lock](web/assets/img/anim-hero.webp) | ![Hero home](docs/img/home-hero.png) |
-| **Aurora** | ![Aurora lock](web/assets/img/anim-aurora.webp) | ![Aurora home](docs/img/home-aurora.png) |
+| **Squatch** | ![Squatch lock](web/assets/img/anim-squatch-v2.webp) | ![Squatch home](docs/img/home-inw.png) |
+| **Blocks** | ![Blocks lock](web/assets/img/anim-blocks-v2.webp) | ![Blocks home](docs/img/home-blocks.png) |
+| **Hero** | ![Hero lock](web/assets/img/anim-hero-v2.webp) | ![Hero home](docs/img/home-hero.png) |
+| **Aurora** | ![Aurora lock](web/assets/img/anim-aurora-v2.webp) | ![Aurora home](docs/img/home-aurora.png) |
 
 ## Features
 
