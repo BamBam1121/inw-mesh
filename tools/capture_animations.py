@@ -89,8 +89,7 @@ def main():
                     quality=88, method=6, minimize_size=True, allow_mixed=True)
         out[0].save(os.path.join(OUT, "anim-%s.png" % name), optimize=True)
         print("  saved %s (%d kB, %d frames)" % (webp, os.path.getsize(webp) // 1024, len(out)))
-    s.write(b"home\n")
-    s.close()
+    s.close()                               # leave the pager on whatever screen it was on
 
 
 if __name__ == "__main__":
