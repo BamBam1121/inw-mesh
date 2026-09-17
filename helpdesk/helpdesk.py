@@ -35,7 +35,7 @@ LOGS = os.path.join(HERE, "logs")
 DEFAULTS = {
     "port": 8090,
     "www": r"C:\squatchmesh\www",
-    "model": "claude-opus-5",
+    "model": "claude-sonnet-5",
     "max_tokens": 900,
     # Per visitor (by IP) and for the whole site. The API key's own spending limit
     # in the Anthropic console is the real ceiling; these keep one visitor from using it up.
