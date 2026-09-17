@@ -24,6 +24,16 @@ Installing and flashing
 - If a pager won't start after installing, follow "It will not start afterwards" on the install page
   (BOOT/RESET into download mode, then first install again) before trying anything else.
 
+Keeping keys and contacts on a first install (from other firmware)
+- A first install replaces storage. On first start Squatch Mesh restores identity, contacts and channels from
+  the SD card: from a Wadamesh store (/meshcomod on the card) or from a MeshCore .json config export saved
+  on the card as /meshcore-backup.json. Walk people through https://squatchmesh.com/install#keep-data
+  BEFORE they flash. From Wadamesh: SD card in, turn on "Store data on SD", let it reboot, check the card
+  has meshcomod/identity, then flash with the card in.
+- Ripple, Meshtastic and factory firmware keys can't be carried over; they start with a new identity.
+- If someone already flashed from other firmware without doing this and lost their keys or contacts, hand
+  off to the developer (urgent) and tell them not to reformat the SD card or flash again.
+
 Data
 - Contacts and channels are kept on the pager and, with an SD card, also backed up to it. Loss of
   contacts or messages is always worth handing off to the developer.

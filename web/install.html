@@ -46,8 +46,44 @@
 
   <div class="grid c3" style="margin-top:26px">
     <div class="panel reveal"><div class="tag">01</div><h3>Plug in USB-C</h3><p class="sub" style="font-size:14px">Use a cable that carries data, not a charge-only one. That is the single most common reason no port appears.</p></div>
-    <div class="panel reveal"><div class="tag">02</div><h3>Pick update or first install</h3><p class="sub" style="font-size:14px">Update keeps everything. First install is for a pager coming from other firmware.</p></div>
+    <div class="panel reveal"><div class="tag">02</div><h3>Pick update or first install</h3><p class="sub" style="font-size:14px">Update keeps everything. First install is for a pager coming from other firmware: <a href="#keep-data">save your keys and contacts first</a>.</p></div>
     <div class="panel reveal"><div class="tag">03</div><h3>Wait for it to boot</h3><p class="sub" style="font-size:14px">Update is quick. A first install formats storage on the first start, which takes a few minutes.</p></div>
+  </div>
+
+  <h2 id="keep-data">Before a first install: keep your keys and contacts</h2>
+  <div class="panel warn reveal">
+    <p class="sub" style="font-size:14px;margin:0">A first install replaces the pager's storage. Squatch Mesh
+    brings your identity (your keys), contacts and channels across from the <b>SD card</b> on its first
+    start, so get them onto the card <b>before</b> you flash, and leave the card in.</p>
+  </div>
+  <div class="grid c2" style="margin-top:16px">
+    <div class="panel reveal">
+      <h3>Coming from Wadamesh</h3>
+      <ol class="sub" style="font-size:14px;margin:8px 0 0;padding-left:20px">
+        <li>Put an SD card in the pager.</li>
+        <li>In Wadamesh, turn on <b>Store data on SD</b> and let it reboot. It copies your data to the card.</li>
+        <li>Check the card now has a <b>meshcomod</b> folder with an <b>identity</b> folder inside.</li>
+        <li>Flash with the card still in. Keys, contacts and channels come back automatically.</li>
+      </ol>
+    </div>
+    <div class="panel reveal">
+      <h3>Have a MeshCore config export?</h3>
+      <p class="sub" style="font-size:14px;margin:8px 0 0">If you have a MeshCore <b>.json</b> config export of
+      this pager (it holds the private key, contacts and channels), copy it to the SD card's top folder and
+      rename it <b>meshcore-backup.json</b>. The first start imports your keys, name, radio settings,
+      contacts and channels from it. Keep that file private: anyone with it can pretend to be you.</p>
+    </div>
+    <div class="panel reveal">
+      <h3>Coming from Ripple, Meshtastic or the factory firmware</h3>
+      <p class="sub" style="font-size:14px;margin:8px 0 0">Their keys can't be carried over (Ripple keeps them
+      locked away, Meshtastic uses a different kind of key), so the pager starts with a new identity.
+      Write down anything you need, like private channel names and secrets, before you flash.</p>
+    </div>
+    <div class="panel reveal">
+      <h3>Already on Squatch Mesh?</h3>
+      <p class="sub" style="font-size:14px;margin:8px 0 0">Use <b>Update</b>. Nothing is lost, and daily
+      backups to the SD card (/inw) cover you if anything ever goes wrong.</p>
+    </div>
   </div>
 
   <h2 id="flash">Two ways in</h2>
@@ -68,7 +104,8 @@
     <div class="panel reveal">
       <h3>First install</h3>
       <p class="sub" style="font-size:14px">Coming from other firmware, or recovering a pager that
-      will not start. Writes the bootloader, partition table and app, so it stands on its own.</p>
+      will not start. Writes the bootloader, partition table and app, so it stands on its own.
+      <b>Coming from other firmware? Do the <a href="#keep-data">SD card steps above</a> first.</b></p>
       <p style="margin-top:14px">
         <esp-web-install-button manifest="https://bambam1121.github.io/inw-mesh/manifest-install.json">
           <button class="btn" slot="activate">FIRST INSTALL</button>
