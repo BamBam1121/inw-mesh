@@ -416,6 +416,15 @@ static void usbCommands() {
     line[n] = 0;
     n = 0;
     if (!line[0]) continue;
+    // Anyone with a USB cable could send "press" or "key" to get past the lock
+    // screen, or "shot" to read what's on it. While locked (or dark, which locks)
+    // only commands that don't reveal or unlock anything are accepted.
+    const bool locked = dimmer.asleep() || (nav.top() && nav.top()->isLock());
+    if (locked && (!strcmp(line, "shot") || !strcmp(line, "home") || !strcmp(line, "press") ||
+                   !strncmp(line, "key ", 4) || !strncmp(line, "wheel ", 6) || !strncmp(line, "theme ", 6))) {
+      Serial.println("[usb] pager is locked: unlock it on the device first");
+      continue;
+    }
     dimmer.note();
     if (!strcmp(line, "stores")) {
       storeReport();

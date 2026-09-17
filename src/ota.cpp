@@ -79,7 +79,23 @@ Info check() {
     strlcpy(info.error, "update info incomplete", sizeof(info.error));
     return info;
   }
-  if (!ed25519_verify(s_sig, s_sha, 32, RELEASE_KEY)) {
+  // "sig" signs only the firmware hash, so an older signed release could be served
+  // relabelled as a newer version. "sig2" also binds the version and size; require it.
+  uint8_t sig2[64];
+  if (!fromHex(doc["sig2"] | "", sig2, 64)) {
+    strlcpy(info.error, "update info incomplete", sizeof(info.error));
+    return info;
+  }
+  char tail[48];
+  const int tl = snprintf(tail, sizeof(tail), "%s\n%lu", info.version, (unsigned long)info.size);
+  static const char PREFIX[] = "squatch-ota-v2\n";
+  uint8_t msg[sizeof(PREFIX) - 1 + 32 + sizeof(tail)];
+  size_t ml = 0;
+  memcpy(msg, PREFIX, sizeof(PREFIX) - 1); ml += sizeof(PREFIX) - 1;
+  memcpy(msg + ml, s_sha, 32); ml += 32;
+  memcpy(msg + ml, tail, tl); ml += tl;
+  if (tl <= 0 || tl >= (int)sizeof(tail) || !ed25519_verify(s_sig, s_sha, 32, RELEASE_KEY) ||
+      !ed25519_verify(sig2, msg, ml, RELEASE_KEY)) {
     strlcpy(info.error, "update signature is not valid", sizeof(info.error));
     logs.add(LOG_WARN, "ota: bad signature on %s, ignored", info.version);
     return info;
