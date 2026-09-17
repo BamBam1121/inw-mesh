@@ -27,12 +27,19 @@ data = open(fw, "rb").read()
 digest = hashlib.sha256(data).digest()
 key = serialization.load_pem_private_key(pem.encode(), password=None)
 sig = key.sign(digest)
+# "sig" covers only the hash, so an attacker who controls a pager's network could
+# relabel an older signed release as a newer version and have it installed. "sig2"
+# also binds the version and size; firmware that knows about it requires it, and
+# older firmware simply ignores the extra field.
+msg2 = b"squatch-ota-v2\n" + digest + version.encode() + b"\n" + str(len(data)).encode()
+sig2 = key.sign(msg2)
 
 json.dump({
     "version": version,
     "size": len(data),
     "sha256": digest.hex(),
     "sig": sig.hex(),
+    "sig2": sig2.hex(),
     "notes": notes[:110],
 }, open(out, "w"), indent=1)
 print("sign_ota: ota.json for %s, %d bytes" % (version, len(data)))

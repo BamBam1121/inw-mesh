@@ -1,0 +1,8 @@
+# Keep the GitHub Actions this repo runs up to date, so security fixes in them
+# arrive as reviewable pull requests.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
