@@ -427,6 +427,15 @@ static void usbCommands() {
       Serial.println("[usb] pager is locked: unlock it on the device first");
       continue;
     }
+    // One line the installer (and anyone with a serial monitor) can ask for, so
+    // nobody has to catch the boot report as it scrolls past. Answered without
+    // waking the screen.
+    if (!strcmp(line, "status")) {
+      Serial.printf("[status] fw=%s radio=%s radio_ok=%d contacts=%d\n",
+                    FW_VERSION, radio_chip, s_radioOk ? 1 : 0,
+                    g_node ? g_node->getNumContacts() : -1);
+      continue;
+    }
     dimmer.note();
     if (!strcmp(line, "stores")) {
       storeReport();
