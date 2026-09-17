@@ -27,6 +27,7 @@ RfalNfcClass* s_nfc = nullptr;
 NdefClass* s_ndef = nullptr;
 bool s_ready = false, s_failed = false;
 Mode s_mode = Mode::Off;
+uint32_t s_session = 0;         // which screen's start() is live
 rfalNfcDiscoverParam s_disc;
 bool s_handled = false, s_primed = false;
 uint8_t* s_rx = nullptr;
@@ -54,16 +55,19 @@ char s_writeErr[48] = "";
 uint8_t s_ceFile[2 + 1024];
 uint16_t s_ceReads = 0;
 
+// A failed start is not remembered: the next screen that opens tries again, so
+// one bad moment on the shared bus doesn't leave NFC dead until a restart.
 bool ensureInit() {
   if (s_ready) return true;
-  if (s_failed) return false;
-  s_rf = new RfalRfST25R3916Class(&inw_spi, PIN_NFC_CS, PIN_NFC_INT);
-  s_nfc = new RfalNfcClass(s_rf);
-  s_ndef = new NdefClass(s_nfc);
+  if (!s_rf) {
+    s_rf = new RfalRfST25R3916Class(&inw_spi, PIN_NFC_CS, PIN_NFC_INT);
+    s_nfc = new RfalNfcClass(s_rf);
+    s_ndef = new NdefClass(s_nfc);
+  }
   inw_spi.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, -1);   // no-op once the radio did it
-  if (s_nfc->rfalNfcInitialize() != ST_ERR_NONE) { s_failed = true; return false; }
-  s_ready = true;
-  return true;
+  s_ready = s_nfc->rfalNfcInitialize() == ST_ERR_NONE;
+  s_failed = !s_ready;
+  return s_ready;
 }
 
 void onState(rfalNfcState st) {
@@ -105,14 +109,30 @@ void configListen() {
   s_disc.lmConfigPA.SEL_RES = 0x20;
 }
 
+// Leaving a screen: RFAL's deactivate turns the field off but never takes the
+// chip out of card emulation, so after "be a tag" it stayed a tag and reading
+// and writing failed until a restart. Stop listen mode explicitly.
 void stop() {
-  if (s_ready && s_mode != Mode::Off) s_nfc->rfalNfcDeactivate(false);
+  if (s_ready && s_mode != Mode::Off) {
+    s_nfc->rfalNfcDeactivate(false);
+    s_rf->rfalListenStop();
+    s_rf->rfalFieldOff();
+  }
   s_mode = Mode::Off;
 }
 
+// Closed screens are deleted a loop later; by then the next NFC screen may
+// already be running, and it must not be switched off by the old one.
+void stopSession(uint32_t session) { if (session == s_session) stop(); }
+
+// Every screen starts from a freshly reset chip (SET_DEFAULT plus all of RFAL's
+// state), whatever the last use left behind - an abandoned exchange, a tag
+// pulled away mid-write, emulation. It costs a moment when a screen opens.
 bool start(Mode m) {
+  s_session++;
+  stop();
+  s_ready = false;
   if (!ensureInit()) return false;
-  if (s_mode != Mode::Off) s_nfc->rfalNfcDeactivate(false);
   s_mode = m;
   s_handled = s_primed = false;
   if (m == Mode::Emulate) { configListen(); demoCeInit(s_ceNfcid2); }
@@ -418,8 +438,8 @@ String channelLink(int idx) {
 // ---- screens ------------------------------------------------------------------------------------
 class NfcReadView : public View {
 public:
-  NfcReadView() { _ok = start(Mode::Read); s_tag.fresh = false; s_tag.at = 0; }
-  ~NfcReadView() override { stop(); }
+  NfcReadView() { _ok = start(Mode::Read); _session = s_session; s_tag.fresh = false; s_tag.at = 0; }
+  ~NfcReadView() override { stopSession(_session); }
   void tick() override {
     work();
     if (s_tag.fresh) {
@@ -503,6 +523,7 @@ public:
   }
 private:
   bool _ok = false;
+  uint32_t _session = 0;
   std::vector<Rec> _recs;
   int _sel = 0, _phase = 0;
   uint32_t _anim = 0, _lastAt = 0;
@@ -517,8 +538,9 @@ public:
     s_writeResult = 0;
     s_writeErr[0] = 0;
     _ok = start(Mode::Write);
+    _session = s_session;
   }
-  ~NfcWriteView() override { stop(); }
+  ~NfcWriteView() override { stopSession(_session); }
   void tick() override {
     if (s_writeResult == 0) work();
     if (s_writeResult != _shown) {
@@ -528,7 +550,7 @@ public:
     }
     if (millis() - _anim > 250) { _anim = millis(); _phase++; if (!_shown) dirty = true; }
   }
-  void press() override { if (_shown == -1) { s_writeResult = 0; _shown = 0; start(Mode::Write); dirty = true; } }
+  void press() override { if (_shown == -1) { s_writeResult = 0; _shown = 0; start(Mode::Write); _session = s_session; dirty = true; } }
   void draw(Canvas& g) override {
     const Theme& t = nav.theme();
     drawHeader(g, "NFC  write", String(s_writeLen).c_str());
@@ -558,6 +580,7 @@ public:
 private:
   String _what;
   bool _ok = false;
+  uint32_t _session = 0;
   int _shown = 0, _phase = 0;
   uint32_t _anim = 0;
 };
@@ -570,8 +593,9 @@ public:
     demoCeSetNdefFile(s_ceFile, len + 2);
     s_ceReads = 0;
     _ok = start(Mode::Emulate);
+    _session = s_session;
   }
-  ~NfcEmulateView() override { stop(); }
+  ~NfcEmulateView() override { stopSession(_session); }
   void tick() override {
     // A reader expects an answer within milliseconds, far quicker than one pass
     // of the main loop (screen push, radio). So spin on the chip in ~120 ms bursts,
@@ -603,6 +627,7 @@ public:
 private:
   String _what;
   bool _ok = false;
+  uint32_t _session = 0;
   uint16_t _reads = 0;
   int _phase = 0;
   uint32_t _anim = 0;

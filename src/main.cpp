@@ -481,16 +481,92 @@ static void usbCommands() {
 constexpr int BOOT_STEPS = 12;
 static int s_bootStep = 0, s_bootErrY = 196;
 
+// The panel shares its SPI bus with the SD card and the radio, and the boot
+// animation draws from its own task while setup() is busy restoring from SD or
+// starting the radio. The SD and radio drivers hold this SPIClass's transaction
+// lock for every exchange, so taking the same lock around each boot-screen draw
+// keeps a frame from ever landing in the middle of an SD write. Only display
+// calls go inside one: anything that itself uses inw_spi would deadlock.
+struct BootBusLock {
+  BootBusLock()  { inw_spi.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0)); }
+  ~BootBusLock() { inw_spi.endTransaction(); }
+};
+
+// A small mesh: five nodes, each linked to its neighbours. While booting, a
+// packet hops round the outer ring so a slow step never looks like a freeze.
+static const int16_t LOGO_NX[] = {88, 128, 156, 112, 70}, LOGO_NY[] = {58, 44, 90, 126, 108};
+static const uint8_t LOGO_LINKS[][2] = {{0,1},{1,2},{2,3},{3,4},{4,0},{0,2},{1,3}};
+constexpr int LOGO_X = 54, LOGO_Y = 28, LOGO_W = 124, LOGO_H = 118;   // covers every ring
+constexpr uint32_t HOP_MS = 420;
+
+// ox/oy shift the drawing into a sprite; animate=false is the still mark.
+static void drawLogoMark(lgfx::LovyanGFX& g, int ox, int oy, uint32_t ms, bool animate) {
+  const int hop = (ms / HOP_MS) % 5;                    // links 0..4 are the outer ring
+  const float f = (ms % HOP_MS) / (float)HOP_MS;
+  for (int i = 0; i < 7; i++) {
+    auto& l = LOGO_LINKS[i];
+    g.drawLine(LOGO_NX[l[0]] + ox, LOGO_NY[l[0]] + oy, LOGO_NX[l[1]] + ox, LOGO_NY[l[1]] + oy,
+               animate && i == hop ? theme.green : theme.greenDim);
+  }
+  for (int i = 0; i < 5; i++) {
+    const bool big = i == 2;
+    // the node the packet just reached flares for the first part of the next hop
+    const bool lit = animate && i == LOGO_LINKS[(hop + 4) % 5][1] && f < 0.45f;
+    g.fillCircle(LOGO_NX[i] + ox, LOGO_NY[i] + oy, big ? 9 : 6, lit ? theme.txt : theme.green);
+    g.drawCircle(LOGO_NX[i] + ox, LOGO_NY[i] + oy, (big ? 13 : 9) + (lit ? 1 : 0), lit ? theme.green : theme.greenDim);
+  }
+  if (animate) {
+    auto& l = LOGO_LINKS[hop];
+    const int px = LOGO_NX[l[0]] + (LOGO_NX[l[1]] - LOGO_NX[l[0]]) * f + ox;
+    const int py = LOGO_NY[l[0]] + (LOGO_NY[l[1]] - LOGO_NY[l[0]]) * f + oy;
+    g.fillCircle(px, py, 3, theme.txt);
+  }
+}
+
+static volatile bool s_animRun = false;
+static SemaphoreHandle_t s_animDone = nullptr;
+
+static void bootAnimTask(void*) {
+  Canvas spr;
+  spr.setColorDepth(16);
+  if (spr.createSprite(LOGO_W, LOGO_H)) {
+    const uint32_t t0 = millis();
+    while (s_animRun) {
+      spr.fillScreen(theme.bg);
+      drawLogoMark(spr, -LOGO_X, -LOGO_Y, millis() - t0, true);
+      { BootBusLock lock; spr.pushSprite(&display, LOGO_X, LOGO_Y); }
+      vTaskDelay(pdMS_TO_TICKS(40));
+    }
+    spr.fillScreen(theme.bg);                            // leave the still mark behind
+    drawLogoMark(spr, -LOGO_X, -LOGO_Y, 0, false);
+    { BootBusLock lock; spr.pushSprite(&display, LOGO_X, LOGO_Y); }
+    spr.deleteSprite();
+  }
+  xSemaphoreGive(s_animDone);
+  vTaskDelete(nullptr);
+}
+
+static void bootAnimStart() {
+  s_animDone = xSemaphoreCreateBinary();
+  if (!s_animDone) return;                               // no animation, boot goes on as before
+  s_animRun = true;
+  // core 0, away from setup(); if it can't start, the still logo is already up
+  if (xTaskCreatePinnedToCore(bootAnimTask, "bootanim", 4096, nullptr, 1, nullptr, 0) != pdPASS) {
+    s_animRun = false;
+    vSemaphoreDelete(s_animDone);
+    s_animDone = nullptr;
+  }
+}
+
+static void bootAnimStop() {                             // before anything else owns the screen
+  if (!s_animDone) return;
+  s_animRun = false;
+  xSemaphoreTake(s_animDone, pdMS_TO_TICKS(2000));
+}
+
 static void drawBootLogo() {
   display.fillScreen(theme.bg);
-  // A small mesh: five nodes, each linked to its neighbours.
-  static const int16_t NX[] = {88, 128, 156, 112, 70}, NY[] = {58, 44, 90, 126, 108};
-  static const uint8_t LINKS[][2] = {{0,1},{1,2},{2,3},{3,4},{4,0},{0,2},{1,3}};
-  for (auto& l : LINKS) display.drawLine(NX[l[0]], NY[l[0]], NX[l[1]], NY[l[1]], theme.greenDim);
-  for (int i = 0; i < 5; i++) {
-    display.fillCircle(NX[i], NY[i], i == 2 ? 9 : 6, theme.green);
-    display.drawCircle(NX[i], NY[i], i == 2 ? 13 : 9, theme.greenDim);
-  }
+  drawLogoMark(display, 0, 0, 0, false);
   display.setFont(&fonts::FreeSansBold24pt7b);
   display.setTextSize(1);                         // "SQUATCH" at size 2 would run off the screen
   display.setTextColor(theme.greenDim);
@@ -508,8 +584,9 @@ static void drawBootLogo() {
 
 static void bootStep(const char* what, bool ok, const char* detail = nullptr) {
   s_bootStep = min(s_bootStep + 1, BOOT_STEPS);
-  display.fillRect(91, 185, 298 * s_bootStep / BOOT_STEPS, 3, theme.green);
   Serial.printf("[boot] %-18s %s %s\n", what, ok ? "ok" : "FAILED", detail ? detail : "");
+  BootBusLock lock;
+  display.fillRect(91, 185, 298 * s_bootStep / BOOT_STEPS, 3, theme.green);
   if (ok || s_bootErrY > 210) return;
   display.setFont(&fonts::Font2);
   display.setTextColor(theme.amber, theme.bg);
@@ -520,6 +597,7 @@ static void bootStep(const char* what, bool ok, const char* detail = nullptr) {
 }
 
 static void bootNote(const char* msg) {      // a long step the user should know about
+  BootBusLock lock;
   display.setFont(&fonts::Font2);
   display.fillRect(0, 194, L::W, 28, theme.bg);
   display.setTextColor(theme.amber, theme.bg);
@@ -565,6 +643,7 @@ void setup() {
     delay(3000);
   }
   drawBootLogo();
+  bootAnimStart();
   backlight.begin(PIN_TFT_BL);
   dimmer.begin(&backlight, ui_settings.brightness, 3, ui_settings.dimSecs * 1000UL, ui_settings.sleepSecs * 1000UL);
 
@@ -601,6 +680,7 @@ void setup() {
     // First boot on this partition table: the store has to be formatted once.
     bootNote("first start: preparing storage, this takes a few minutes");
     fsOk = SPIFFS.begin(true);
+    BootBusLock lock;
     display.fillRect(0, 194, L::W, 28, theme.bg);
   }
   bootStep("storage", fsOk);
@@ -633,6 +713,7 @@ void setup() {
   wifi::begin();
   s_bootStep = BOOT_STEPS - 1;
   bootStep("ready", true);
+  bootAnimStop();
   if (ui_settings.bootJingle && ui_settings.sound) jingle.play(app::themeSpec().boot);
 
   nav.begin(&display, &theme);
