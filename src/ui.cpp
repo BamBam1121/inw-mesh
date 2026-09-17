@@ -94,8 +94,16 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t) {
   d.fillRect(0, 0, L::W, 17, t.panel);
   d.drawFastHLine(0, 17, L::W, t.line);
   d.setTextColor(t.green, t.panel);
-  d.drawString("SQUATCH", 6, 1);
-  int x = 6 + d.textWidth("SQUATCH") + 8;
+  // The name the owner gave this pager; "SQUATCH" until they set one (a new
+  // node is named after its key, e.g. "a1b2c3d4"). Capped so the unread badge
+  // still clears the clock.
+  int x = 6;
+  const char* name = g_node ? g_node->prefs().node_name : "";
+  char keyName[10] = "";
+  if (g_node) mesh::Utils::toHex(keyName, g_node->self_id.pub_key, 4);
+  if (name[0] && strcmp(name, keyName) && strcmp(name, "NONAME")) x = drawUtf8(d, name, 6, 1, 140);
+  else x += d.drawString("SQUATCH", 6, 1);
+  x += 8;
   const uint16_t un = app::unread();
   if (un) {
     char b[12];
