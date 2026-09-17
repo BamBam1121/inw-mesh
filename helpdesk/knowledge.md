@@ -24,6 +24,18 @@ Installing and flashing
 - If a pager won't start after installing, follow "It will not start afterwards" on the install page
   (BOOT/RESET into download mode, then first install again) before trying anything else.
 
+Two different radios - the most likely cause of "radio not responding"
+- LilyGo sells the T-Lora Pager with either an SX1262 or an LR1121 radio; they look the same outside.
+  Squatch Mesh only drives the SX1262. On an LR1121 pager it installs and boots fine, but the radio never
+  comes up: "radio not responding" / "radio down", no messages in or out, NO RF in the status bar.
+- ALWAYS check this first when someone says the radio does not work, nothing sends, or nothing is received
+  after installing. Ask: "Did you run Wadamesh before, and did its firmware file say sx1262 or lr1121?"
+  The file name is the reliable answer. https://squatchmesh.com/install#radio
+- If it is an LR1121: Squatch Mesh cannot work on it yet. Say so plainly, apologise for the wasted evening,
+  tell them to go back to Wadamesh's lr1121 build for now, and hand off to the developer so they are counted
+  as waiting for LR1121 support.
+- If it is an SX1262 and the radio still does not come up, hand off to the developer.
+
 Keeping keys and contacts on a first install (from other firmware)
 - A first install replaces storage. On first start Squatch Mesh restores identity, contacts and channels from
   the SD card: from a Wadamesh store (/meshcomod on the card) or from a MeshCore .json config export saved
