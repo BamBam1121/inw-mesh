@@ -1012,22 +1012,12 @@ void loop() {
   if (bleConnected() != bleWas) { bleWas = bleConnected(); nav.statusChanged(); if (bleWas) nav.toast("phone connected"); }
 
   if (s_prefsDirtyAt && millis() - s_prefsDirtyAt > 3000) { s_prefsDirtyAt = 0; if (g_node) g_node->savePrefsNow(); }
-  // Contacts learned off the air are batched, and used to reach storage only on a
-  // clean restart - so a flat battery, a crash or a flash lost every one heard
-  // since the last save. Write them once they have been pending a while: the
-  // whole table is one 170 kB+ file, so this trades a bounded loss (a couple of
-  // minutes) against wearing the flash out with a write per advert.
-  {
-    static uint32_t pendingSince = 0;
-    const bool pending = g_node && g_node->hasPendingWork();
-    if (!pending) pendingSince = 0;
-    else if (!pendingSince) pendingSince = millis() | 1;
-    else if (millis() - pendingSince > 120000) {
-      pendingSince = 0;
-      g_node->saveContactsNow();
-      logs.add(LOG_INFO, "contacts saved (%d)", g_node->getNumContacts());
-    }
-  }
+  // No contacts flush here on purpose. MeshCore already writes them lazily, five
+  // seconds after anything changes them (LAZY_CONTACTS_WRITE_DELAY in MyMesh),
+  // so a timer of ours only added a second full-file write on top of that - and
+  // hasPendingWork() is also true for queued outbound packets, so it fired far
+  // more often than intended. Each write is the whole table, about a second at
+  // 1000+ contacts, with the screen frozen for it.
   if (s_uiDirtyAt && millis() - s_uiDirtyAt > 2000) { s_uiDirtyAt = 0; ui_settings.save(); }
   if (g_shotAt && (int32_t)(millis() - g_shotAt) >= 0) { g_shotAt = 0; takeScreenshot(); }
   usbCommands();
