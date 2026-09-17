@@ -582,9 +582,27 @@ static void drawBootLogo() {
   display.drawRect(90, 184, 300, 5, theme.line);
 }
 
+static uint32_t s_bootT0 = 0, s_bootStepAt = 0;   // so a slow boot says which step was slow
+static const char* s_stepName[BOOT_STEPS] = {};
+static uint32_t s_stepMs[BOOT_STEPS] = {};
+
+static void bootTimingReport() {
+  Serial.printf("[boot] took %lums total:", (unsigned long)(millis() - s_bootT0));
+  for (int i = 0; i < BOOT_STEPS; i++)
+    if (s_stepName[i]) Serial.printf("  %s %lums", s_stepName[i], (unsigned long)s_stepMs[i]);
+  Serial.println();
+}
+
 static void bootStep(const char* what, bool ok, const char* detail = nullptr) {
   s_bootStep = min(s_bootStep + 1, BOOT_STEPS);
-  Serial.printf("[boot] %-18s %s %s\n", what, ok ? "ok" : "FAILED", detail ? detail : "");
+  const uint32_t at = millis();
+  const uint32_t took = at - (s_bootStepAt ? s_bootStepAt : s_bootT0);
+  Serial.printf("[boot] %-18s %s %5lums (%lums in) %s\n", what, ok ? "ok" : "FAILED",
+                (unsigned long)took, (unsigned long)(at - s_bootT0), detail ? detail : "");
+  s_bootStepAt = at;
+  // Native USB re-enumerates during a reset, so the early lines above are lost to
+  // anyone watching from a PC. Keep them and print the lot once at the end.
+  if (s_bootStep <= BOOT_STEPS) { s_stepName[s_bootStep - 1] = what; s_stepMs[s_bootStep - 1] = took; }
   BootBusLock lock;
   display.fillRect(91, 185, 298 * s_bootStep / BOOT_STEPS, 3, theme.green);
   if (ok || s_bootErrY > 210) return;
@@ -606,6 +624,7 @@ static void bootNote(const char* msg) {      // a long step the user should know
 
 void setup() {
   clearForceDownloadBoot();     // first thing: one trip into flash mode stays one trip
+  s_bootT0 = millis();
   Serial.begin(115200);
   delay(150);
   Serial.println("\n[INW] boot " FW_VERSION);
@@ -714,6 +733,7 @@ void setup() {
   s_bootStep = BOOT_STEPS - 1;
   bootStep("ready", true);
   bootAnimStop();
+  bootTimingReport();
   if (ui_settings.bootJingle && ui_settings.sound) jingle.play(app::themeSpec().boot);
 
   nav.begin(&display, &theme);
@@ -900,6 +920,22 @@ void loop() {
   if (bleConnected() != bleWas) { bleWas = bleConnected(); nav.statusChanged(); if (bleWas) nav.toast("phone connected"); }
 
   if (s_prefsDirtyAt && millis() - s_prefsDirtyAt > 3000) { s_prefsDirtyAt = 0; if (g_node) g_node->savePrefsNow(); }
+  // Contacts learned off the air are batched, and used to reach storage only on a
+  // clean restart - so a flat battery, a crash or a flash lost every one heard
+  // since the last save. Write them once they have been pending a while: the
+  // whole table is one 170 kB+ file, so this trades a bounded loss (a couple of
+  // minutes) against wearing the flash out with a write per advert.
+  {
+    static uint32_t pendingSince = 0;
+    const bool pending = g_node && g_node->hasPendingWork();
+    if (!pending) pendingSince = 0;
+    else if (!pendingSince) pendingSince = millis() | 1;
+    else if (millis() - pendingSince > 120000) {
+      pendingSince = 0;
+      g_node->saveContactsNow();
+      logs.add(LOG_INFO, "contacts saved (%d)", g_node->getNumContacts());
+    }
+  }
   if (s_uiDirtyAt && millis() - s_uiDirtyAt > 2000) { s_uiDirtyAt = 0; ui_settings.save(); }
   if (g_shotAt && (int32_t)(millis() - g_shotAt) >= 0) { g_shotAt = 0; takeScreenshot(); }
   usbCommands();
