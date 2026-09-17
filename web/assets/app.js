@@ -91,6 +91,9 @@
   };
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  // The releases page fills this in; no inline script needed, so the CSP can forbid them.
+  if (document.getElementById("releases")) window.loadReleases("releases");
+
   function render(box, list) {
     if (!list || !list.length) { box.innerHTML = '<div class="panel">No releases yet.</div>'; return; }
     box.innerHTML = list.map((rel, i) => {

@@ -25,7 +25,15 @@ http://:8080 {
 	header {
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
-		X-Frame-Options SAMEORIGIN
+		X-Frame-Options DENY
+		# Browsers only ever use HTTPS for this site from now on.
+		Strict-Transport-Security "max-age=15552000; includeSubDomains"
+		# Scripts only from this site and the ESP Web Tools flasher on unpkg; network
+		# calls only to the firmware site and the GitHub releases API. No inline scripts.
+		Content-Security-Policy "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://bambam1121.github.io https://api.github.com https://unpkg.com; frame-ancestors 'none'; base-uri 'self'; form-action 'none'; object-src 'none'"
+		# Web Serial (for flashing) only for this site; everything else off.
+		Permissions-Policy "serial=(self), usb=(), camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy same-origin
 		-Server
 	}
 	@assets path /assets/*
