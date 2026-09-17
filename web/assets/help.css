@@ -1,3 +1,8 @@
+/* A class that sets display beats the browser's own [hidden] rule, which left the
+   flasher panel, its Try again button and its message box on screen before any
+   flashing started. Keep hidden meaning hidden. */
+[hidden] { display: none !important; }
+
 /* Help page chat. Uses the tokens from style.css. */
 .helper { display: grid; gap: 16px; }
 .chat { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
