@@ -51,15 +51,10 @@
     <div class="panel reveal"><div class="tag">03</div><h3>Wait for it to boot</h3><p class="sub" style="font-size:14px">Update is quick. A first install formats storage on the first start, which takes a few minutes.</p></div>
   </div>
 
-  <h2 id="radio">First: which radio does your pager have?</h2>
-  <div class="panel warn reveal">
-    <p class="sub" style="font-size:14px;margin:0">LilyGo sells the T-Lora Pager with two different radio
-    chips, and they look identical from the outside. <b>Squatch Mesh only works on the SX1262 version.</b>
-    On an LR1121 pager it installs fine but the radio never comes up, so nothing sends or receives.</p>
-    <p class="sub" style="font-size:14px;margin:10px 0 0"><b>How to tell:</b> if you came from Wadamesh, look at
-    which of its two builds you used &mdash; the file name says either <b>sx1262</b> or <b>lr1121</b>. That is
-    your radio. If it says lr1121, stay on Wadamesh for now: LR1121 support is on the list, and the pager
-    will tell you outright from the next release instead of just going quiet.</p>
+  <div class="panel reveal" id="radio" style="margin-top:22px">
+    <p class="sub" style="font-size:14px;margin:0"><b>Both radios work.</b> LilyGo fits the T-Lora Pager
+    with either an SX1262 or an LR1121 chip, and they look identical from outside. Squatch Mesh carries
+    both drivers and picks the right one when it starts, so there is nothing for you to check or choose.</p>
   </div>
 
   <h2 id="keep-data">Before a first install: keep your keys and contacts</h2>
@@ -208,6 +203,6 @@
 </footer>
 
 <script src="/assets/app.js?v=7" defer></script>
-<script src="/assets/flashhelp.js?v=1" defer></script>
+<script src="/assets/flashhelp.js?v=2" defer></script>
 </body>
 </html>
