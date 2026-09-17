@@ -139,9 +139,9 @@ Hand off to the developer with the hand_off_to_developer tool when:
 haven't fixed it;
 - they have a feature idea or general feedback for the developer (get the key details first, briefly);
 - you've tried and they're still stuck, or they ask for a person.
-Before handing off a bug, try to have their firmware version and what happened. Write the summary \
+The developer is emailed as soon as you use the tool, so use it once per problem, when you have the key details or the matter is urgent (then use it right away). Before handing off a bug, try to have their firmware version and what happened. Write the summary \
 for the developer: what they want, what was tried, relevant details. In the same reply, tell them \
-you're passing it on and that they can leave an email address for a reply.
+you've passed it on and that they can leave an email address below for a reply.
 
 Safety:
 - Never ask for or accept private keys, exported backups, passwords or private channel secrets. If \
@@ -165,6 +165,8 @@ TOOLS = [{
             "category": {"type": "string", "enum": ["bug", "question", "feature idea", "feedback", "other"]},
             "summary": {"type": "string", "description": "2-6 sentences for the developer: the problem or idea, "
                                                           "what was tried, firmware version and other details."},
+            "urgent": {"type": "boolean", "description": "true for safety problems (heat, fire, battery swelling), "
+                                                         "bricked devices, lost data, or legal threats"},
         },
         "required": ["category", "summary"],
     },
@@ -349,9 +351,10 @@ def ask_claude(messages):
         if b.get("type") == "tool_use" and b.get("name") == "hand_off_to_developer":
             inp = b.get("input") or {}
             handoff = {"category": str(inp.get("category", "other"))[:20],
-                       "summary": str(inp.get("summary", ""))[:1500]}
+                       "summary": str(inp.get("summary", ""))[:1500],
+                       "urgent": inp.get("urgent") is True}
     if handoff and not text:
-        text = "I'll pass this to the developer. Leave an email address below if you'd like a reply."
+        text = "I've passed this to the developer. Leave an email address below if you'd like a reply."
     return text, handoff
 
 
@@ -447,8 +450,15 @@ class Handler(BaseHTTPRequestHandler):
             text, handoff = ask_claude(messages)
         except Unavailable:
             return self.reply(503, {"error": "offline"})
+        sent = None
+        if handoff:
+            # Tell the developer now; the visitor may never press the form's button.
+            sent = allow_handoff(ip)
+            if sent:
+                convo = messages + [{"role": "assistant", "content": text}]
+                threading.Thread(target=notify, args=(ip, handoff, convo, "", "", ""), daemon=True).start()
         log_line({"event": "chat", "who": ip_key(ip), "question": messages[-1]["content"],
-                  "answer": text, "handoff": handoff, "turns": len(messages)})
+                  "answer": text, "handoff": handoff, "handoff_emailed": sent, "turns": len(messages)})
         self.reply(200, {"reply": text, "handoff": handoff})
 
     def handoff(self, body):
@@ -466,24 +476,9 @@ class Handler(BaseHTTPRequestHandler):
         if not allow_handoff(ip):
             return self.reply(429, {"error": "You've already sent several messages today. Please try again tomorrow, "
                                              "or post on GitHub."})
-        lines = []
-        for m in messages[-MAX_TURNS:]:
-            if isinstance(m, dict) and isinstance(m.get("content"), str):
-                who = "Visitor" if m.get("role") == "user" else "Helper"
-                lines.append("%s:\n%s\n" % (who, m["content"][:MAX_MSG_CHARS]))
-        text = "\n".join([
-            "Category: " + category,
-            "From: " + (name or "(no name)") + " <" + (email or "no email left") + ">",
-            "Visitor id: " + ip_key(ip),
-            "",
-            "Helper's summary:\n" + (summary or "(none: sent directly, without the helper)"),
-            "",
-            "Visitor's note:\n" + (note or "(none)"),
-            "",
-            "Conversation:\n" + ("\n".join(lines) if lines else "(none)"),
-        ])
-        subject = "%s: %s" % (category, (summary or note or "new message").split("\n")[0][:70])
-        ok = send_mail(subject, text, reply_to=email or None)
+        followup = bool(body.get("followup"))
+        ok = notify(ip, {"category": category, "summary": summary, "urgent": False}, messages, note, email, name,
+                    followup=followup)
         log_line({"event": "handoff", "who": ip_key(ip), "category": category, "sent": ok,
                   "summary": summary, "note": note, "email_left": bool(email)})
         if not ok:
@@ -494,6 +489,33 @@ class Handler(BaseHTTPRequestHandler):
                     rec["handoffs"] = max(0, rec["handoffs"] - 1)
             return self.reply(502, {"error": "That didn't send. Please post on GitHub instead."})
         self.reply(200, {"ok": True})
+
+
+def notify(ip, handoff, messages, note, email, name, followup=False):
+    lines = []
+    for m in messages[-MAX_TURNS:]:
+        if isinstance(m, dict) and isinstance(m.get("content"), str):
+            who = "Visitor" if m.get("role") == "user" else "Helper"
+            lines.append("%s:\n%s\n" % (who, m["content"][:MAX_MSG_CHARS]))
+    summary, category = handoff.get("summary", ""), handoff.get("category", "other")
+    head = []
+    if followup:
+        head = ["The visitor added a note or contact details to a conversation the helper already sent you.", ""]
+    text = "\n".join(head + [
+        "Category: " + category + (" (URGENT)" if handoff.get("urgent") else ""),
+        "From: " + (name or "(no name)") + " <" + (email or "no email left") + ">",
+        "Visitor id: " + ip_key(ip),
+        "",
+        "Helper's summary:\n" + (summary or "(none: sent directly, without the helper)"),
+        "",
+        "Visitor's note:\n" + (note or "(none)"),
+        "",
+        "Conversation:\n" + ("\n".join(lines) if lines else "(none)"),
+    ])
+    first = (summary or note or "new message").split("\n")[0][:70]
+    subject = ("URGENT " if handoff.get("urgent") else "") + ("reply wanted, " if followup else "") + \
+        "%s: %s" % (category, first)
+    return send_mail(subject, text, reply_to=email or None)
 
 
 def main():

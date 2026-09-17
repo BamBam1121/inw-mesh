@@ -13,6 +13,8 @@
   const hTitle = handoffBox.querySelector("h3");
   const hNote = hForm.querySelector("[name=note]");
   const hStatus = hForm.querySelector(".form-status");
+  const hIntro = handoffBox.querySelector(".handoff-intro");
+  const hButton = hForm.querySelector("button[type=submit]");
   const direct = document.getElementById("direct-message");
   const resetBtn = root.querySelector(".chat-reset");
   const KEY = "sm-helper-chat";
@@ -48,8 +50,12 @@
 
   function showHandoff(h) {
     pendingHandoff = h;
-    hTitle.textContent = h ? "Send this to the developer" : "Message the developer";
+    hTitle.textContent = h ? "The developer has been told. Want a reply?" : "Message the developer";
+    hIntro.textContent = h
+      ? "Your conversation was sent along. Leave an email address and the developer can answer you there."
+      : "Your conversation goes along with it. Leave an email address if you'd like a reply; it's only used to answer you.";
     hNote.placeholder = h ? "Anything to add? (optional)" : "What's going on, or what's your idea?";
+    hButton.textContent = h ? "Send my details" : "Send to the developer";
     hStatus.textContent = "";
     handoffBox.hidden = false;
     save();
@@ -134,7 +140,9 @@
   hForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const note = hNote.value.trim();
+    const email = hForm.querySelector("[name=email]").value.trim();
     if (!pendingHandoff && !note && !messages.length) { hStatus.textContent = "Write a message first."; return; }
+    if (pendingHandoff && !note && !email) { hStatus.textContent = "Add an email address or a note first."; return; }
     const btn = hForm.querySelector("button[type=submit]");
     btn.disabled = true;
     hStatus.textContent = "Sending…";
@@ -147,8 +155,9 @@
           note,
           summary: pendingHandoff ? pendingHandoff.summary : "",
           category: pendingHandoff ? pendingHandoff.category : "message",
+          followup: !!pendingHandoff,
           name: hForm.querySelector("[name=name]").value,
-          email: hForm.querySelector("[name=email]").value,
+          email,
         }),
       });
       const j = await r.json().catch(() => ({}));
@@ -156,7 +165,7 @@
         hForm.reset();
         handoffBox.hidden = true;
         pendingHandoff = null;
-        bubble("assistant", "Sent to the developer. If you left an email address, the reply will come there. " +
+        bubble("assistant", "Sent. If you left an email address, the developer's reply will come there. " +
           "It's a one-person project, so give it a few days.", "note");
         save();
       } else {
