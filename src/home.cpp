@@ -106,49 +106,65 @@ private:
 };
 
 // ---------------------------------------------------------------------------------
+// The lock face at one moment of its animation. Shared by the lock screen and the
+// "lockframe" USB command, which renders exact frames for the website's animations.
+static void drawLockFace(Canvas& d, const Theme& t, float phase, float scroll, uint16_t unread, const char* quip) {
+  drawStatusBar(d, t);
+  const bool hasUnread = unread > 0;
+  switch (t.style) {
+    case STYLE_BLOCKS: scenes::blocks(d, t, phase, scroll, hasUnread); break;
+    case STYLE_HERO:   scenes::hero(d, t, phase, scroll, hasUnread, app::batteryPct(), unread); break;
+    case STYLE_AURORA: scenes::aurora(d, t, phase, scroll, hasUnread); break;
+    default:           scenes::inw(d, t, phase, scroll, hasUnread); break;
+  }
+  d.fillRect(0, 172, L::W, L::H - 172, t.bg);
+
+  d.setFont(&fonts::Font4);
+  d.setTextColor(t.green, t.bg);
+  d.drawString(app::timeValid() ? clockText(app::now()) : "--:--", 8, 182);
+  d.setFont(&fonts::Font2);
+  d.setTextColor(t.dim, t.bg);
+  if (unread || !g_node) {
+    char sub[40];
+    if (unread) snprintf(sub, sizeof(sub), "%u unread message%s", unread, unread == 1 ? "" : "s");
+    else snprintf(sub, sizeof(sub), "radio down");
+    d.setTextColor(unread ? t.amber : t.red, t.bg);
+    d.drawString(sub, 140, 192);
+    d.setTextColor(t.dim, t.bg);
+  }
+  if (app::timeValid()) {
+    const char* date = clockText(app::now(), true);
+    d.drawString(date, L::W - 8 - d.textWidth(date), 192);
+  }
+  d.setTextColor(t.greenDim, t.bg);
+  d.drawString(quip, 8, 206);
+}
+
+// Renders theme `themeId`'s lock face at (phase, scroll) into `d` without touching
+// the saved theme. Unread is fixed at 0 and the one-liner is fixed, so frames of a
+// capture differ only by the animation.
+void renderLockFrame(Canvas& d, uint8_t themeId, float phase, float scroll) {
+  if (themeId >= THEME_COUNT) themeId = 0;
+  Theme t;
+  t.apply(*nav.display(), THEMES[themeId].palette, THEMES[themeId].style);
+  d.fillScreen(t.bg);
+  drawLockFace(d, t, phase, scroll, 0, "Off-grid messaging, straight from your pocket.");
+}
+
 class LockView : public View {
 public:
   bool isLock() override { return true; }
   void draw(Canvas& d) override {
-    const Theme& t = nav.theme();
-    drawStatusBar(d, t);
-    const bool hasUnread = app::unread() > 0;
-    switch (t.style) {
-      case STYLE_BLOCKS: scenes::blocks(d, t, _phase, _scroll, hasUnread); break;
-      case STYLE_HERO:   scenes::hero(d, t, _phase, _scroll, hasUnread, app::batteryPct(), app::unread()); break;
-      case STYLE_AURORA: scenes::aurora(d, t, _phase, _scroll, hasUnread); break;
-      default:           scenes::inw(d, t, _phase, _scroll, hasUnread); break;
-    }
-    d.fillRect(0, 172, L::W, L::H - 172, t.bg);
-
-    d.setFont(&fonts::Font4);
-    d.setTextColor(t.green, t.bg);
-    d.drawString(app::timeValid() ? clockText(app::now()) : "--:--", 8, 182);
-    d.setFont(&fonts::Font2);
-    d.setTextColor(t.dim, t.bg);
-    const uint16_t un = app::unread();
-    if (un || !g_node) {
-      char sub[40];
-      if (un) snprintf(sub, sizeof(sub), "%u unread message%s", un, un == 1 ? "" : "s");
-      else snprintf(sub, sizeof(sub), "radio down");
-      d.setTextColor(un ? t.amber : t.red, t.bg);
-      d.drawString(sub, 140, 192);
-      d.setTextColor(t.dim, t.bg);
-    }
-    if (app::timeValid()) {
-      const char* date = clockText(app::now(), true);
-      d.drawString(date, L::W - 8 - d.textWidth(date), 192);
-    }
     // A new line on every wake, and every half hour while it sits here.
     if (!_quip[0] || millis() - _quipAt > 30UL * 60UL * 1000UL) {
+      d.setFont(&fonts::Font2);
       for (int i = 0; i < 8; i++) {
         strlcpy(_quip, quipNext(), sizeof(_quip));
         if (d.textWidth(_quip) <= L::W - 16) break;
       }
       _quipAt = millis();
     }
-    d.setTextColor(t.greenDim, t.bg);
-    d.drawString(_quip, 8, 206);
+    drawLockFace(d, nav.theme(), _phase, _scroll, app::unread(), _quip);
   }
   void tick() override {
     // Animate only while someone is looking at it: not dimmed, not off.

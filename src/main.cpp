@@ -55,6 +55,7 @@ LogStore      logs;
 extern ConvKey g_openConv;
 View* makeHomeView();
 View* makeLockView();
+void renderLockFrame(Canvas& d, uint8_t themeId, float phase, float scroll);
 
 uint32_t g_shotAt = 0;
 static uint32_t s_prefsDirtyAt = 0, s_uiDirtyAt = 0;
@@ -408,7 +409,7 @@ void app::rebootToFlashMode() {
 }
 
 static void usbCommands() {
-  static char line[32];
+  static char line[48];
   static uint8_t n = 0;
   while (Serial.available()) {
     const char c = Serial.read();
@@ -435,6 +436,19 @@ static void usbCommands() {
       Serial.printf("SHOT565 %d %d\n", L::W, L::H);
       Serial.write((const uint8_t*)g.getBuffer(), L::W * L::H * 2);
       Serial.flush();
+    } else if (!strncmp(line, "lockframe ", 10)) {
+      // "lockframe <theme> <phase> <scroll>": one exact frame of a theme's animated
+      // lock face, for the website. Doesn't change the saved theme.
+      int th = 0; float ph = 0, sc = 0;
+      if (sscanf(line + 10, "%d %f %f", &th, &ph, &sc) >= 1) {
+        Canvas& g = nav.canvas();
+        renderLockFrame(g, (uint8_t)th, ph, sc);
+        Serial.flush();
+        Serial.printf("SHOT565 %d %d\n", L::W, L::H);
+        Serial.write((const uint8_t*)g.getBuffer(), L::W * L::H * 2);
+        Serial.flush();
+        nav.invalidate();
+      }
     } else if (!strncmp(line, "theme ", 6)) {
       const int t = atoi(line + 6);
       if (t >= 0 && t < THEME_COUNT) { ui_settings.themeId = t; app::applyTheme(); markUiDirty(); }
