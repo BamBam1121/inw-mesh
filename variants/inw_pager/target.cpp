@@ -1,73 +1,95 @@
 #include <Arduino.h>
 #include "target.h"
+#include <new>
 
 InwPagerBoard board;
 
 // Same host as the panel (bus_shared); a second SPI host on these pins hangs the
 // board. The SD card uses this object too, so all three agree on the pins.
 SPIClass inw_spi(FSPI);
+// LilyGo fits either an SX1262 or an LR1121 in the same slot, on the same pins,
+// and they look identical from outside. Carry both drivers and let the board
+// decide at boot (radio_init below). The one that isn't used is never begun.
 RADIO_CLASS radio = new Module(P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BUSY, inw_spi);
-WRAPPER_CLASS radio_driver(radio, board);
+CustomLR1121 radio_lr = new Module(P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BUSY, inw_spi);
+
+// radio_driver has to stay a plain object: MeshCore's own MyMesh.cpp and
+// ESP32Board.cpp use it that way. So reserve storage big enough for either
+// driver and build the right one into it once the chip is known.
+alignas(WRAPPER_CLASS) alignas(CustomLR1121Wrapper)
+static uint8_t s_driver_store[sizeof(WRAPPER_CLASS) > sizeof(CustomLR1121Wrapper)
+                              ? sizeof(WRAPPER_CLASS) : sizeof(CustomLR1121Wrapper)];
+RadioLibWrapper& radio_driver = *reinterpret_cast<RadioLibWrapper*>(s_driver_store);
+const char* radio_chip = "none";
+static PhysicalLayer* s_phy = nullptr;
 
 InwRTCClock rtc_clock;
 InwSensors sensors;
 
 bool radio_init() {
+  if (radio_chip[0] != 'n') return true;   // built once; never placement-new over a live driver
   rtc_clock.begin();
   inw_spi.begin(P_LORA_SCLK, P_LORA_MISO, P_LORA_MOSI, P_LORA_NSS);
-  // std_init applies the LORA_* and SX126X_* build flags (the 3.0V TCXO on DIO3
-  // and DIO2 as the RF switch, per Meshtastic's tlora-pager config). MyMesh then
-  // re-applies the saved freq/bw/sf/cr/tx from prefs.
-  return radio.std_init(&inw_spi);
-}
 
-// Which radio chip is actually on this board?
-// LilyGo ships the T-Lora Pager with either an SX1262 or an LR1121 on the same
-// pins, and this firmware drives the SX1262. When radio_init() fails, ask an
-// LR11x0 for its version: GetVersion (0x0101) only reads, so it never drives the
-// RF switch or the power amplifier of a chip we don't have a driver for.
-// Returns "LR1110" / "LR1120" / "LR1121", or nullptr if nothing known answers.
-const char* radio_chip_probe() {
-  pinMode(P_LORA_NSS, OUTPUT);
-  digitalWrite(P_LORA_NSS, HIGH);
-  pinMode(P_LORA_RESET, OUTPUT);
-  pinMode(P_LORA_BUSY, INPUT);
-  inw_spi.begin(P_LORA_SCLK, P_LORA_MISO, P_LORA_MOSI, P_LORA_NSS);
-
-  digitalWrite(P_LORA_RESET, LOW);
-  delay(5);
-  digitalWrite(P_LORA_RESET, HIGH);
-  uint32_t t0 = millis();                                  // BUSY stays high while it boots
-  while (digitalRead(P_LORA_BUSY) && millis() - t0 < 500) delay(1);
-  if (digitalRead(P_LORA_BUSY)) return nullptr;
-
-  inw_spi.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
-  digitalWrite(P_LORA_NSS, LOW);
-  inw_spi.transfer(0x01);
-  inw_spi.transfer(0x01);
-  digitalWrite(P_LORA_NSS, HIGH);
-  inw_spi.endTransaction();
-
-  t0 = millis();
-  while (digitalRead(P_LORA_BUSY) && millis() - t0 < 100) delay(1);
-
-  uint8_t rx[5] = {0};                     // status, hardware, device, fw major, fw minor
-  inw_spi.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
-  digitalWrite(P_LORA_NSS, LOW);
-  for (int i = 0; i < 5; i++) rx[i] = inw_spi.transfer(0x00);
-  digitalWrite(P_LORA_NSS, HIGH);
-  inw_spi.endTransaction();
-
-  Serial.printf("[radio] probe: %02x %02x %02x %02x %02x\n", rx[0], rx[1], rx[2], rx[3], rx[4]);
-  switch (rx[2]) {
-    case 0x01: return "LR1110";
-    case 0x02: return "LR1120";
-    case 0x03: return "LR1121";
+  // SX1262 first, unchanged: std_init applies the LORA_* and SX126X_* build
+  // flags (3.0V TCXO on DIO3, DIO2 as the RF switch, per Meshtastic's
+  // tlora-pager config). RadioLib reads the chip's own version string, so this
+  // only succeeds on a real SX1262 and every pager already in the field takes
+  // this path exactly as it did before. MyMesh then re-applies the saved
+  // freq/bw/sf/cr/tx from prefs.
+  if (radio.std_init(&inw_spi)) {
+    new (s_driver_store) WRAPPER_CLASS(radio, board);
+    s_phy = &radio;
+    radio_chip = "SX1262";
+    return true;
   }
-  return nullptr;
+
+  // Otherwise this is the LR1121 board. begin() identifies the chip too
+  // (RADIOLIB_ERR_CHIP_NOT_FOUND if it is something else), so reaching here with
+  // no error means the LR1121 really is what is fitted.
+#ifdef LORA_CR
+  const uint8_t cr = LORA_CR;
+#else
+  const uint8_t cr = 5;
+#endif
+  const int state = radio_lr.begin(LORA_FREQ, LORA_BW, LORA_SF, cr,
+                                   RADIOLIB_LR11X0_LORA_SYNC_WORD_PRIVATE,
+                                   LORA_TX_POWER, 8, 3.0f);   // 8-arg begin applies the 3.0V TCXO itself
+  if (state != RADIOLIB_ERR_NONE) {
+    Serial.printf("[radio] neither SX1262 nor LR1121 answered (lr1121 said %d)\n", state);
+    return false;
+  }
+
+  // RF switch on DIO5/DIO6. A wrong table here kills transmit power silently,
+  // with no error returned, so this is the T-Lora Pager's proven table rather
+  // than anything derived here: it matches Wadamesh's shipping LR1121 build for
+  // this board, which is the build these pagers are known to work on.
+  static const uint32_t rfswitch_dio_pins[] = {
+    RADIOLIB_LR11X0_DIO5, RADIOLIB_LR11X0_DIO6, RADIOLIB_NC, RADIOLIB_NC, RADIOLIB_NC,
+  };
+  static const Module::RfSwitchMode_t rfswitch_table[] = {
+    { LR11x0::MODE_STBY,  { LOW,  LOW  } },
+    { LR11x0::MODE_RX,    { LOW,  HIGH } },
+    { LR11x0::MODE_TX,    { HIGH, LOW  } },
+    { LR11x0::MODE_TX_HP, { HIGH, LOW  } },
+    { LR11x0::MODE_TX_HF, { LOW,  LOW  } },
+    { LR11x0::MODE_GNSS,  { LOW,  LOW  } },
+    { LR11x0::MODE_WIFI,  { LOW,  LOW  } },
+    END_OF_MODE_TABLE,
+  };
+  radio_lr.setRfSwitchTable(rfswitch_dio_pins, rfswitch_table);
+
+  // LR11x0::begin() defaults to a 2-byte CRC; the mesh uses 1 byte, the same
+  // override CustomSX1262::std_init() makes, so both chips talk to each other.
+  radio_lr.setCRC(1);
+
+  new (s_driver_store) CustomLR1121Wrapper(radio_lr, board);
+  s_phy = &radio_lr;
+  radio_chip = "LR1121";
+  return true;
 }
 
 mesh::LocalIdentity radio_new_identity() {
-  RadioNoiseListener rng(radio);
+  RadioNoiseListener rng(s_phy ? *s_phy : (PhysicalLayer&)radio);
   return mesh::LocalIdentity(&rng);
 }

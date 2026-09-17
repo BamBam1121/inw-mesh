@@ -605,16 +605,9 @@ void setup() {
   board.battReader = [] { return battery.millivolts(); };
   s_radioOk = nodeBegin();
   char rinfo[48] = "";
-  if (s_radioOk) snprintf(rinfo, sizeof(rinfo), "%.3f MHz sf%u", g_node->prefs().freq, g_node->prefs().sf);
-  if (!s_radioOk) {
-    // The pager comes with one of two radios. Say which one is fitted rather
-    // than leaving someone with a dead mesh and no idea why.
-    const char* chip = radio_chip_probe();
-    if (chip) snprintf(s_radioFault, sizeof(s_radioFault), "this pager has the %s radio, not supported yet", chip);
-    else strlcpy(s_radioFault, "radio not responding", sizeof(s_radioFault));
-    if (chip) snprintf(rinfo, sizeof(rinfo), "%s fitted, not supported yet", chip);
-    else strlcpy(rinfo, "not responding", sizeof(rinfo));
-  }
+  // radio_chip says which of the pager's two radios answered.
+  if (s_radioOk) snprintf(rinfo, sizeof(rinfo), "%s  %.3f MHz sf%u", radio_chip, g_node->prefs().freq, g_node->prefs().sf);
+  else strlcpy(rinfo, "not responding", sizeof(rinfo));
   bootStep("radio", s_radioOk, rinfo);
   if (s_radioOk) logs.add(LOG_INFO, "radio up");
   else logs.add(LOG_ERROR, "radio init failed: %s", s_radioFault);

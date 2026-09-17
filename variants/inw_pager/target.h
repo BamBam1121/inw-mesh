@@ -7,6 +7,7 @@
 #include <SPI.h>
 #include <helpers/radiolib/RadioLibWrappers.h>
 #include <helpers/radiolib/CustomSX1262Wrapper.h>
+#include "CustomLR1121Wrapper.h"
 #include <helpers/ESP32Board.h>
 #include <helpers/SensorManager.h>
 #include <InwPagerBoard.h>
@@ -43,11 +44,11 @@ public:
 };
 
 extern InwPagerBoard board;
-extern WRAPPER_CLASS radio_driver;
+extern RadioLibWrapper& radio_driver;   // the driver for whichever chip this board has (built by radio_init)
+extern const char* radio_chip;          // "SX1262", "LR1121", or "none"
 extern InwRTCClock rtc_clock;
 extern InwSensors sensors;
 extern SPIClass inw_spi;   // the one shared SPI bus: radio, SD card (and the panel)
 
 bool radio_init();
-const char* radio_chip_probe();   // after a failed radio_init: names an LR11x0 if that is what is fitted
 mesh::LocalIdentity radio_new_identity();
