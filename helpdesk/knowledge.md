@@ -36,6 +36,17 @@ Two different radios - the most likely cause of "radio not responding"
   as waiting for LR1121 support.
 - If it is an SX1262 and the radio still does not come up, hand off to the developer.
 
+Errors the browser installer reports (the install page sends these to me automatically)
+- "No port picked" / NotFoundError: the port chooser was closed, or the pager is on a charge-only cable.
+  A data USB-C cable and a different USB port fix most of these.
+- "Failed to open serial port" / port busy: something else holds it - another browser tab with the
+  installer open, Arduino IDE, a serial monitor. Close them and try again.
+- Timeouts, "Failed to initialize", "Chip not responding": put the pager into flash mode -
+  Settings > System > usb flash mode, or hold BOOT, tap RESET, release BOOT - then press install again.
+- A failure part-way through writing is safe to retry: press the same button again. Both buttons write
+  the bootloader and partition table, so a half-written pager is recoverable by running first install
+  again. Never tell anyone to tick "erase device" to fix a failed flash - that erases their contacts.
+
 Keeping keys and contacts on a first install (from other firmware)
 - A first install replaces storage. On first start Squatch Mesh restores identity, contacts and channels from
   the SD card: from a Wadamesh store (/meshcomod on the card) or from a MeshCore .json config export saved

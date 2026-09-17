@@ -38,3 +38,9 @@
 .nojs-help { margin: 0; }
 .helper.ready .nojs-help { display: none; }
 @media (min-width: 640px) { .handoff .row { grid-template-columns: 1fr 1fr; } }
+
+/* install page: what the flasher is doing */
+.flash-head { font: 600 16px/1.2 var(--display); }
+.flash-head.ok { color: var(--accent); }
+.flash-head.bad { color: var(--amber); }
+.flash-head.busy { color: var(--muted); }
