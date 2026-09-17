@@ -49,7 +49,7 @@ static const CarouselItem ITEMS[] = {
 
 static const char* footerText() {
   static char b[64];
-  if (!g_node) return "radio not responding";
+  if (!g_node) return app::radioFault();
   snprintf(b, sizeof(b), "%s  //  %s%s", g_node->name(),
            bleConnected() ? "phone linked" : (bleEnabled() ? "ble on" : "ble off"),
            g_node->prefs().isRepeatEn() ? "  //  repeating" : "");

@@ -33,6 +33,7 @@ namespace app {
   void     rebootToFlashMode();     // saves, then restarts into ROM USB download mode
   uint16_t batteryMv();
   bool     radioOk();
+  const char* radioFault();       // why the radio is down, when radioOk() is false
   uint16_t unread();
   void     applyDisplay();        // brightness, timeouts, keyboard light
   void     applySound();

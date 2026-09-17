@@ -60,6 +60,7 @@ uint32_t g_shotAt = 0;
 static uint32_t s_prefsDirtyAt = 0, s_uiDirtyAt = 0;
 static uint32_t s_kbFlashUntil = 0;
 static bool s_radioOk = false;
+static char s_radioFault[64] = "radio not responding";
 
 void markPrefsDirty() { s_prefsDirtyAt = millis() | 1; }
 void markUiDirty()    { s_uiDirtyAt = millis() | 1; }
@@ -98,6 +99,7 @@ bool app::charging() { return battery.present() && battery.charging(); }
 bool app::pluggedIn() { return battery.present() && battery.pluggedIn(); }
 uint16_t app::batteryMv() { return battery.present() ? battery.millivolts() : 0; }
 bool app::radioOk() { return s_radioOk; }
+const char* app::radioFault() { return s_radioFault; }
 
 static bool channelJoined(const ConvKey& k) {
   if (!g_node) return false;
@@ -416,6 +418,24 @@ static void usbCommands() {
     line[n] = 0;
     n = 0;
     if (!line[0]) continue;
+    // Anyone with a USB cable could send "press" or "key" to get past the lock
+    // screen, or "shot" to read what's on it. While locked (or dark, which locks)
+    // only commands that don't reveal or unlock anything are accepted.
+    const bool locked = dimmer.asleep() || (nav.top() && nav.top()->isLock());
+    if (locked && (!strcmp(line, "shot") || !strcmp(line, "home") || !strcmp(line, "press") ||
+                   !strncmp(line, "key ", 4) || !strncmp(line, "wheel ", 6) || !strncmp(line, "theme ", 6))) {
+      Serial.println("[usb] pager is locked: unlock it on the device first");
+      continue;
+    }
+    // One line the installer (and anyone with a serial monitor) can ask for, so
+    // nobody has to catch the boot report as it scrolls past. Answered without
+    // waking the screen.
+    if (!strcmp(line, "status")) {
+      Serial.printf("[status] fw=%s radio=%s radio_ok=%d contacts=%d\n",
+                    FW_VERSION, radio_chip, s_radioOk ? 1 : 0,
+                    g_node ? g_node->getNumContacts() : -1);
+      continue;
+    }
     dimmer.note();
     if (!strcmp(line, "stores")) {
       storeReport();
@@ -494,7 +514,7 @@ static void bootStep(const char* what, bool ok, const char* detail = nullptr) {
   display.setFont(&fonts::Font2);
   display.setTextColor(theme.amber, theme.bg);
   char line[64];
-  snprintf(line, sizeof(line), "%s: not responding", what);
+  snprintf(line, sizeof(line), "%s: %s", what, detail && detail[0] ? detail : "not responding");
   display.drawString(line, (L::W - display.textWidth(line)) / 2, s_bootErrY);
   s_bootErrY += 14;
 }
@@ -594,9 +614,12 @@ void setup() {
   board.battReader = [] { return battery.millivolts(); };
   s_radioOk = nodeBegin();
   char rinfo[48] = "";
-  if (s_radioOk) snprintf(rinfo, sizeof(rinfo), "%.3f MHz sf%u", g_node->prefs().freq, g_node->prefs().sf);
+  // radio_chip says which of the pager's two radios answered.
+  if (s_radioOk) snprintf(rinfo, sizeof(rinfo), "%s  %.3f MHz sf%u", radio_chip, g_node->prefs().freq, g_node->prefs().sf);
+  else strlcpy(rinfo, "not responding", sizeof(rinfo));
   bootStep("radio", s_radioOk, rinfo);
-  logs.add(s_radioOk ? LOG_INFO : LOG_ERROR, s_radioOk ? "radio up" : "radio init failed");
+  if (s_radioOk) logs.add(LOG_INFO, "radio up");
+  else logs.add(LOG_ERROR, "radio init failed: %s", s_radioFault);
   if (s_radioOk) keepEssentials();
   if (s_radioOk) {
     importPrefsAfterNode(report, sizeof(report));

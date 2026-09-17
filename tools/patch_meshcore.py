@@ -158,6 +158,15 @@ def patch_mymesh(src):
     old = "out_frame[i++] = MAX_CONTACTS / 2;"
     if old in src:
         src = src.replace(old, "out_frame[i++] = (MAX_CONTACTS / 2) > 255 ? 255 : (MAX_CONTACTS / 2);")
+    # Bluetooth pairing PIN. Without MeshCore's DISPLAY_CLASS (our UI is our own),
+    # every pager fell back to the well-known 123456, so anyone in radio range could
+    # pair and read or send messages. Give each pager its own random PIN the first
+    # time, saved so a paired phone keeps working; Settings > Bluetooth shows it.
+    old = "_active_ble_pin = BLE_PIN_CODE; // otherwise static pin"
+    if src.count(old) != 2:
+        raise SystemExit("patch_meshcore.py: MyMesh.cpp BLE pin code changed upstream, patch did not apply")
+    src = src.replace(old, "_prefs.ble_pin = 100000 + (esp_random() % 900000); savePrefs(); "
+                           "_active_ble_pin = _prefs.ble_pin; // INW: per-pager random PIN, not 123456")
     return src
 
 
