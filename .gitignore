@@ -19,3 +19,10 @@ src/identity_seed.h
 __pycache__/
 *.pyc
 .claude/
+
+# help desk secrets and logs (they live only on the laptop)
+helpdesk/anthropic_key.txt
+helpdesk/mail.json
+helpdesk/settings.json
+helpdesk/logs/
+helpdesk/salt.bin

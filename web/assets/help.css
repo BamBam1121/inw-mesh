@@ -1,0 +1,40 @@
+/* Help page chat. Uses the tokens from style.css. */
+.helper { display: grid; gap: 16px; }
+.chat { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.chat-top { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.chat-top .who { display: flex; align-items: center; gap: 10px; color: var(--heading); font: 600 16px/1.2 var(--display); }
+.chat-top .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.chat-reset { background: none; border: 0; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; padding: 6px; }
+.chat-reset:hover { color: var(--heading); }
+.chat-log { display: flex; flex-direction: column; gap: 10px; padding: 18px; min-height: 260px; max-height: min(60vh, 560px);
+  overflow-y: auto; overscroll-behavior: contain; }
+.msg { max-width: 88%; padding: 11px 15px; border-radius: 14px; font-size: 15.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.msg p { margin: 0 0 0.6em; }
+.msg p:last-child { margin: 0; }
+.msg code { font-family: var(--mono); font-size: 0.9em; background: rgba(255, 255, 255, 0.06); padding: 1px 5px; border-radius: 5px; }
+.msg.assistant { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--line-2); border-bottom-left-radius: 4px; }
+.msg.user { align-self: flex-end; background: var(--accent-soft); border: 1px solid var(--accent-dim); color: var(--heading);
+  border-bottom-right-radius: 4px; }
+.msg.note { background: transparent; border-style: dashed; color: var(--muted); }
+.msg.pending { color: var(--muted); animation: chat-pulse 1.2s ease-in-out infinite; }
+@keyframes chat-pulse { 50% { opacity: 0.5; } }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.chips button { background: var(--bg-2); border: 1px solid var(--line-2); color: var(--text); border-radius: 999px;
+  padding: 7px 13px; font: inherit; font-size: 14px; cursor: pointer; }
+.chips button:hover { border-color: var(--accent-dim); color: var(--heading); }
+.helper:not(.ready) .chips, .helper:not(.ready) .chat-form { display: none; }
+.chat-form { display: flex; gap: 10px; align-items: flex-end; padding: 14px; border-top: 1px solid var(--line); background: var(--bg-2); }
+.chat-form textarea, .handoff input, .handoff textarea { width: 100%; background: var(--bg); color: var(--heading);
+  border: 1px solid var(--line-2); border-radius: var(--radius-sm); padding: 11px 13px; font: inherit; font-size: 16px; resize: vertical; }
+.chat-form textarea { min-height: 48px; max-height: 180px; resize: none; }
+.chat-form textarea:focus, .handoff input:focus, .handoff textarea:focus { outline: 2px solid var(--accent-dim); outline-offset: 1px; }
+.chat-form .btn { flex: none; min-height: 48px; }
+.chat-fine { margin: 0; padding: 0 18px 14px; background: var(--bg-2); color: var(--muted); font-size: 13px; }
+.handoff form { display: grid; gap: 12px; margin-top: 12px; }
+.handoff label { display: grid; gap: 5px; font-size: 14px; color: var(--muted); }
+.handoff .row { display: grid; gap: 12px; }
+.form-status { min-height: 1.4em; margin: 0; color: var(--amber); font-size: 14px; }
+.nojs-help { margin: 0; }
+.helper.ready .nojs-help { display: none; }
+@media (min-width: 640px) { .handoff .row { grid-template-columns: 1fr 1fr; } }

@@ -4,18 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Help &amp; feedback &middot; Squatch Mesh</title>
-<meta name="description" content="Get help with Squatch Mesh, ask a question, report a bug or suggest a feature.">
+<meta name="description" content="Get help with Squatch Mesh from the helper, message the developer, report a bug or suggest a feature.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/style.css?v=6">
+<link rel="stylesheet" href="/assets/help.css?v=1">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://squatchmesh.com/help">
 <meta name="theme-color" content="#070b0a">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Squatch Mesh">
 <meta property="og:title" content="Help &amp; feedback - Squatch Mesh">
-<meta property="og:description" content="Get help with Squatch Mesh, ask a question, report a bug or suggest a feature.">
+<meta property="og:description" content="Get help with Squatch Mesh from the helper, message the developer, report a bug or suggest a feature.">
 <meta property="og:url" content="https://squatchmesh.com/help">
 <meta property="og:image" content="https://squatchmesh.com/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -42,14 +43,63 @@
     <div class="wrap">
       <span class="eyebrow">Help &amp; feedback</span>
       <h1>How can we help?</h1>
-      <p class="lead">Most answers are in the guide. If you're still stuck, have an idea, or found a bug,
-      tell us: every report gets read.</p>
+      <p class="lead">Ask the helper anything about installing, using or fixing your pager. If it can't
+      sort it out, it passes your question to the developer. Ideas and bug reports welcome too.</p>
     </div>
   </section>
 
   <section class="section" style="padding-top:28px">
+    <div class="wrap" style="max-width:820px">
+      <div class="helper" id="helper">
+        <div class="panel chat">
+          <div class="chat-top">
+            <span class="who"><span class="dot" aria-hidden="true"></span>Squatch helper</span>
+            <button type="button" class="chat-reset">Start over</button>
+          </div>
+          <div class="chat-log" aria-live="polite">
+            <div class="msg assistant intro">
+              <p>Hi! What's going on with your pager? Tell me what you see or what you're trying to do.</p>
+              <p class="nojs-help">The helper needs JavaScript. You can still use the guide or GitHub below.</p>
+              <div class="chips">
+                <button type="button" data-ask="My computer doesn't see the pager when I try to install.">Installer can't find it</button>
+                <button type="button" data-ask="How do I update my firmware?">Updating</button>
+                <button type="button" data-ask="My pager won't turn on or start properly.">Won't start</button>
+                <button type="button" data-ask="Some of my contacts are missing.">Missing contacts</button>
+                <button type="button" data-ask="I have an idea for a feature.">I have an idea</button>
+              </div>
+            </div>
+          </div>
+          <form class="chat-form">
+            <label class="skip" for="chat-input">Your message</label>
+            <textarea id="chat-input" rows="1" maxlength="2000" placeholder="Type your question&hellip;" autocomplete="off"></textarea>
+            <button type="submit" class="btn solid">Send</button>
+          </form>
+          <p class="chat-fine">Answers come from Claude, an AI, and can be wrong. Never share backups, keys or
+          private channel secrets. <a href="/privacy#helper">How chats are handled</a> &middot;
+          <a href="#handoff" id="direct-message">Message the developer directly</a></p>
+        </div>
+
+        <div class="panel handoff" id="handoff" hidden>
+          <h3 style="margin:0">Send this to the developer</h3>
+          <p style="margin:6px 0 0;color:var(--muted);font-size:15px">Your conversation goes along with it.
+          Leave an email address if you'd like a reply; it's only used to answer you.</p>
+          <form>
+            <div class="row">
+              <label>Name (optional)<input name="name" maxlength="80" autocomplete="name"></label>
+              <label>Email for a reply (optional)<input name="email" type="email" maxlength="254" autocomplete="email"></label>
+            </div>
+            <label>Note<textarea name="note" rows="3" maxlength="2000"></textarea></label>
+            <div><button type="submit" class="btn solid">Send to the developer</button></div>
+            <p class="form-status" role="status"></p>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:12px">
     <div class="wrap">
-      <h2 style="margin-top:0">Get unstuck</h2>
+      <h2 style="margin-top:0">Read up</h2>
       <div class="grid c3">
         <a class="card" href="/guide"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5V21h16"/></svg></div>
           <div class="k">The guide</div><p>Keys, first start, updates, battery, notifications and the SD card.</p></a>
@@ -64,9 +114,9 @@
   <section class="section band">
     <div class="wrap">
       <div class="section-head">
-        <h2 style="margin-top:0">Talk to us</h2>
-        <p class="lead">Questions, bugs and ideas live on GitHub, where anyone can search earlier answers.
-        You'll need a free GitHub account to post.</p>
+        <h2 style="margin-top:0">Or post on GitHub</h2>
+        <p class="lead">Prefer to ask in public? Questions, bugs and ideas on GitHub can be searched by
+        everyone. You'll need a free GitHub account to post.</p>
       </div>
       <div class="grid c2">
         <a class="card" href="https://github.com/BamBam1121/inw-mesh/discussions/categories/q-a"><div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
@@ -124,5 +174,6 @@
 </footer>
 
 <script src="/assets/app.js?v=7" defer></script>
+<script src="/assets/help.js?v=1" defer></script>
 </body>
 </html>
