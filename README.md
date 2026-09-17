@@ -7,23 +7,24 @@ The pager runs a full MeshCore companion node, so it works on its own (keyboard,
 wheel, screen) and still pairs with the MeshCore phone app over Bluetooth like
 stock firmware.
 
-**Website and browser installer:** https://inwmesh.lovable.app
-(or the plain installer at https://bambam1121.github.io/inw-mesh/)
+**Website:** https://squatchmesh.com &middot;
+**Install from your browser:** https://squatchmesh.com/install &middot;
+**Help and feedback:** https://squatchmesh.com/help
 
-![Aurora lock screen](docs/img/lock-aurora.png)
+![Aurora lock screen, animated](web/assets/img/anim-aurora.webp)
 
 ## Themes
 
 Each theme changes the colours, the lock-screen scene, the card style, the
 sounds, the vibration, the charging indicator and the plug-in chime.
-(Screenshots straight off the pager.)
+(Lock screens are the pager's own animation; home screens are screenshots.)
 
 | | Lock screen | Home |
 |---|---|---|
-| **Squatch** | ![Squatch lock](docs/img/lock-inw.png) | ![Squatch home](docs/img/home-inw.png) |
-| **Blocks** | ![Blocks lock](docs/img/lock-blocks.png) | ![Blocks home](docs/img/home-blocks.png) |
-| **Hero** | ![Hero lock](docs/img/lock-hero.png) | ![Hero home](docs/img/home-hero.png) |
-| **Aurora** | ![Aurora lock](docs/img/lock-aurora.png) | ![Aurora home](docs/img/home-aurora.png) |
+| **Squatch** | ![Squatch lock](web/assets/img/anim-squatch.webp) | ![Squatch home](docs/img/home-inw.png) |
+| **Blocks** | ![Blocks lock](web/assets/img/anim-blocks.webp) | ![Blocks home](docs/img/home-blocks.png) |
+| **Hero** | ![Hero lock](web/assets/img/anim-hero.webp) | ![Hero home](docs/img/home-hero.png) |
+| **Aurora** | ![Aurora lock](web/assets/img/anim-aurora.webp) | ![Aurora home](docs/img/home-aurora.png) |
 
 ## Features
 
@@ -72,11 +73,13 @@ sounds, the vibration, the charging indicator and the plug-in chime.
 
 ## Install
 
-Use the [web installer](https://inwmesh.lovable.app) in Chrome or Edge.
-It never writes the bootloader and never erases the flash.
+Use the [web installer](https://squatchmesh.com/install) in Chrome or Edge.
+Both options write the bootloader, partition table and app, so either one can
+bring back a pager that won't start. Neither erases the flash; don't tick
+"erase device", which wipes contacts and channels too.
 
-- **Update** writes only the app. Settings, contacts and messages stay.
-- **First install** also writes the partition table. The first boot then
+- **Update** keeps settings, contacts and messages.
+- **First install** is for a pager coming from other firmware. The first boot then
   formats the data store, which takes a few minutes. If the SD card holds a
   MeshCore export (`meshcore-backup.json`) or a Wadamesh data folder, contacts and
   channels are imported from it.
@@ -87,6 +90,10 @@ It never writes the bootloader and never erases the flash.
 - After that, updates arrive over Wi-Fi.
 - **Installer can't connect?** On the pager, Settings > System > usb flash mode,
   then click install. (On 1.1.5 or older: hold BOOT, tap RESET, let go of BOOT.)
+- **Pager won't start?** Hold BOOT, tap RESET, let go of BOOT, and run First
+  install again. It works even on a completely blank chip.
+- **Stuck?** Ask on [Discussions](https://github.com/BamBam1121/inw-mesh/discussions)
+  or see https://squatchmesh.com/help.
 
 ## Building
 
