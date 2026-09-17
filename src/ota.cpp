@@ -11,6 +11,7 @@
 #include "settings.h"
 #include "logstore.h"
 #include "ui.h"
+#include "backlight.h"     // dimmer.idleFor(): only check for updates in a gap
 
 extern LogStore logs;
 void inwProgress(const char* what, uint32_t done, uint32_t total);   // main.cpp
@@ -172,6 +173,10 @@ void tick() {
   if (!wifi::connected()) { connectedAt = 0; return; }
   if (!connectedAt) { connectedAt = millis(); return; }
   if (millis() - connectedAt < 20000) return;
+  // check() blocks for the best part of a second (TLS handshake, then the
+  // fetch). Doing that mid-scroll is felt as a stutter, so wait for a gap in
+  // what the person is doing - it is a once-per-boot check and can wait.
+  if (dimmer.idleFor() < 3000) return;
   done = true;
   const Info info = check();
   if (!info.ok) { logs.add(LOG_INFO, "update check: %s", info.error); return; }

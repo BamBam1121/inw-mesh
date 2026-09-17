@@ -412,7 +412,7 @@ void app::rebootToFlashMode() {
 }
 
 static void usbCommands() {
-  static char line[32];
+  static char line[64];
   static uint8_t n = 0;
   while (Serial.available()) {
     const char c = Serial.read();
@@ -461,6 +461,43 @@ static void usbCommands() {
                     (int)(SPIFFS.exists("/prefs.json") ? SPIFFS.open("/prefs.json").size() : -1),
                     (int)(SPIFFS.exists("/identity/_main.id") ? SPIFFS.open("/identity/_main.id").size() : -1),
                     (int)(SPIFFS.exists("/contacts3") ? SPIFFS.open("/contacts3").size() : -1));
+      continue;
+    }
+    // "set <name> <value>" for the handful of settings worth putting back over
+    // USB after NVS has been wiped. Refused while locked, like "theme": a cable
+    // must not be able to turn the lock screen off.
+    if (!strncmp(line, "set ", 4)) {
+      if (locked) { Serial.println("[usb] pager is locked: unlock it on the device first"); continue; }
+      char name[24] = "";
+      long v = 0;
+      if (sscanf(line + 4, "%23s %ld", name, &v) != 2) { Serial.println("[set] usage: set <name> <value>"); continue; }
+      UiSettings& u = ui_settings;
+      bool known = true;
+      if (!strcmp(name, "theme") && v >= 0 && v < THEME_COUNT) u.themeId = v;
+      else if (!strcmp(name, "bright") && v >= 1 && v <= 16) u.brightness = v;
+      else if (!strcmp(name, "vol") && v >= 0 && v <= 100) u.volume = v;
+      else if (!strcmp(name, "wifi")) u.wifiOn = v != 0;
+      else if (!strcmp(name, "beta")) u.betaUpdates = v != 0;
+      else if (!strcmp(name, "lock")) u.lockOnSleep = v != 0;
+      else if (!strcmp(name, "wheel")) u.wheelUnlock = v != 0;
+      else if (!strcmp(name, "tz")) u.tzMinutes = v;
+      else known = false;
+      if (!known) { Serial.printf("[set] unknown setting '%s'\n", name); continue; }
+      u.save();
+      app::applyTheme(); app::applyDisplay(); app::applySound();
+      markUiDirty(); nav.invalidate();
+      Serial.printf("[set] %s = %ld\n", name, v);
+      continue;
+    }
+    // How much SPIFFS is in use and how many files are in it: MeshCore keeps one
+    // advert blob per contact, and SPIFFS gets slow when a directory grows.
+    if (!strcmp(line, "fs")) {
+      Serial.printf("[fs] spiffs %u / %u bytes used\n",
+                    (unsigned)SPIFFS.usedBytes(), (unsigned)SPIFFS.totalBytes());
+      File root = SPIFFS.open("/");
+      int files = 0; size_t bytes = 0;
+      for (File f = root.openNextFile(); f; f = root.openNextFile()) { files++; bytes += f.size(); }
+      Serial.printf("[fs] %d files, %u bytes\n", files, (unsigned)bytes);
       continue;
     }
     if (!strcmp(line, "backup")) {          // same job as Settings -> back up to sd now

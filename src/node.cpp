@@ -635,6 +635,10 @@ bool nodeBegin() {
 
 void nodeLoop() {
   if (!g_node) return;
+  // Note for later: with a big contact list (1000+), MeshCore's own loop stalls
+  // for about a second whenever traffic marks contacts dirty - it rewrites the
+  // whole contacts file. Both that write and its timer are private to MyMesh,
+  // so it can't be deferred from here; fixing it means patching MeshCore.
   g_node->loop();
   g_node->tick();
   rtc_clock.tick();
