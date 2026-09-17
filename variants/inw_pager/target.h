@@ -49,4 +49,5 @@ extern InwSensors sensors;
 extern SPIClass inw_spi;   // the one shared SPI bus: radio, SD card (and the panel)
 
 bool radio_init();
+const char* radio_chip_probe();   // after a failed radio_init: names an LR11x0 if that is what is fitted
 mesh::LocalIdentity radio_new_identity();

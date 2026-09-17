@@ -60,6 +60,7 @@ uint32_t g_shotAt = 0;
 static uint32_t s_prefsDirtyAt = 0, s_uiDirtyAt = 0;
 static uint32_t s_kbFlashUntil = 0;
 static bool s_radioOk = false;
+static char s_radioFault[64] = "radio not responding";
 
 void markPrefsDirty() { s_prefsDirtyAt = millis() | 1; }
 void markUiDirty()    { s_uiDirtyAt = millis() | 1; }
@@ -98,6 +99,7 @@ bool app::charging() { return battery.present() && battery.charging(); }
 bool app::pluggedIn() { return battery.present() && battery.pluggedIn(); }
 uint16_t app::batteryMv() { return battery.present() ? battery.millivolts() : 0; }
 bool app::radioOk() { return s_radioOk; }
+const char* app::radioFault() { return s_radioFault; }
 
 static bool channelJoined(const ConvKey& k) {
   if (!g_node) return false;
@@ -503,7 +505,7 @@ static void bootStep(const char* what, bool ok, const char* detail = nullptr) {
   display.setFont(&fonts::Font2);
   display.setTextColor(theme.amber, theme.bg);
   char line[64];
-  snprintf(line, sizeof(line), "%s: not responding", what);
+  snprintf(line, sizeof(line), "%s: %s", what, detail && detail[0] ? detail : "not responding");
   display.drawString(line, (L::W - display.textWidth(line)) / 2, s_bootErrY);
   s_bootErrY += 14;
 }
@@ -604,8 +606,18 @@ void setup() {
   s_radioOk = nodeBegin();
   char rinfo[48] = "";
   if (s_radioOk) snprintf(rinfo, sizeof(rinfo), "%.3f MHz sf%u", g_node->prefs().freq, g_node->prefs().sf);
+  if (!s_radioOk) {
+    // The pager comes with one of two radios. Say which one is fitted rather
+    // than leaving someone with a dead mesh and no idea why.
+    const char* chip = radio_chip_probe();
+    if (chip) snprintf(s_radioFault, sizeof(s_radioFault), "this pager has the %s radio, not supported yet", chip);
+    else strlcpy(s_radioFault, "radio not responding", sizeof(s_radioFault));
+    if (chip) snprintf(rinfo, sizeof(rinfo), "%s fitted, not supported yet", chip);
+    else strlcpy(rinfo, "not responding", sizeof(rinfo));
+  }
   bootStep("radio", s_radioOk, rinfo);
-  logs.add(s_radioOk ? LOG_INFO : LOG_ERROR, s_radioOk ? "radio up" : "radio init failed");
+  if (s_radioOk) logs.add(LOG_INFO, "radio up");
+  else logs.add(LOG_ERROR, "radio init failed: %s", s_radioFault);
   if (s_radioOk) keepEssentials();
   if (s_radioOk) {
     importPrefsAfterNode(report, sizeof(report));
