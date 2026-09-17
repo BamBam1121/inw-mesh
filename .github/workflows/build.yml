@@ -116,7 +116,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         # Third-party action runs with write access to releases: pinned to a commit,
         # not a movable tag (v2 = 3bb12739, checked 2026-09-16).
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
           files: |
             site/firmware/firmware.bin
