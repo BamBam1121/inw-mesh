@@ -4,6 +4,8 @@
 #include <Wire.h>
 #include <SPIFFS.h>
 #include <esp_system.h>
+#include <nvs_flash.h>
+#include <Preferences.h>
 #include <soc/rtc_cntl_reg.h>
 #include "power.h"
 #include "notify.h"
@@ -430,6 +432,41 @@ static void usbCommands() {
     // One line the installer (and anyone with a serial monitor) can ask for, so
     // nobody has to catch the boot report as it scrolls past. Answered without
     // waking the screen.
+    // Diagnostic for the "a website update wipes my settings" report: how full
+    // NVS is, what it holds, and the settings most likely to be noticed missing.
+    if (!strcmp(line, "nvs")) {
+      nvs_stats_t st;
+      if (nvs_get_stats(nullptr, &st) == ESP_OK)
+        Serial.printf("[nvs] used %d / %d entries (%d free, %d namespaces)\n",
+                      st.used_entries, st.total_entries, st.free_entries, st.namespace_count);
+      else
+        Serial.println("[nvs] stats unavailable");
+      Preferences p;
+      if (p.begin("inw-ui", true)) {
+        Serial.printf("[nvs] inw-ui ver=%u blob=%u free=%u\n", p.getUChar("ver", 0),
+                      (unsigned)p.getBytesLength("blob"), (unsigned)p.freeEntries());
+        p.end();
+      } else Serial.println("[nvs] inw-ui missing");
+      if (p.begin("inw-keep", true)) {
+        Serial.printf("[nvs] inw-keep id=%u ch=%u pr=%u\n", (unsigned)p.getBytesLength("id"),
+                      (unsigned)p.getBytesLength("ch"), (unsigned)p.getBytesLength("pr"));
+        p.end();
+      } else Serial.println("[nvs] inw-keep missing");
+      Serial.printf("[ui] theme=%u bright=%u wifi=%d beta=%d lockOnSleep=%d wheelUnlock=%d vol=%u tz=%d\n",
+                    ui_settings.themeId, ui_settings.brightness, ui_settings.wifiOn,
+                    ui_settings.betaUpdates, ui_settings.lockOnSleep, ui_settings.wheelUnlock,
+                    ui_settings.volume, ui_settings.tzMinutes);
+      Serial.printf("[files] channels2=%d prefs=%d identity=%d contacts3=%d\n",
+                    (int)(SPIFFS.exists("/channels2") ? SPIFFS.open("/channels2").size() : -1),
+                    (int)(SPIFFS.exists("/prefs.json") ? SPIFFS.open("/prefs.json").size() : -1),
+                    (int)(SPIFFS.exists("/identity/_main.id") ? SPIFFS.open("/identity/_main.id").size() : -1),
+                    (int)(SPIFFS.exists("/contacts3") ? SPIFFS.open("/contacts3").size() : -1));
+      continue;
+    }
+    if (!strcmp(line, "backup")) {          // same job as Settings -> back up to sd now
+      Serial.printf("[backup] %s\n", sdBackupNow(true));
+      continue;
+    }
     if (!strcmp(line, "status")) {
       Serial.printf("[status] fw=%s radio=%s radio_ok=%d contacts=%d\n",
                     FW_VERSION, radio_chip, s_radioOk ? 1 : 0,
@@ -705,6 +742,24 @@ void setup() {
   bootStep("storage", fsOk);
   const bool sdOk = sdMount();
   bootStep("sd card", true, sdOk ? "mounted" : "none");   // no card is normal
+  // NVS came up empty (wiped, or another firmware had the board): bring the
+  // preferences back from the copies rather than starting at defaults.
+  if (fsOk && !ui_settings.cameFromNvs()) {
+    const char* from = ui_settings.restoreIfWiped(sdOk);
+    if (from) {
+      app::applyTheme();
+      app::applyDisplay();
+      app::applySound();
+      dimmer.setFull(ui_settings.brightness);
+      keyboard.setBacklight(ui_settings.kbBacklight);
+      logs.add(LOG_WARN, "settings were empty, restored from %s", from);
+    }
+    // No bootStep here: it would make the progress bar jump on the rare boot
+    // that restores. The log line says what happened.
+    Serial.printf("[boot] settings           %s\n", from ? from : "defaults (no copy to restore)");
+  } else if (fsOk) {
+    ui_settings.saveMirror();               // keep the copy current from the first boot
+  }
   char report[96];
   importBeforeNode(report, sizeof(report));
   bootStep("restore", true, report);

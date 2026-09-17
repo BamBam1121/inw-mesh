@@ -83,6 +83,9 @@ struct UiSettings {
 
   void load();
   void save();
+  void saveMirror();                        // copy beside the mesh stores
+  bool cameFromNvs();                       // false when NVS came up empty
+  const char* restoreIfWiped(bool sdReady); // where they came back from, or nullptr
 };
 
 extern UiSettings ui_settings;

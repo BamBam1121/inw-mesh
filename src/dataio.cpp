@@ -542,6 +542,7 @@ const char* sdBackupNow(bool force) {
         copyFile(SPIFFS, "/identity/_main.id", SD, "/inw/identity/_main.id")) n++;
     s_progress = "copying settings to sd";
     if (copyFile(SPIFFS, "/prefs.json", SD, "/inw/prefs.json")) n++;
+    if (copyFile(SPIFFS, "/ui.bin", SD, "/inw/ui.bin")) n++;      // theme, brightness, the rest of the UI
     s_progress = "copying messages to sd";
     if (copyFile(SPIFFS, "/hist.log", SD, "/inw/hist.log")) n++;
     copyFile(SPIFFS, "/hist_read.bin", SD, "/inw/hist_read.bin");
