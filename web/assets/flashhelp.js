@@ -1,9 +1,15 @@
-/* Watches the browser installer, then listens to the pager itself.
-   The installer only knows the bytes were written. Only the pager knows whether
-   it came up, and it says so over USB at every boot ("[boot] radio ok",
-   "[boot] ready ..."). Saying nothing at all is an answer too.
-   If it didn't come up, this reinstalls it once on its own before bothering
-   anyone, because a bad write is the common cause and rewriting fixes it. */
+/* Watches the browser installer, then asks the pager itself how it is.
+   The installer only knows the bytes were written; only the pager knows whether
+   it came up. It answers "status" over the same USB port.
+
+   Rules this file sticks to, because getting them wrong breaks working pagers:
+   - silence is NOT failure (older firmware has no status line, and the boot
+     report has usually scrolled past by the time the browser can listen);
+   - the only thing fixed automatically is a restart loop, which is unambiguous
+     and which rewriting reliably fixes;
+   - a retry repeats exactly what the person chose, never a different one;
+   - nothing here touches DTR/RTS - those are the reset lines, and getting them
+     wrong strands the pager in download mode. */
 (function () {
   const box = document.getElementById("flash-help");
   if (!box) return;
@@ -13,12 +19,12 @@
   const input = form.querySelector("textarea");
   const again = box.querySelector(".try-again");
 
-  let messages = [];      // conversation with the helper
-  let trail = [];         // installer states seen this attempt
-  let kind = "install";   // which button was pressed
-  let button = null;      // so a retry can re-run the same one
+  let messages = [];
+  let trail = [];
+  let kind = "install";
+  let button = null;
   let asking = false;
-  let selfFixed = false;  // only ever reinstall by ourselves once
+  let selfFixed = false;
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -53,8 +59,6 @@
     }, true);
   });
 
-  // The installer builds its dialog on the body when it opens, and closes the
-  // serial port when that dialog goes away.
   new MutationObserver((muts) => {
     muts.forEach((m) => m.addedNodes.forEach((n) => {
       if (n.nodeName && n.nodeName.toLowerCase() === "ewt-install-dialog") {
@@ -69,7 +73,7 @@
     if (!s || !s.state) return;
     if (trail[trail.length - 1] !== s.state) trail.push(s.state);
     if (s.state === "finished") {
-      show("Written. Waiting for the pager to start…", "busy");
+      show("Written. Asking the pager how it is…", "busy");
       again.hidden = true;
       log.innerHTML = "";
     } else if (s.state === "error") {
@@ -83,11 +87,9 @@
     }
   }
 
-  // ---- listening to the pager -------------------------------------------------
-  // Flashing already granted this page access to the port, so reopening it asks
-  // nothing. The pager reboots and re-enumerates first, so keep trying for a while.
-  async function readBootLog(totalMs) {
-    if (!navigator.serial || !navigator.serial.getPorts) return null;
+  // Flashing already granted this page the port, so reopening asks nothing.
+  async function askPager(totalMs) {
+    if (!navigator.serial || !navigator.serial.getPorts) return "";
     const deadline = Date.now() + totalMs;
     let text = "";
     while (Date.now() < deadline) {
@@ -98,93 +100,107 @@
         try {
           await port.open({ baudRate: 115200, bufferSize: 4096 });
         } catch (e) {
-          continue;                       // still re-enumerating, or someone else has it
+          continue;                    // still re-enumerating, or something else holds it
         }
         try {
+          const w = port.writable.getWriter();
+          await w.write(new TextEncoder().encode("\nstatus\n"));
+          w.releaseLock();
           const dec = new TextDecoder();
           reader = port.readable.getReader();
           while (Date.now() < deadline) {
             const chunk = await Promise.race([
               reader.read(),
-              new Promise((r) => setTimeout(() => r({ timeout: true }), 1500)),
+              new Promise((r) => setTimeout(() => r({ timeout: true }), 1200)),
             ]);
-            if (chunk && chunk.timeout) { if (text) break; else continue; }
-            if (!chunk || chunk.done) break;
+            if (!chunk || chunk.timeout || chunk.done) break;
             text += dec.decode(chunk.value, { stream: true });
-            if (/\[boot\]\s+ready/.test(text)) break;     // it finished booting
+            if (text.indexOf("[status]") >= 0 || /\[boot\]\s+ready/.test(text)) break;
           }
         } catch (e) {
-          /* fall through and report whatever we heard */
+          /* whatever we heard is what we report */
         } finally {
           try { if (reader) { await reader.cancel(); reader.releaseLock(); } } catch (e) { /* ignore */ }
           try { await port.close(); } catch (e) { /* ignore */ }
         }
-        if (text) return text;
+        if (text.trim()) return text;
       }
-      await new Promise((r) => setTimeout(r, 800));
+      await new Promise((r) => setTimeout(r, 700));
     }
-    return text || null;
+    return text;
   }
 
-  // What the pager's own output means. Exposed for testing.
+  // What the pager said. "noanswer" means we learned nothing - never treat that
+  // as a fault.
   function classify(text) {
-    if (!text || !text.trim()) return "silent";
+    if (!text || !text.trim()) return "noanswer";
+    const m = text.match(/\[status\][^\n]*radio_ok=(\d)/);
+    if (m) return m[1] === "1" ? "ok" : "radio";
     const resets = (text.match(/rst:0x|Guru Meditation|assert failed|Backtrace:/g) || []).length;
     const boots = (text.match(/\[boot\]\s+power rails/g) || []).length;
     if (resets > 1 || boots > 1) return "loop";
-    if (/\[boot\]\s+radio\s+FAILED|radio init failed/.test(text)) return "radio";
+    if (/\[boot\]\s+radio\s+FAILED/.test(text) || /radio init failed/.test(text)) return "radio";
     if (/\[boot\]\s+radio\s+ok/.test(text) || /\[boot\]\s+ready/.test(text)) return "ok";
-    return "unknown";
+    return "noanswer";
   }
   window.__squatchClassify = classify;
 
   async function checkItCameUp() {
-    show("Written. Waiting for the pager to start…", "busy");
-    const text = await readBootLog(30000);
+    show("Written. Asking the pager how it is…", "busy");
+    let text = "";
+    try { text = await askPager(20000); } catch (e) { text = ""; }
     const verdict = classify(text);
 
     if (verdict === "ok") {
+      const chip = (text.match(/radio=(\S+)/) || text.match(/\[boot\]\s+radio\s+ok\s+(\S+)/) || [])[1];
       show("Done — your pager is up", "ok");
-      const chip = (text.match(/\[boot\]\s+radio\s+ok\s+(\S+)/) || [])[1];
       bubble("assistant",
-        "The pager started and its radio is running" + (chip ? " (" + chip + ")" : "") + "." +
+        "The pager answered: it started and its radio is running" +
+        (chip && chip !== "none" ? " (" + chip + ")" : "") + "." +
         (kind === "first install"
-          ? " A first install formats storage on that first start, so give it a few minutes before it settles."
+          ? " Storage is set up on that first start, so give it a few minutes to settle."
           : " Your contacts, channels and messages are untouched.") +
         "\n\nAnything not right? Ask me here.", "note");
       form.hidden = false;
       return;
     }
 
-    // It didn't come up. A bad write is much the most likely cause, and
-    // rewriting fixes that, so do it rather than describe it.
-    if ((verdict === "loop" || verdict === "silent" || verdict === "unknown") && !selfFixed && button) {
+    // The one thing worth fixing without being asked, and the one rewriting fixes.
+    if (verdict === "loop" && !selfFixed && button) {
       selfFixed = true;
-      show("It didn't start. Reinstalling it now…", "busy");
-      bubble("assistant",
-        verdict === "silent"
-          ? "The pager isn't saying anything over USB, which usually means the write didn't take. I'm writing it again — this fixes it most of the time."
-          : "The pager is restarting over and over, which means it didn't get a clean write. I'm writing it again.",
-        "note");
-      const installer = document.querySelector('esp-web-install-button[manifest*="manifest-install"]') || button;
-      installer.click();      // needs the browser to allow it; if not, the button below does
+      show("It keeps restarting. Writing it again…", "busy");
+      bubble("assistant", "The pager is restarting over and over, so the write didn't take. " +
+        "I'm writing the same thing again — that fixes it.", "note");
+      button.click();
       setTimeout(() => {
         if (!document.querySelector("ewt-install-dialog")) {
-          show("It didn't start — one tap to fix it", "bad");
+          show("It keeps restarting — one tap to fix it", "bad");
           again.hidden = false;
-          again.textContent = "Reinstall now";
+          again.textContent = "Write it again";
           bubble("assistant", "Your browser wants a click before it can open the USB port again. " +
-            "Press **Reinstall now** and it will rewrite the pager.", "note");
+            "Press **Write it again**.", "note");
         }
       }, 1200);
       return;
     }
 
-    // Either we already tried rewriting, or the radio itself answered badly.
-    show("It started, but not cleanly", "bad");
-    again.hidden = false;
+    if (verdict === "radio") {
+      show("It started, but the radio didn't", "bad");
+      again.hidden = false;
+      form.hidden = false;
+      reportBoot(text);
+      return;
+    }
+
+    // No answer. Usually just means it finished starting before we could listen.
+    show("Written successfully", "ok");
+    bubble("assistant",
+      "That wrote cleanly. I couldn't get a word out of the pager afterwards, which is normal — it has " +
+      "usually finished starting before the browser can listen.\n\n**Look at the pager itself:** if the screen " +
+      "is on and it isn't restarting, you're done." +
+      (kind === "first install" ? " A first install takes a few minutes to set up storage the first time." : "") +
+      "\n\nIf it looks dead or keeps restarting, tell me here and I'll sort it out.", "note");
     form.hidden = false;
-    reportBoot(verdict, text);
   }
 
   function report(message) {
@@ -194,22 +210,20 @@
       "The browser installer failed while flashing a LilyGo T-Lora Pager.",
       "Which button: " + kind,
       "Error: " + message,
-      "Steps reached: " + (trail.join(" → ") || "none"),
+      "Steps reached: " + (trail.join(" -> ") || "none"),
       "Browser: " + navigator.userAgent,
       "Explain what this means and what to try, in a couple of short steps.",
     ].join("\n") }];
     send();
   }
 
-  function reportBoot(verdict, text) {
+  function reportBoot(text) {
     const tail = (text || "").split(/\r?\n/).filter((l) => l.trim()).slice(-25).join("\n");
     messages = [{ role: "user", content: [
       "A LilyGo T-Lora Pager was just flashed with the browser installer (" + kind + ").",
-      "The write succeeded, and it has already been rewritten once automatically.",
-      verdict === "radio" ? "Its boot output says the radio did not come up."
-                          : "It still is not booting cleanly.",
+      "The write succeeded but the pager reports its radio did not come up.",
       "This is the pager's own USB output:",
-      tail || "(nothing at all)",
+      tail || "(nothing)",
       "Say what is wrong and the single most useful thing to do next. Be brief.",
     ].join("\n") }];
     send();
@@ -259,6 +273,6 @@
   again.addEventListener("click", () => {
     if (!button) return;
     box.hidden = true;
-    (document.querySelector('esp-web-install-button[manifest*="manifest-install"]') || button).click();
+    button.click();          // the same one they chose, never a different one
   });
 })();
