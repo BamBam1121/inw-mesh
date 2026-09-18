@@ -49,3 +49,62 @@
 .flash-head.ok { color: var(--accent); }
 .flash-head.bad { color: var(--amber); }
 .flash-head.busy { color: var(--muted); }
+
+/* ---- the installer's own progress panel (assets/flasher.js) ------------------------- */
+#flasher[hidden] { display: none !important; }
+.fl-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.fl-head { font: 600 16px/1.2 var(--display); }
+.fl-head.ok { color: var(--accent); }
+.fl-head.bad { color: var(--amber); }
+.fl-head.busy { color: var(--muted); }
+.fl-bar { margin: 12px 0 10px; height: 8px; border-radius: 6px; background: var(--panel-2);
+  border: 1px solid var(--line-2); overflow: hidden; }
+.fl-bar span { display: block; height: 100%; width: 0; border-radius: 6px; background: var(--accent);
+  transition: width 0.2s ease-out; }
+.fl-note { margin: 0; font-size: 14.5px; line-height: 1.55; }
+.fl-log { margin-top: 12px; }
+.fl-log summary { cursor: pointer; color: var(--muted); font-size: 13.5px; }
+.fl-log pre { margin: 10px 0 0; padding: 12px; max-height: 220px; overflow: auto; white-space: pre-wrap;
+  word-break: break-word; background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 12px;
+  font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
+
+/* ---- quick start: the one button that does everything ------------------------------ */
+.quickstart { position: relative; margin-top: 28px; border-radius: 22px; overflow: hidden;
+  border: 1px solid rgba(240, 192, 96, 0.45); background:
+    radial-gradient(120% 140% at 50% -20%, rgba(240, 192, 96, 0.16), transparent 62%), var(--panel);
+  box-shadow: 0 0 0 1px rgba(240, 192, 96, 0.08), 0 18px 60px -28px rgba(240, 192, 96, 0.55); }
+.qs-glow { position: absolute; inset: -40% -10% auto -10%; height: 220px; pointer-events: none;
+  background: radial-gradient(60% 100% at 50% 0%, rgba(240, 192, 96, 0.28), transparent 70%);
+  filter: blur(18px); animation: qs-breathe 6s ease-in-out infinite; }
+.qs-inner { position: relative; padding: 30px 22px 26px; text-align: center; }
+.qs-kicker { margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.16em; font-size: 12px;
+  font-weight: 700; color: var(--amber); }
+.qs-title { margin: 0 0 10px; font: 700 clamp(24px, 4.4vw, 34px)/1.15 var(--display); color: var(--heading); }
+.qs-sub { margin: 0 auto 22px; max-width: 54ch; color: var(--text); font-size: 15px; line-height: 1.6; }
+.qs-fine { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
+
+.qs-btn { position: relative; display: inline-flex; align-items: center; justify-content: center;
+  min-height: 62px; padding: 0 clamp(34px, 8vw, 66px); border: 0; border-radius: 999px; cursor: pointer;
+  font: 800 20px/1 var(--display); letter-spacing: 0.16em; color: #1a1205;
+  background: linear-gradient(180deg, #ffd980, #f0c060 58%, #d9a43e);
+  box-shadow: 0 0 0 1px rgba(255, 233, 176, 0.5) inset, 0 10px 30px -10px rgba(240, 192, 96, 0.9),
+    0 0 34px -6px rgba(240, 192, 96, 0.65);
+  animation: qs-pulse 2.8s ease-in-out infinite; transition: transform 0.12s ease, box-shadow 0.2s ease; }
+.qs-btn:hover { transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgba(255, 240, 200, 0.7) inset, 0 14px 38px -10px rgba(240, 192, 96, 1),
+    0 0 52px -4px rgba(240, 192, 96, 0.85); }
+.qs-btn:active { transform: translateY(1px); }
+.qs-btn:focus-visible { outline: 3px solid var(--amber); outline-offset: 4px; }
+.qs-btn[disabled] { animation: none; filter: grayscale(0.6); opacity: 0.65; cursor: not-allowed; }
+.qs-btn.working { animation: none; }
+
+@keyframes qs-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255, 233, 176, 0.5) inset, 0 10px 30px -10px rgba(240, 192, 96, 0.9),
+    0 0 30px -8px rgba(240, 192, 96, 0.6); }
+  50% { box-shadow: 0 0 0 1px rgba(255, 233, 176, 0.65) inset, 0 12px 34px -10px rgba(240, 192, 96, 1),
+    0 0 56px -4px rgba(240, 192, 96, 0.9); }
+}
+@keyframes qs-breathe { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+
+@media (min-width: 720px) { .qs-inner { padding: 40px 30px 34px; } }
+@media (prefers-reduced-motion: reduce) { .qs-btn, .qs-glow { animation: none !important; } }

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/style.css?v=6">
-<link rel="stylesheet" href="/assets/help.css?v=3">
+<link rel="stylesheet" href="/assets/help.css?v=5">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://squatchmesh.com/install">
 <meta name="theme-color" content="#070b0a">
@@ -45,10 +45,39 @@
   <p class="sub">Chrome or Edge over USB. Nothing to download, nothing to install on your
   computer. Latest release: <b data-version>v1.1.x</b>.</p>
 
+  <!-- Quick start: one button. It works out for itself whether the pager needs an
+       update or a first install, saves the pager's data before touching anything,
+       and retries the known failures without asking. -->
+  <section class="quickstart" id="quickstart">
+    <div class="qs-glow" aria-hidden="true"></div>
+    <div class="qs-inner">
+      <p class="qs-kicker">Quick start</p>
+      <h2 class="qs-title">Plug it in and press start</h2>
+      <p class="qs-sub">It checks the pager, works out whether it needs an update or a full install,
+      keeps your contacts and settings safe, and fixes the usual problems on its own. About 90 seconds.</p>
+      <button class="qs-btn" id="qs-start" data-flash data-kind="auto">START</button>
+      <p class="qs-fine">Chrome or Edge on a desktop. Your browser will ask which USB device to use &mdash;
+      pick the pager.</p>
+    </div>
+  </section>
+
+  <p id="flash-unsupported" hidden class="sub" style="color:var(--amber);margin-top:14px">This browser can't
+  flash over USB. Use Chrome or Edge on a desktop computer.</p>
+
+  <div class="panel" id="flasher" hidden style="margin-top:18px">
+    <div class="fl-top">
+      <span class="fl-head busy">Working&hellip;</span>
+      <button type="button" class="btn small fl-again" hidden>Try again</button>
+    </div>
+    <div class="fl-bar"><span></span></div>
+    <p class="fl-note sub"></p>
+    <details class="fl-log"><summary>Show the details</summary><pre></pre></details>
+  </div>
+
   <div class="grid c3" style="margin-top:26px">
     <div class="panel reveal"><div class="tag">01</div><h3>Plug in USB-C</h3><p class="sub" style="font-size:14px">Use a cable that carries data, not a charge-only one. That is the single most common reason no port appears.</p></div>
-    <div class="panel reveal"><div class="tag">02</div><h3>Pick update or first install</h3><p class="sub" style="font-size:14px">Update keeps everything. First install is for a pager coming from other firmware: <a href="#keep-data">save your keys and contacts first</a>.</p></div>
-    <div class="panel reveal"><div class="tag">03</div><h3>Wait for it to boot</h3><p class="sub" style="font-size:14px">Update is quick. A first install formats storage on the first start, which takes a few minutes.</p></div>
+    <div class="panel reveal"><div class="tag">02</div><h3>Press start</h3><p class="sub" style="font-size:14px">It asks the pager what is on it and picks the right kind of install. Coming from other firmware? <a href="#keep-data">Save your keys and contacts first</a>.</p></div>
+    <div class="panel reveal"><div class="tag">03</div><h3>Wait for it to boot</h3><p class="sub" style="font-size:14px">An update is quick. A first install formats storage on the first start, which takes a few minutes.</p></div>
   </div>
 
   <div class="panel reveal" id="radio" style="margin-top:22px">
@@ -93,13 +122,15 @@
     </div>
   </div>
 
-  <h2 id="flash">Two ways in</h2>
+  <h2 id="flash">Or choose it yourself</h2>
+  <p class="sub" style="margin-top:-6px">Start above picks for you and checks the pager afterwards. These two
+  are the plain installer, kept as a fallback: use them if Start ever fails on your machine.</p>
   <div class="grid c2">
     <div class="panel reveal">
       <h3>Update</h3>
       <p class="sub" style="font-size:14px">Already running Squatch Mesh. Your contacts, channels, messages
-      and settings stay exactly as they are. It also restores the bootloader and partition table if they
-      have gone missing, so it can revive a pager that will not start.</p>
+      and settings stay exactly as they are - an update writes only the firmware itself, and never touches
+      the part of the chip your settings live in. If the pager will not start at all, use First install.</p>
       <p style="margin-top:14px">
         <esp-web-install-button manifest="https://bambam1121.github.io/inw-mesh/manifest-update.json">
           <button class="btn solid" slot="activate">UPDATE</button>
@@ -203,6 +234,7 @@
 </footer>
 
 <script src="/assets/app.js?v=7" defer></script>
-<script src="/assets/flashhelp.js?v=4" defer></script>
+<script src="/assets/flashhelp.js?v=5" defer></script>
+<script type="module" src="/assets/flasher.js?v=6"></script>
 </body>
 </html>

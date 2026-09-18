@@ -167,6 +167,13 @@ def patch_mymesh(src):
         raise SystemExit("patch_meshcore.py: MyMesh.cpp BLE pin code changed upstream, patch did not apply")
     src = src.replace(old, "_prefs.ble_pin = 100000 + (esp_random() % 900000); savePrefs(); "
                            "_active_ble_pin = _prefs.ble_pin; // INW: per-pager random PIN, not 123456")
+    # Path hash size defaults to 2 bytes (mode 1). MeshCore's default is 1 byte,
+    # which collides on a mesh this size. Only the default: a saved choice, or one
+    # made from the phone app, still wins when prefs load over it.
+    old = "_prefs.tx_power_dbm = LORA_TX_POWER;"
+    if src.count(old) != 1:
+        raise SystemExit("patch_meshcore.py: MyMesh.cpp prefs defaults changed upstream, patch did not apply")
+    src = src.replace(old, old + " _prefs.path_hash_mode = 1; // INW: 2-byte path hashes")
     return src
 
 

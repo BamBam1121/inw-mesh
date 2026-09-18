@@ -500,6 +500,18 @@ static void usbCommands() {
       Serial.printf("[fs] %d files, %u bytes\n", files, (unsigned)bytes);
       continue;
     }
+    // The browser installer sends this before it resets the pager, so nothing
+    // learned since the last lazy write is lost to the flash. Cheap enough to
+    // run on demand: contacts are only written if there is something pending.
+    if (!strcmp(line, "save")) {
+      if (g_node) {
+        if (g_node->hasPendingWork()) g_node->saveContactsNow();
+        g_node->savePrefsNow();
+      }
+      ui_settings.save();
+      Serial.printf("[save] ok contacts=%d\n", g_node ? g_node->getNumContacts() : -1);
+      continue;
+    }
     if (!strcmp(line, "backup")) {          // same job as Settings -> back up to sd now
       Serial.printf("[backup] %s\n", sdBackupNow(true));
       continue;

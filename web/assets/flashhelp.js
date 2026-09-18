@@ -270,6 +270,19 @@
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
   });
 
+  // assets/flasher.js (our own installer) hands failures here, so both paths
+  // land in the same panel with the same helper behind them.
+  window.__squatchHelp = {
+    ask(text) {
+      box.hidden = false;
+      form.hidden = false;
+      log.innerHTML = "";
+      bubble("user", text.split("\n")[0]);
+      messages = [{ role: "user", content: text }];
+      send();
+    },
+  };
+
   again.addEventListener("click", () => {
     if (!button) return;
     box.hidden = true;
