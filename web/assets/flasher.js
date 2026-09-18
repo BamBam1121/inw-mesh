@@ -51,13 +51,41 @@ if (panel) {
   }
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // esptool-js wants each byte as one character.
-  function toBinaryString(buf) {
-    const b = new Uint8Array(buf);
-    let s = "";
-    for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
-    return s;
+  /* esptool-js 0.6 takes each image as a Uint8Array. Older versions took a
+     "binary string", and handing 0.6 a string is silent and destructive: the
+     plain write sends every byte as zero and still reports success, and the
+     compressed write dies part way. That wiped a pager's app slot twice.
+     md5() lets esptool-js read back what landed and throw if it differs, so a
+     bad write can never be reported as a good one again. */
+  function md5(bytes) {
+    const K = new Int32Array(64), S = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+    for (let i = 0; i < 64; i++) K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296) | 0;
+    const n = bytes.length, words = ((n + 8) >>> 6) + 1 << 4, M = new Int32Array(words);
+    for (let i = 0; i < n; i++) M[i >> 2] |= bytes[i] << ((i % 4) * 8);
+    M[n >> 2] |= 0x80 << ((n % 4) * 8);
+    M[words - 2] = (n * 8) | 0;
+    M[words - 1] = Math.floor(n / 0x20000000);
+    let a0 = 0x67452301, b0 = 0xefcdab89 | 0, c0 = 0x98badcfe | 0, d0 = 0x10325476;
+    for (let o = 0; o < words; o += 16) {
+      let a = a0, b = b0, c = c0, d = d0;
+      for (let i = 0; i < 64; i++) {
+        let f, g;
+        if (i < 16) { f = (b & c) | (~b & d); g = i; }
+        else if (i < 32) { f = (d & b) | (~d & c); g = (5 * i + 1) % 16; }
+        else if (i < 48) { f = b ^ c ^ d; g = (3 * i + 5) % 16; }
+        else { f = c ^ (b | ~d); g = (7 * i) % 16; }
+        const t = d; d = c; c = b;
+        const x = (a + f + K[i] + M[o + g]) | 0, s = S[(i >> 4) * 4 + (i % 4)];
+        b = (b + ((x << s) | (x >>> (32 - s)))) | 0;
+        a = t;
+      }
+      a0 = (a0 + a) | 0; b0 = (b0 + b) | 0; c0 = (c0 + c) | 0; d0 = (d0 + d) | 0;
+    }
+    let hex = "";
+    for (const v of [a0, b0, c0, d0]) for (let i = 0; i < 4; i++) hex += ((v >>> (i * 8)) & 255).toString(16).padStart(2, "0");
+    return hex;
   }
+  window.__squatchMd5 = md5;
 
   const terminal = { clean() {}, writeLine(d) { log(d); }, write(d) { logPre.textContent += String(d).replace(/\r/g, ""); } };
 
@@ -130,7 +158,7 @@ if (panel) {
       const url = new URL(p.path, manifestUrl).href;
       const r = await fetch(url, { cache: "no-store" });
       if (!r.ok) throw new Error("couldn't download " + p.path + " (" + r.status + ")");
-      parts.push({ data: toBinaryString(await r.arrayBuffer()), address: p.offset, name: p.path.split("/").pop() });
+      parts.push({ data: new Uint8Array(await r.arrayBuffer()), address: p.offset, name: p.path.split("/").pop() });
     }
     return { version: manifest.version || "", parts };
   }
@@ -149,6 +177,7 @@ if (panel) {
         flashFreq: "keep",
         eraseAll: false,               // never: a full erase takes the bootloader with it
         compress: compress,
+        calculateMD5Hash: md5,         // read back each part and throw on any mismatch
         reportProgress: (idx, written) => {
           const before = parts.slice(0, idx).reduce((n, p) => n + p.data.length, 0);
           const done = before + written;
@@ -212,17 +241,14 @@ if (panel) {
 
       show("Writing… keep the cable in", "busy");
       let chip = null, lastErr = null;
-      /* The ladder. Compressed first because it is three times quicker, then
-         plain writes first: esptool-js fails at the same compressed block every
-         time on this board ("after seq 78 ... status 201,0"), at every baud rate,
-         where the plain write goes through in 22 s and the command-line esptool
-         is fine with compression. Then slower, for cables and hubs that can't
-         hold 921600. Compression is kept as a last resort in case some machine
-         is the other way round. */
-      for (const attempt of [{ baud: 921600, compress: false },
-                             { baud: 460800, compress: false, wait: 1500 },
-                             { baud: 115200, compress: false, wait: 3000 },
-                             { baud: 921600, compress: true, wait: 1500 }]) {
+      /* The ladder: compressed (what esptool itself uses, and quicker), then
+         slower for cables and hubs that can't hold 921600, then a plain write.
+         Every attempt is read back and checked (md5 above), so a rung only
+         counts as done if the chip holds exactly what was sent. */
+      for (const attempt of [{ baud: 921600, compress: true },
+                             { baud: 460800, compress: true, wait: 1500 },
+                             { baud: 115200, compress: true, wait: 3000 },
+                             { baud: 460800, compress: false, wait: 1500 }]) {
         try {
           if (attempt.wait) { say("That didn't take — trying a slower, simpler write. This one takes longer."); await sleep(attempt.wait); }
           chip = await writeIt(parts, attempt.baud, attempt.compress);
@@ -306,6 +332,17 @@ if (panel) {
           boot.split("\n").slice(-25).join("\n") +
           "\nSay what is wrong and the single most useful thing to do next. Be brief.");
       }
+      return;
+    }
+    // Restarting over and over before the firmware says anything means there is no
+    // runnable app in flash. Never call that a success.
+    if ((boot.match(/rst:0x/g) || []).length > 2 || (boot.match(/ESP-ROM:/g) || []).length > 2) {
+      show("It's restarting over and over", "bad");
+      say("The pager isn't starting the new firmware. Hold BOOT, tap RESET, let go of BOOT, then press " +
+          "try again - your contacts and settings are kept in a part of the chip this doesn't touch.");
+      logBox.open = true;
+      again.hidden = false;
+      report("boot-loop", { kind: kind, version: version, log: boot.split("\n").slice(-25).join("\n") });
       return;
     }
     // Silence is not failure: it has usually finished starting before we can listen.
