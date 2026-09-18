@@ -154,31 +154,34 @@ if (panel) {
       } catch (e) { /* keep trying */ }
       await sleep(500);
     }
-    if (!opened) return "";
-    let text = "", reader = null, lastAsk = 0;
+    if (!opened) { log("[flasher] couldn't reopen the port after the reset"); return ""; }
+    log("[flasher] listening for the pager");
+    let text = "", reader = null, lastAsk = 0, pending = null;
     try {
       const dec = new TextDecoder();
       reader = port.readable.getReader();
+      // ONE outstanding read, reused across timeouts. Starting a fresh read after
+      // each timeout left the old one waiting, and whatever arrived went to it
+      // and was lost.
+      const next = (ms) => {
+        if (!pending) pending = reader.read().then((r) => { pending = null; return r; });
+        return Promise.race([pending, sleep(ms).then(() => ({ timeout: true }))]);
+      };
       const ask = async () => {
         lastAsk = Date.now();
         const w = port.writable.getWriter();
         try { await w.write(new TextEncoder().encode("\nstatus\n")); } finally { w.releaseLock(); }
       };
-      while (Date.now() < until && text.indexOf("[status]") < 0) {
-        const chunk = await Promise.race([reader.read(), sleep(1000).then(() => ({ timeout: true }))]);
-        if (chunk && chunk.done) break;
-        if (chunk && chunk.value) text += dec.decode(chunk.value, { stream: true });
-        const ready = /\[boot\]\s+(ready|took)/.test(text);
-        if ((ready && Date.now() - lastAsk > 3000) || (text && Date.now() - lastAsk > 8000)) await ask();
-      }
-      // let the status line finish arriving
-      const end = Date.now() + 800;
-      while (text.indexOf("[status]") >= 0 && !/\[status\][^\n]*\n/.test(text) && Date.now() < end) {
-        const chunk = await Promise.race([reader.read(), sleep(300).then(() => ({ timeout: true }))]);
-        if (chunk && chunk.value) text += dec.decode(chunk.value, { stream: true });
+      // Ask straight away (it may have finished booting already) and every few
+      // seconds until it answers; an early ask during boot is simply ignored.
+      while (Date.now() < until && !/\[status\][^\n]*\n/.test(text)) {
+        if (Date.now() - lastAsk > 3000) await ask();
+        const chunk = await next(500);
+        if (chunk.done) break;
+        if (chunk.value) text += dec.decode(chunk.value, { stream: true });
       }
     } catch (e) {
-      /* whatever we heard is what we use */
+      log("[flasher] listening stopped: " + ((e && e.message) || e));
     } finally {
       try { if (reader) { await reader.cancel(); reader.releaseLock(); } } catch (e) {}
       try { await port.close(); } catch (e) {}
