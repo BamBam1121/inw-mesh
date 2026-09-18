@@ -275,6 +275,81 @@ figcaption { color: var(--muted); font-size: 13.5px; margin-top: 9px; }
 .notice .btn { min-height: 40px; padding: 0 24px; }
 @keyframes notice-in { from { transform: translate(-50%, 16px); } to { transform: translate(-50%, 0); } }
 
+/* ---- motion ---------------------------------------------------------------------
+   Rules: nothing is hidden unless app.js has added .motion to <html> (so no JS,
+   a failed script or a screenshot tool all see the finished page); anything that
+   starts hidden is revealed by a timer as well as by scrolling; and the
+   reduced-motion block at the bottom switches every bit of it off. */
+
+/* hero entrance: keyframes start from hidden, the element's own style is the
+   finished state, so with animation off it simply shows */
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } }
+@keyframes rise-device { from { opacity: 0; transform: translateY(26px) scale(0.97); } }
+.hero .eyebrow, .hero h1, .hero .lead, .hero .hero-cta, .hero .trust, .page-head > .wrap > *, main.wrap > .tag:first-child,
+main.wrap > h1, main.wrap > .sub { animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.hero h1, .page-head > .wrap > :nth-child(2), main.wrap > h1 { animation-delay: 0.08s; }
+.hero .lead, .page-head > .wrap > :nth-child(3), main.wrap > .sub { animation-delay: 0.16s; }
+.hero .hero-cta { animation-delay: 0.24s; }
+.hero .trust { animation-delay: 0.32s; }
+.hero figure { animation: rise-device 0.9s 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+/* the pager floats a little, and its screen breathes */
+@keyframes float { 50% { transform: translateY(-7px); } }
+@keyframes screen-glow { 50% { box-shadow: 0 0 0 1px #000, 0 0 64px rgba(61, 255, 168, 0.22); } }
+.hero .device { animation: float 7s 1.2s ease-in-out infinite; }
+.device .screen { animation: screen-glow 5s ease-in-out infinite; }
+
+/* the eyebrow dot pings like a radio */
+.eyebrow::before { position: relative; }
+@keyframes ping { 0% { transform: scale(1); opacity: 0.7; } 80%, 100% { transform: scale(3.2); opacity: 0; } }
+.eyebrow { position: relative; }
+.eyebrow::after { content: ""; position: absolute; left: 0; top: 50%; width: 7px; height: 7px; margin-top: -3.5px;
+  border-radius: 50%; background: var(--accent); animation: ping 2.4s cubic-bezier(0, 0, 0.2, 1) infinite; pointer-events: none; }
+
+/* the mesh behind the hero (drawn by app.js): nodes, links, packets hopping */
+.mesh-bg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.55;
+  -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 45%, #000 30%, transparent 80%);
+          mask-image: radial-gradient(ellipse 75% 70% at 50% 45%, #000 30%, transparent 80%); }
+.mesh-bg line { stroke: rgba(61, 255, 168, 0.13); stroke-width: 1; }
+.mesh-bg circle { fill: rgba(61, 255, 168, 0.5); }
+.mesh-bg .pkt { stroke: var(--accent); stroke-width: 2; stroke-linecap: round; fill: none;
+  stroke-dasharray: 10 1000; stroke-dashoffset: 10; opacity: 0; animation: hop var(--d, 3s) var(--w, 0s) linear infinite; }
+@keyframes hop { 0% { stroke-dashoffset: 10; opacity: 0; } 8% { opacity: 1; } 55% { opacity: 1; }
+  60%, 100% { stroke-dashoffset: calc(-1 * var(--len, 200px)); opacity: 0; } }
+.mesh-bg .node-ping { fill: none; stroke: var(--accent); stroke-width: 1; opacity: 0; transform-box: fill-box; transform-origin: center;
+  animation: node-ping var(--d, 3s) var(--w, 0s) ease-out infinite; }
+@keyframes node-ping { 0%, 52% { opacity: 0; transform: scale(1); } 56% { opacity: 0.8; } 75%, 100% { opacity: 0; transform: scale(4); } }
+
+/* scroll reveal: only once app.js says motion is on */
+.motion .rv { opacity: 0; transform: translateY(22px); transition: opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: var(--rv-d, 0s); }
+.motion .rv.in { opacity: 1; transform: none; }
+
+/* cards: icon lifts, a soft light follows the pointer */
+.card, .panel { position: relative; }
+a.card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 0%), rgba(61, 255, 168, 0.09), transparent 70%); }
+a.card:hover::before { opacity: 1; }
+.card .icon { transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.3s; }
+a.card:hover .icon { transform: translateY(-3px) rotate(-4deg); box-shadow: 0 8px 22px rgba(61, 255, 168, 0.18); }
+
+/* solid buttons: a light sweeps across on hover */
+.btn.solid { position: relative; overflow: hidden; isolation: isolate; }
+.btn.solid::after { content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 45%; z-index: -1; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.45), transparent); transform: skewX(-18deg); transition: none; }
+.btn.solid:hover::after { left: 120%; transition: left 0.65s ease; }
+
+/* steps: the numbers glow in turn */
+@keyframes step-glow { 0%, 20%, 100% { box-shadow: 0 0 0 0 rgba(61, 255, 168, 0); } 8% { box-shadow: 0 0 0 7px rgba(61, 255, 168, 0.16); } }
+.step::before { animation: step-glow 6s infinite; }
+.step:nth-child(2)::before { animation-delay: 2s; }
+.step:nth-child(3)::before { animation-delay: 4s; }
+
+/* FAQ answers ease open */
+.faq details[open] > :not(summary) { animation: rise 0.35s ease-out both; }
+
+@media print { .motion .rv { opacity: 1 !important; transform: none !important; } .mesh-bg { display: none; } }
+
 /* legacy hooks used by inner pages; reveal no longer hides anything */
 .reveal { }
 .meta { color: var(--muted); font-size: 14px; }
