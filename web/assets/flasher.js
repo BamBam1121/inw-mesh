@@ -128,6 +128,51 @@ if (panel) {
     return text;
   }
 
+  /* After the reset: open the port ONCE and keep it open while the pager boots.
+     Opening the port resets this board, so reopening it every few seconds (the
+     first version of this) restarted the pager mid-boot, over and over, and
+     then reported the loop it had caused. Retry only the open itself, while the
+     port is still coming back; once open, listen, and ask for status when the
+     firmware says it is ready (or every few seconds after it starts talking). */
+  async function listenForBoot(ms) {
+    const until = Date.now() + ms;
+    let opened = false;
+    while (Date.now() < until && !opened) {
+      try { await port.open({ baudRate: 115200, bufferSize: 4096 }); opened = true; }
+      catch (e) { await sleep(500); }
+    }
+    if (!opened) return "";
+    let text = "", reader = null, lastAsk = 0;
+    try {
+      const dec = new TextDecoder();
+      reader = port.readable.getReader();
+      const ask = async () => {
+        lastAsk = Date.now();
+        const w = port.writable.getWriter();
+        try { await w.write(new TextEncoder().encode("\nstatus\n")); } finally { w.releaseLock(); }
+      };
+      while (Date.now() < until && text.indexOf("[status]") < 0) {
+        const chunk = await Promise.race([reader.read(), sleep(1000).then(() => ({ timeout: true }))]);
+        if (chunk && chunk.done) break;
+        if (chunk && chunk.value) text += dec.decode(chunk.value, { stream: true });
+        const ready = /\[boot\]\s+(ready|took)/.test(text);
+        if ((ready && Date.now() - lastAsk > 3000) || (text && Date.now() - lastAsk > 8000)) await ask();
+      }
+      // let the status line finish arriving
+      const end = Date.now() + 800;
+      while (text.indexOf("[status]") >= 0 && !/\[status\][^\n]*\n/.test(text) && Date.now() < end) {
+        const chunk = await Promise.race([reader.read(), sleep(300).then(() => ({ timeout: true }))]);
+        if (chunk && chunk.value) text += dec.decode(chunk.value, { stream: true });
+      }
+    } catch (e) {
+      /* whatever we heard is what we use */
+    } finally {
+      try { if (reader) { await reader.cancel(); reader.releaseLock(); } } catch (e) {}
+      try { await port.close(); } catch (e) {}
+    }
+    return text;
+  }
+
   // What is on this pager? Squatch Mesh answers "status"; anything else stays quiet,
   // which is itself the answer - a pager on other firmware needs a first install.
   async function identify() {
@@ -266,16 +311,8 @@ if (panel) {
       // 4. did it come back up
       show("Written. Asking the pager how it is…", "busy");
       say("");
-      // After the reset the USB port vanishes and comes back, then the pager
-      // takes several seconds to boot. Keep reopening and re-asking until it
-      // answers - one early failed open used to end the check before it rebooted.
-      const until = Date.now() + 30000;
-      let boot = "";
-      await sleep(2000);
-      while (Date.now() < until && boot.indexOf("[status]") < 0) {
-        boot += await converse("\nstatus\n", "[status]", Math.min(4000, Math.max(0, until - Date.now())));
-        if (boot.indexOf("[status]") < 0) await sleep(1000);
-      }
+      await sleep(1500);
+      const boot = await listenForBoot(30000);
       if (boot.trim()) log(boot.trim());
       finish(wanted, version, boot, found);
     } catch (e) {
