@@ -19,7 +19,8 @@
      and ours is the only one that boots our partition table.
    - parts are written in manifest order, boot pointer before app: the erase for
      a small write rounds up into whatever follows it.
-   - nothing here touches DTR/RTS by hand; esptool-js owns the reset. */
+   - DTR/RTS are left to esptool-js except for the one restart after writing,
+     which esptool-js 0.6.1 gets wrong (see writeIt). */
 import { ESPLoader, Transport } from "./vendor/esptool-0.6.1.js";
 
 const UPDATE_MANIFEST = "https://bambam1121.github.io/inw-mesh/manifest-update.json";
@@ -273,7 +274,19 @@ if (panel) {
         },
       });
       pct(100);
-      await loader.after("hard_reset");
+      /* Restart it into the new firmware ourselves. esptool-js 0.6.1's
+         after("hard_reset") only RELEASES the reset line (RTS low) without ever
+         pulling it, so the chip never restarts: it sits silent in the flasher
+         stub until something else toggles the USB lines - which is why the
+         pager only ever booted once this page closed the port. This is the
+         command-line esptool's hard reset: pull EN low via RTS, wait, release,
+         with DTR (the boot-mode pin) left high-level-off throughout. */
+      log("Restarting the pager into the new firmware...");
+      await transport.setDTR(false);
+      await transport.setRTS(true);
+      await sleep(200);
+      await transport.setRTS(false);
+      await sleep(200);
       return chip;
     } finally {
       try { await transport.disconnect(); } catch (e) {}
