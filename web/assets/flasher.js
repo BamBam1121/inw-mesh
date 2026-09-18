@@ -28,6 +28,8 @@ const SUPPORTED = !!(navigator.serial && window.isSecureContext);
 
 const panel = document.getElementById("flasher");
 const startBtn = document.getElementById("qs-start");
+// Start is hidden until it has been proven on a pager; ?flashtest shows it for testing.
+if (/[?&]flashtest\b/.test(location.search)) { const q = document.getElementById("quickstart"); if (q) q.hidden = false; }
 
 if (panel) {
   const head = panel.querySelector(".fl-head");
