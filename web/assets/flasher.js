@@ -136,10 +136,23 @@ if (panel) {
      firmware says it is ready (or every few seconds after it starts talking). */
   async function listenForBoot(ms) {
     const until = Date.now() + ms;
+    // The reset drops the pager off USB and it comes back as a NEW port object;
+    // the old handle can never open again. Look for the pager among the ports
+    // this page is already allowed to use (same USB ids), no prompt needed.
+    const info = (() => { try { return port.getInfo(); } catch (e) { return {}; } })();
     let opened = false;
     while (Date.now() < until && !opened) {
-      try { await port.open({ baudRate: 115200, bufferSize: 4096 }); opened = true; }
-      catch (e) { await sleep(500); }
+      try { await port.open({ baudRate: 115200, bufferSize: 4096 }); opened = true; break; }
+      catch (e) { /* stale or not back yet */ }
+      try {
+        const ports = await navigator.serial.getPorts();
+        const again = ports.find((p) => p !== port && (() => {
+          const i = p.getInfo();
+          return i.usbVendorId === info.usbVendorId && i.usbProductId === info.usbProductId;
+        })());
+        if (again) port = again;
+      } catch (e) { /* keep trying */ }
+      await sleep(500);
     }
     if (!opened) return "";
     let text = "", reader = null, lastAsk = 0;
