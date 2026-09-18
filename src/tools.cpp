@@ -4,6 +4,7 @@
 #include "dataio.h"
 #include "gps.h"
 #include "logstore.h"
+#include "fieldtools.h"
 #include <SPIFFS.h>
 #include <SD.h>
 
@@ -197,6 +198,7 @@ void app::openTools() {
   m->action("discover repeaters nearby", [] { nav.push(new DiscoverView()); });
   m->action("recently heard", [] { recentPage(); });
   m->action("trace / ping / console", [] { app::openContacts(); nav.toast("pick a contact"); });
+  m->action("field: range test, sos, trail", [] { field::openMenu(); });
   m->header("radio");
   m->action("signal + radio stats", [] { signalPage(); });
   m->action("packet sniffer", [] { packetLogPage(); });

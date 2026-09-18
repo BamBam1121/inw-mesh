@@ -3,6 +3,9 @@
 #include <SPIFFS.h>
 #include <esp_heap_caps.h>
 #include <new>
+#include <array>
+#include <vector>
+#include "app.h"
 #include <helpers/esp32/SerialBLEInterface.h>
 #include <helpers/TxtDataHelpers.h>
 #include <helpers/AdvertDataHelpers.h>
@@ -528,6 +531,46 @@ bool InwNode::forgetContact(const uint8_t* pub) {
   _contactsGen++;
   saveContactsNow();
   return true;
+}
+
+// "Heard" is lastmod: this pager's own time for the last advert or message from
+// the contact, the same time the contact list shows. last_advert_timestamp is the
+// sender's clock, which can be anything, so it isn't used.
+static bool isStale(const ContactInfo& c, uint32_t cutoff) {
+  if (c.flags & 0x01) return false;          // favourite
+  if (!c.lastmod) return false;              // never heard by time: don't guess
+  return c.lastmod < cutoff;
+}
+
+int InwNode::countStale(uint32_t days) {
+  if (!app::timeValid()) return -1;
+  const uint32_t cutoff = app::now() - days * 86400UL;
+  int n = 0;
+  ContactInfo c;
+  for (int i = 0; i < getNumContacts(); i++)
+    if (getContactByIdx(i, c) && isStale(c, cutoff)) n++;
+  return n;
+}
+
+int InwNode::forgetStale(uint32_t days) {
+  if (!app::timeValid()) return -1;
+  const uint32_t cutoff = app::now() - days * 86400UL;
+  // Collect first: removing shifts the table under an index loop.
+  std::vector<std::array<uint8_t, 32>> gone;
+  ContactInfo c;
+  for (int i = 0; i < getNumContacts(); i++)
+    if (getContactByIdx(i, c) && isStale(c, cutoff)) {
+      std::array<uint8_t, 32> k;
+      memcpy(k.data(), c.id.pub_key, 32);
+      gone.push_back(k);
+    }
+  int n = 0;
+  for (auto& k : gone) {
+    ContactInfo* p = contact(k.data());
+    if (p && removeContact(*p)) { _ds.deleteBlobByKey(k.data(), PUB_KEY_SIZE); n++; }
+  }
+  if (n) { _contactsGen++; saveContactsNow(); }
+  return n;
 }
 
 void InwNode::toggleFavourite(const uint8_t* pub) {

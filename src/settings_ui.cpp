@@ -13,6 +13,7 @@
 #include "battery.h"
 #include "notify.h"
 #include "ota.h"
+#include "logstore.h"
 #include <SPIFFS.h>
 #include <SD.h>
 
@@ -21,6 +22,7 @@ extern void markUiDirty();
 extern void gpsPower(bool on);
 extern void deviceInfoPage();
 extern void logsPage();
+extern LogStore logs;
 extern void joinChannelFlow();
 
 static NodePrefs& P() { return g_node->prefs(); }
@@ -190,6 +192,39 @@ static void channelsMenu() {
 #define AUTO_ADD_SENSOR           (1 << 4)
 #endif
 
+// Forget contacts not heard for a while. Each choice shows how many it would
+// remove before anything happens; favourites and contacts with no heard time are
+// always kept; the SD mirror is refreshed first so the list can be recovered
+// (Backups -> recover missing contacts).
+static void tidyContactsMenu() {
+  auto* m = new MenuView("Tidy old contacts");
+  m->rebuild = [](MenuView& v) {
+    if (!app::timeValid()) { v.info("clock not set yet", []() -> String { return String("needs the time to judge 'old'"); }); return; }
+    v.info("contacts", []() -> String { return String(g_node->getNumContacts()); });
+    v.header("not heard in...");
+    static const uint16_t DAYS[] = {30, 90, 180, 365};
+    for (uint16_t d : DAYS) {
+      const int n = g_node->countStale(d);
+      const String label = String(d) + " days: " + String(n) + (n == 1 ? " contact" : " contacts");
+      v.action(label, [d, n] {
+        if (n <= 0) { nav.toast("nothing that old"); return; }
+        confirm("Forget " + String(n) + " contacts?", "not heard in " + String(d) + " days. favourites are kept. backed up to sd first.",
+                [d] {
+                  nav.busy("backing up, then tidying...");
+                  sdBackupNow();
+                  const int gone = g_node->forgetStale(d);
+                  logs.add(LOG_INFO, "tidied %d contacts not heard in %u days", gone, d);
+                  nav.toast((String("forgot ") + gone + " contacts").c_str(), 3000);
+                  nav.pop();
+                });
+      });
+    }
+    v.info("kept always", []() -> String { return String("favourites, and contacts never heard by time"); });
+  };
+  m->rebuild(*m);
+  nav.push(m);
+}
+
 static void autoAddMenu() {
   auto* m = new MenuView("Contacts & auto-add");
   auto addBit = [](MenuView& v, const char* label, uint8_t b) {
@@ -210,6 +245,7 @@ static void autoAddMenu() {
              [](int d) { P().autoadd_max_hops = constrain(P().autoadd_max_hops + d, 0, 64); markPrefsDirty(); });
     v.info("contacts", []() -> String { return String(g_node->getNumContacts()) + " / " + String(MAX_CONTACTS); });
     v.action("import contacts from sd export", [] { nav.busy("importing, one moment..."); nav.toast(importJsonNow(), 4000); });
+    v.action("tidy old contacts", [] { tidyContactsMenu(); });
   };
   m->rebuild(*m);
   nav.push(m);
@@ -524,11 +560,12 @@ static void backupsMenu() {
   m->action("restore contacts from sd mirror", [] {
     confirm("Restore from SD?", "replaces contacts + channels with /inw on the card, then reboots", [] {
       if (!sdMount() || !SD.exists("/inw/contacts3")) { nav.toast("no /inw backup on sd"); return; }
+      inwStoreFlush(10000);   // a queued save landing after the removes would undo them
       SPIFFS.remove("/contacts3.bak"); SPIFFS.remove("/channels2.bak");
       SPIFFS.remove("/contacts3"); SPIFFS.remove("/channels2");
       nav.toast("restoring, rebooting");
       delay(800);
-      app::reboot();          // importBeforeNode() pulls the mirror back in on boot
+      app::rebootDiscard();   // importBeforeNode() pulls the mirror back in on boot
     });
   });
   m->info("auto backup", []() -> String { return String("once a day to /inw on the sd"); });
@@ -632,11 +669,11 @@ static void systemMenu() {
   });
   m->action("forget all contacts (keeps key)", [] {
     confirm("Forget ALL contacts?", "backed up to sd first. your identity is kept.", [] {
-      sdBackupNow();
+      sdBackupNow();          // also waits for any queued save to land
       SPIFFS.remove("/contacts3"); SPIFFS.remove("/contacts3.bak");
       nav.toast("rebooting");
       delay(800);
-      app::reboot();
+      app::rebootDiscard();   // saving on the way out would write them all back
     });
   });
   nav.push(m);

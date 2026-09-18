@@ -214,11 +214,42 @@ void importBeforeNode(char* report, size_t cap) {
   report[0] = 0;
   size_t w = 0;
   logs.add(LOG_INFO, "flash store %u/%u kB", (unsigned)(SPIFFS.usedBytes() / 1024), (unsigned)(SPIFFS.totalBytes() / 1024));
+  // One pass over the store. On this 8 MB SPIFFS every exists()/open() by name
+  // scans the whole partition, and a normal boot used to ask a dozen of them
+  // (~2.6 s) only to find everything already in place. If this listing shows
+  // every store present and whole, with no half-finished save, skip all of it.
+  // Anything missing or odd falls through to the full restore below, unchanged.
+  long szContacts = -1, szChannels = -1, szPrefs = -1, szHist = -1, szId = -1;
+  bool leftovers = false;
+  const uint32_t t0 = millis();
   {
     File root = SPIFFS.open("/");
-    for (File f = root.openNextFile(); f; f = root.openNextFile())
-      if (f.size() > 16384) Serial.printf("[store] %s %u kB\n", f.path(), (unsigned)(f.size() / 1024));
+    for (File f = root.openNextFile(); f; f = root.openNextFile()) {
+      const char* p = f.path();
+      const long sz = (long)f.size();
+      if (sz > 16384) Serial.printf("[store] %s %u kB\n", p, (unsigned)(sz / 1024));
+      if (!strcmp(p, "/contacts3")) szContacts = sz;
+      else if (!strcmp(p, "/channels2")) szChannels = sz;
+      else if (!strcmp(p, "/prefs.json")) szPrefs = sz;
+      else if (!strcmp(p, "/hist.log")) szHist = sz;
+      else if (!strcmp(p, "/identity/_main.id")) szId = sz;
+      else if (strstr(p, ".tmp")) leftovers = true;
+    }
   }
+  // The key sits in /identity/; if the listing shows that as a folder rather
+  // than the file, ask for the one file by name.
+  if (szId < 0) szId = (long)fileSize(SPIFFS, "/identity/_main.id");
+  const bool whole = !leftovers &&
+      szContacts >= (long)CONTACT_REC && szContacts % CONTACT_REC == 0 &&
+      szChannels >= (long)CHANNEL_REC && szChannels % CHANNEL_REC == 0 &&
+      szPrefs > 0 && szId >= 96 && szHist >= 0;
+  if (whole) {
+    uint8_t d = dedupeChannels();
+    Serial.printf("[store] all present, restore skipped (%lums)\n", (unsigned long)(millis() - t0));
+    if (d) { snprintf(report, cap, "channels<-duplicates removed "); logs.add(LOG_INFO, "channels restored from duplicates removed"); }
+    return;
+  }
+  Serial.printf("[store] something missing or unfinished, full restore check (%lums)\n", (unsigned long)(millis() - t0));
   auto note = [&](const char* what, const char* from) {
     if (from && w < cap) w += snprintf(report + w, cap - w, "%s<-%s ", what, from);
     if (from) logs.add(LOG_INFO, "%s restored from %s", what, from);
@@ -509,6 +540,7 @@ static bool mirrorStore(const char* src, fs::FS& to, const char* dst, size_t rec
 // Flash-side last-good copies, then the SD mirror. Each step names itself on the
 // progress screen.
 const char* sdBackupNow(bool force) {
+  inwStoreFlush(10000);              // copy what's on flash only once queued saves have landed
   keepEssentials();
   s_progress = "backing up contacts";
   mirrorStore("/contacts3", SPIFFS, "/contacts3.bak", CONTACT_REC, force);

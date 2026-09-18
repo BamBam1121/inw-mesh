@@ -87,6 +87,10 @@ public:
   bool shareContact(const uint8_t* pub);
   void resetPath(const uint8_t* pub);
   bool forgetContact(const uint8_t* pub);
+  // Contacts not heard for `days` by this pager's clock. Favourites and contacts
+  // with no heard time are never counted. -1 if the clock isn't set.
+  int  countStale(uint32_t days);
+  int  forgetStale(uint32_t days);
   void toggleFavourite(const uint8_t* pub);
   bool addChannelNamed(const char* name, const uint8_t* secret16);
   bool removeChannel(uint8_t idx);

@@ -32,6 +32,7 @@
 #include "node.h"
 #include "history.h"
 #include "dataio.h"
+#include "fieldtools.h"
 #include "netwifi.h"
 
 // Mesh callbacks (decrypt, verify, then our history write) run on the loop task;
@@ -154,11 +155,23 @@ void app::applyTheme() {
   haptic.setTick(th.tickEffect, th.tickClamp);
   nav.invalidate();
 }
+// Contact/channel saves are written by a background task (tools/patch_meshcore.py);
+// these wait for it, and report what it finished.
+bool inwStoreFlush(uint32_t ms);
+void inwStoreTick();
+
 void app::reboot() {
   if (g_node) {
     if (g_node->hasPendingWork()) g_node->saveContactsNow();   // contact saves are batched; don't drop one
     g_node->savePrefsNow();
   }
+  inwStoreFlush(10000);
+  ui_settings.save(); delay(200); ESP.restart();
+}
+// For after contacts were deleted on purpose: saving the ones still in memory
+// would write straight back what was just forgotten.
+void app::rebootDiscard() {
+  inwStoreFlush(10000);
   ui_settings.save(); delay(200); ESP.restart();
 }
 
@@ -267,6 +280,11 @@ void gpsPower(bool on) {
 // on; with the screen off, give it a two-minute window every half hour so the
 // clock and the advert position stay fresh.
 static void gpsSchedule() {
+  // Range test, SOS and the trail need a live position whatever the settings say.
+  // When the last of them stops, hand the rail back to the normal rules.
+  static bool fieldHad = false;
+  if (field::wantsGps()) { fieldHad = true; gpsPower(true); return; }
+  if (fieldHad) { fieldHad = false; if (!ui_settings.gpsOn || power::saver()) gpsPower(false); }
   if (!ui_settings.gpsOn || power::saver()) return;   // those paths switch it themselves
   const bool window = millis() % 1800000UL < 120000UL;
   gpsPower(!dimmer.asleep() || window);
@@ -403,6 +421,7 @@ void app::rebootToFlashMode() {
     if (g_node->hasPendingWork()) g_node->saveContactsNow();
     g_node->savePrefsNow();
   }
+  inwStoreFlush(10000);
   ui_settings.save();
   Serial.println("[INW] restarting into usb flash mode");
   Serial.flush();
@@ -509,7 +528,8 @@ static void usbCommands() {
         g_node->savePrefsNow();
       }
       ui_settings.save();
-      Serial.printf("[save] ok contacts=%d\n", g_node ? g_node->getNumContacts() : -1);
+      const bool landed = inwStoreFlush(10000);      // "ok" means on flash, not just queued
+      Serial.printf("[save] %s contacts=%d\n", landed ? "ok" : "slow", g_node ? g_node->getNumContacts() : -1);
       continue;
     }
     if (!strcmp(line, "backup")) {          // same job as Settings -> back up to sd now
@@ -871,7 +891,7 @@ void setup() {
 
 // ---- loop -------------------------------------------------------------------------------------------
 static void gpsTick() {
-  if (!ui_settings.gpsOn || power::saver()) return;
+  if ((!ui_settings.gpsOn || power::saver()) && !field::wantsGps()) return;
   const uint32_t t0 = millis(), b0 = gps.bytesRead;
   const bool parsed = gps.update();
   if (millis() - t0 > 100)
@@ -937,8 +957,15 @@ void loop() {
   }
   static bool btnWas = false;
   const bool btn = digitalRead(PIN_BUTTON) == LOW;
-  const bool btnPress = btn && !btnWas;
+  bool btnPress = btn && !btnWas;
   btnWas = btn;
+  // Five fast presses arm an SOS (field tools). That press then only wakes the
+  // screen to show the countdown, instead of locking it again.
+  if (btnPress) {
+    View* before = nav.top();
+    field::sosNoteButton();
+    if (nav.top() != before) { btnPress = false; dimmer.note(); nav.invalidate(); }
+  }
 
   if (dimmer.asleep()) {
     // Screen off: only the side button wakes it. Keys and the wheel get pressed in
@@ -1035,7 +1062,7 @@ void loop() {
   usbCommands();
 
   lap(6);
-  autoAdvertTick(); sdBackupTick();
+  autoAdvertTick(); sdBackupTick(); inwStoreTick(); field::tick();
   lap(7);
   const uint32_t total = millis() - tLoop;
   if (total > 300) {

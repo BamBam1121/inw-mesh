@@ -5,36 +5,162 @@
 #   saveContacts/saveChannels truncated the live file and rewrote it in place, a
 #   field at a time. On this 12 MB SPIFFS that is ~7500 tiny writes for 600
 #   contacts (over 20 s, all of it on the UI loop), and a freeze or power loss
-#   mid-way left a short file. Now the file is built in PSRAM, written to
-#   "<name>.tmp" in 4 kB chunks with a progress screen, and only then swapped in.
-#   src/dataio.cpp resolves a leftover .tmp at boot.
+#   mid-way left a short file. Now the file is built in PSRAM (milliseconds) and
+#   a background task writes "<name>.tmp" and swaps it in, so the UI never waits
+#   on flash. src/dataio.cpp resolves a leftover .tmp at boot.
 #
 # MyMesh.cpp
 #   A contact change scheduled a save 5 s later and every further change pushed
-#   it back. Now the first change schedules one save 15 minutes out and later
-#   changes join it. app::reboot() flushes a pending save.
+#   it back. Now the first change schedules one save SAVE_BATCH_MS out and later
+#   changes join it. It was 6 h while saves froze the UI, which is how contacts
+#   heard since the last save got lost to resets; with background writes it is
+#   2 minutes. app::reboot(), flash mode and the USB "save" flush it.
 
 import os
 import re
 
 Import("env")  # noqa: F821
 
-SAVE_BATCH_MS = 6 * 60 * 60 * 1000
+SAVE_BATCH_MS = 2 * 60 * 1000
 
 HELPER = r'''
-// --- INW: buffered, atomic store writes (added by tools/patch_meshcore.py) ---
-void inwProgress(const char* what, uint32_t done, uint32_t total);
+// --- INW: buffered, atomic store writes, off the UI loop (tools/patch_meshcore.py) ---
+// The save builds the whole file in PSRAM on the caller's thread (a memcpy per
+// record, milliseconds even for 2000 contacts) and hands the buffer to a
+// background task that writes "<name>.tmp", then swaps it in. The UI never waits
+// on flash, so contacts can be saved minutes after a change instead of hours.
+// Latest wins: a newer save of the same file replaces one still queued.
+// inwStoreFlush() waits for everything to land (reboot, flash mode, backups);
+// inwStoreTick() runs on the loop and reports finished saves (logs aren't
+// thread-safe, so the task never touches them).
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include <freertos/task.h>
 void inwStoreSaved(const char* path, size_t bytes);
 
-struct InwBufFile {
+struct InwJob { FILESYSTEM* fs; char path[24]; uint8_t* buf; size_t len; };
+static InwJob inw_q[2];                 // one queued save per file
+static volatile bool inw_busy = false;  // a save is being written right now
+static SemaphoreHandle_t inw_mx = nullptr;
+static TaskHandle_t inw_task = nullptr;
+struct InwDone { char path[24]; size_t bytes; bool ok; };
+static InwDone inw_done[4];
+static volatile uint8_t inw_done_n = 0;
+
+static void inwWriteJob(InwJob& j) {
+  char tmp[32];
+  snprintf(tmp, sizeof(tmp), "%s.tmp", j.path);
+  const uint32_t t0 = millis();
+  File f = j.fs->open(tmp, "w", true);
+  bool ok = (bool)f;
+  for (size_t off = 0; ok && off < j.len; off += 4096) {
+    const size_t n = j.len - off < 4096 ? j.len - off : 4096;
+    ok = f.write(j.buf + off, n) == n;
+    vTaskDelay(pdMS_TO_TICKS(8));       // let the UI run between chunks
+  }
+  if (f) f.close();
+  const uint32_t t1 = millis();
+  if (ok) { j.fs->remove(j.path); j.fs->rename(tmp, j.path); }
+  else j.fs->remove(tmp);
+  Serial.printf("[save] %s %s: %u bytes, write %lums, swap %lums (background)\n", j.path, ok ? "ok" : "FAILED",
+                (unsigned)j.len, (unsigned long)(t1 - t0), (unsigned long)(millis() - t1));
+  xSemaphoreTake(inw_mx, portMAX_DELAY);
+  if (inw_done_n < 4) { InwDone& d = inw_done[inw_done_n++]; strlcpy(d.path, j.path, sizeof(d.path)); d.bytes = j.len; d.ok = ok; }
+  xSemaphoreGive(inw_mx);
+  free(j.buf);
+}
+
+static void inwStoreTask(void*) {
+  for (;;) {
+    InwJob job = {};
+    xSemaphoreTake(inw_mx, portMAX_DELAY);
+    for (auto& q : inw_q) if (q.buf) { job = q; q = InwJob{}; break; }
+    inw_busy = job.buf != nullptr;
+    xSemaphoreGive(inw_mx);
+    if (job.buf) { inwWriteJob(job); inw_busy = false; continue; }
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
+  }
+}
+
+static void inwSubmit(FILESYSTEM* fs, const char* path, uint8_t* buf, size_t len) {
+  if (!inw_mx) inw_mx = xSemaphoreCreateMutex();
+  if (!inw_task) xTaskCreatePinnedToCore(inwStoreTask, "inw_store", 6144, nullptr, 1, &inw_task, 0);
+  xSemaphoreTake(inw_mx, portMAX_DELAY);
+  InwJob* slot = nullptr;
+  for (auto& q : inw_q) if (q.buf && !strcmp(q.path, path)) slot = &q;       // replace a queued one
+  if (!slot) for (auto& q : inw_q) if (!q.buf) { slot = &q; break; }
+  if (slot) {
+    if (slot->buf) free(slot->buf);
+    slot->fs = fs; strlcpy(slot->path, path, sizeof(slot->path)); slot->buf = buf; slot->len = len;
+  }
+  xSemaphoreGive(inw_mx);
+  if (!slot) { free(buf); Serial.printf("[save] %s dropped: queue full\n", path); return; }
+  xTaskNotifyGive(inw_task);
+}
+
+// Everything queued is on flash when this returns true.
+bool inwStoreFlush(uint32_t ms) {
+  if (!inw_mx) return true;
+  const uint32_t t0 = millis();
+  for (;;) {
+    xSemaphoreTake(inw_mx, portMAX_DELAY);
+    bool idle = !inw_busy && !inw_q[0].buf && !inw_q[1].buf;
+    xSemaphoreGive(inw_mx);
+    if (idle) return true;
+    if (millis() - t0 > ms) return false;
+    delay(20);
+  }
+}
+
+// Called from the loop: reports saves the task has finished.
+void inwStoreTick() {
+  if (!inw_mx || !inw_done_n) return;
+  InwDone done[4]; uint8_t n;
+  xSemaphoreTake(inw_mx, portMAX_DELAY);
+  n = inw_done_n; memcpy(done, inw_done, sizeof(InwDone) * n); inw_done_n = 0;
+  xSemaphoreGive(inw_mx);
+  for (uint8_t i = 0; i < n; i++) if (done[i].ok) inwStoreSaved(done[i].path, done[i].bytes);
+}
+
+// Reads a store file into PSRAM in one go and serves the loader's many small
+// field reads from memory: 1093 contacts are ~13,000 reads, each a trip through
+// SPIFFS, which made loading contacts a large part of the boot. If PSRAM is
+// short it falls back to reading the file directly, exactly as before.
+struct InwReadFile {
   File f;
-  const char* what;
+  uint8_t* buf = nullptr;
+  size_t len = 0, pos = 0;
+  explicit InwReadFile(File file) : f(file) {
+    if (!f) return;
+    len = f.size();
+    buf = len ? (uint8_t*)ps_malloc(len) : nullptr;
+    if (buf && f.read(buf, len) == len) { f.close(); return; }
+    free(buf); buf = nullptr; f.seek(0);          // couldn't: read it the old way
+  }
+  ~InwReadFile() { free(buf); }
+  explicit operator bool() { return buf || (bool)f; }
+  size_t read(uint8_t* p, size_t n) {
+    if (!buf) return f.read(p, n);
+    if (pos >= len) return 0;
+    if (n > len - pos) n = len - pos;
+    memcpy(p, buf + pos, n); pos += n;
+    return n;
+  }
+  size_t position() { return buf ? pos : f.position(); }
+  bool seek(size_t p) { if (!buf) return f.seek(p); if (p > len) return false; pos = p; return true; }
+  size_t size() { return buf ? len : f.size(); }
+  void close() { if (buf) { free(buf); buf = nullptr; } else f.close(); }
+};
+
+struct InwBufFile {
+  const char* path;
   uint8_t* buf = nullptr;
   size_t len = 0, cap = 0;
   bool bad = false;
-  InwBufFile(File file, const char* label) : f(file), what(label) {}
-  explicit operator bool() { return (bool)f; }
+  explicit InwBufFile(const char* p) : path(p) {}
+  explicit operator bool() { return true; }
   size_t write(const uint8_t* p, size_t n) {
+    if (bad) return 0;
     if (len + n > cap) {
       size_t nc = cap ? cap * 2 : 32768;
       while (nc < len + n) nc *= 2;
@@ -46,36 +172,16 @@ struct InwBufFile {
     len += n;
     return n;
   }
-  bool close() {
-    bool ok = !bad;
-    const bool show = len > 16384;
-    for (size_t off = 0; ok && off < len; off += 4096) {
-      const size_t n = len - off < 4096 ? len - off : 4096;
-      ok = f.write(buf + off, n) == n;
-      if (show) inwProgress(what, off + n, len);
-    }
-    f.close();
-    free(buf); buf = nullptr;
+  // Hands the finished file to the background writer, or throws it away.
+  bool submit(FILESYSTEM* fs, bool ok) {
+    if (ok && !bad && !buf) buf = (uint8_t*)malloc(1);   // nothing to save is still a save: an empty file
+    ok = ok && !bad && buf;
+    if (ok) inwSubmit(fs, path, buf, len);
+    else { free(buf); Serial.printf("[save] %s not written: building it failed\n", path); }
+    buf = nullptr;
     return ok;
   }
 };
-
-static uint32_t inw_t0;
-static void inwCommit(FILESYSTEM* fs, const char* path, bool ok, size_t bytes) {
-  char tmp[48];
-  snprintf(tmp, sizeof(tmp), "%s.tmp", path);
-  const uint32_t t1 = millis();
-  if (ok) {
-    fs->remove(path);
-    fs->rename(tmp, path);
-  } else {
-    fs->remove(tmp);
-  }
-  inwProgress(nullptr, 0, 0);
-  if (ok) inwStoreSaved(path, bytes);
-  Serial.printf("[save] %s %s: write %lums, swap %lums\n", path, ok ? "ok" : "FAILED",
-                (unsigned long)(t1 - inw_t0), (unsigned long)(millis() - t1));
-}
 '''
 
 
@@ -84,15 +190,12 @@ def patch_save(src, name, path, label):
     end = src.index("\n}\n", start) + 3
     body = src[start:end]
     body = body.replace('File file = openWrite(_getContactsChannelsFS(), "%s");' % path,
-                        'inw_t0 = millis();\n'
-                        '  InwBufFile file(openWrite(_getContactsChannelsFS(), "%s.tmp"), "%s");\n'
-                        '  bool inw_ok = true;' % (path, label), 1)
+                        'InwBufFile file("%s");\n'
+                        '  bool inw_ok = true;' % path, 1)
     body = body.replace("if (!success) break; // write failed",
                         "if (!success) { inw_ok = false; break; } // write failed")
     body = re.sub(r"file\.close\(\);\n  \}\n\}\n$",
-                  'const size_t inw_bytes = file.len;\n'
-                  '    inw_ok = file.close() && inw_ok;\n'
-                  '    inwCommit(_getContactsChannelsFS(), "%s", inw_ok, inw_bytes);\n  }\n}\n' % path, body)
+                  'file.submit(_getContactsChannelsFS(), inw_ok);\n  }\n}\n', body)
     return src[:start] + body + src[end:]
 
 
@@ -105,8 +208,10 @@ def patch_load(src):
     body = src[start:end]
     old_loop = "      bool full = false;\n      while (!full) {\n"
     old_eof = "        if (!success) break; // EOF\n"
-    if body.count(old_loop) != 1 or body.count(old_eof) != 1:
+    old_open = 'File file = openRead(_getContactsChannelsFS(), "/contacts3");'
+    if body.count(old_loop) != 1 or body.count(old_eof) != 1 or body.count(old_open) != 1:
         raise SystemExit("patch_meshcore.py: DataStore::loadContacts changed upstream, patch did not apply")
+    body = body.replace(old_open, 'InwReadFile file(openRead(_getContactsChannelsFS(), "/contacts3"));')
     body = body.replace(old_loop,
                         "      bool full = false;\n"
                         "      uint8_t inw_retries = 0;\n"
@@ -132,7 +237,7 @@ def patch_datastore(src):
     src = patch_save(src, "saveContacts", "/contacts3", "saving contacts")
     src = patch_save(src, "saveChannels", "/channels2", "saving channels")
     src = patch_load(src)
-    if src.count("inwCommit(") != 3 or src.count("InwBufFile file(") != 2 or src.count("inw_ok = file.close()") != 2:
+    if src.count("file.submit(") != 2 or src.count("InwBufFile file(") != 2 or src.count("inw_ok = false; break;") != 2:
         raise SystemExit("patch_meshcore.py: DataStore.cpp changed upstream, patch did not apply")
     return src
 
@@ -145,14 +250,10 @@ def patch_mymesh(src):
     src = src.replace(old, "if (!dirty_contacts_expiry) " + old)
     if n < 5 or str(SAVE_BATCH_MS) not in src:
         raise SystemExit("patch_meshcore.py: MyMesh.cpp changed upstream, patch did not apply")
-    # A background save stalls the pager for seconds behind a progress screen, and
-    # on a busy mesh one came due every batch while someone was using it. Hold it
-    # until the screen is off (inwCanSaveNow in main.cpp).
-    old = "if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {"
-    if old not in src:
+    # (Saves used to be held until the screen was off, because they froze the UI.
+    # They are written in the background now, so they go when they come due.)
+    if "if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry)) {" not in src:
         raise SystemExit("patch_meshcore.py: MyMesh.cpp lazy save changed upstream, patch did not apply")
-    src = src.replace(old, "if (dirty_contacts_expiry && millisHasNowPassed(dirty_contacts_expiry) && inwCanSaveNow()) {")
-    src = "extern bool inwCanSaveNow();\n" + src
     # The device-info frame carries MAX_CONTACTS / 2 in one byte; past 510 it
     # wraps (1000 read as 488, 2000 as 464). Cap it instead.
     old = "out_frame[i++] = MAX_CONTACTS / 2;"

@@ -43,6 +43,7 @@ namespace app {
   void     testNotify();
   void     lock();                // show the lock face
   void     reboot();
+  void     rebootDiscard();          // restart WITHOUT saving contacts (after deleting them on purpose)
   // Distance/bearing helpers for the map and contact detail.
   bool     myPosition(double& lat, double& lon);
   double   distanceKm(double lat1, double lon1, double lat2, double lon2);

@@ -6,6 +6,7 @@
 #include "node.h"
 #include "settings.h"
 #include "logstore.h"
+#include "dataio.h"
 
 extern Battery battery;
 extern LogStore logs;
@@ -164,6 +165,27 @@ static void saverTick() {
   if (s_saver && plugged && pct >= 80) exitSaver("charged to 80%");
 }
 
+// Nearly flat and not charging: put everything on flash now, once, rather than
+// trust the next batched save to beat the battery. Turning the pager off cuts
+// power in hardware with no warning to us, so that case is covered by saves
+// landing within minutes of a change instead (tools/patch_meshcore.py).
+static void lowBatterySave() {
+  static bool done = false;
+  const bool plugged = battery.pluggedIn();
+  if (plugged) { done = false; return; }
+  const uint16_t mv = battery.millivolts();
+  const bool critical = (battery.percent() && battery.percent() <= 3) || (mv && mv < 3450);
+  if (done || !critical) return;
+  done = true;
+  if (g_node) {
+    if (g_node->hasPendingWork()) g_node->saveContactsNow();
+    g_node->savePrefsNow();
+  }
+  ui_settings.save();
+  const bool landed = inwStoreFlush(10000);
+  logs.add(LOG_WARN, "battery critical (%u%%, %umV): saved everything%s", battery.percent(), mv, landed ? "" : " (slow)");
+}
+
 void tick() {
   static uint32_t last = 0, lastPoll = 0;
   if (!battery.present() || !battery.hasReading() || millis() < 15000) return;
@@ -176,6 +198,7 @@ void tick() {
   last = millis();
   chargeTick();
   saverTick();
+  lowBatterySave();
 }
 
 }  // namespace power

@@ -5,6 +5,7 @@
 // m toggles labels, t toggles topo.
 
 #include "app.h"
+#include "fieldtools.h"
 #include "node.h"
 #include "dataio.h"
 #include "netwifi.h"
@@ -244,6 +245,23 @@ public:
         g.setTextColor(f ? t.white : t.txt, f ? t.greenDim : t.bg);
         drawRich(g, nm, x + 11, y - 8);
       }
+    }
+    // Breadcrumb trail (field tools): the path walked, and a flag at the start.
+    size_t tn = 0;
+    const field::TrailPt* tp = field::trail(tn);
+    if (tn) {
+      int px = 0, py = 0;
+      for (size_t i = 0; i < tn; i++) {
+        const int x = (int)lround(lon2x(tp[i].lon, _z) - left);
+        const int y = (int)lround(lat2y(tp[i].lat, _z) - top) + MAP_Y;
+        if (i) { g.drawLine(px, py, x, y, t.amber); g.drawLine(px, py + 1, x, y + 1, t.amber); }
+        px = x; py = y;
+      }
+      const int sx = (int)lround(lon2x(tp[0].lon, _z) - left);
+      const int sy = (int)lround(lat2y(tp[0].lat, _z) - top) + MAP_Y;
+      g.drawFastVLine(sx, sy - 14, 14, t.white);
+      g.fillTriangle(sx, sy - 14, sx, sy - 7, sx + 9, sy - 10, t.green);
+      g.fillCircle(sx, sy, 3, t.green);
     }
     // Me
     double la, lo;

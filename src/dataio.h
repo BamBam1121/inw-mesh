@@ -22,6 +22,9 @@ void importPrefsAfterNode(char* report, size_t cap);
 // The automatic run passes force=false: it will not replace a backup with a
 // store that lost more than a tenth of its records (a torn save looks like that).
 const char* sdBackupNow(bool force = true);
+// Contact/channel saves are written by a background task (tools/patch_meshcore.py).
+// Waits until every queued save is on flash; false if that took longer than ms.
+bool inwStoreFlush(uint32_t ms);
 const char* exportJson();
 const char* importJsonNow();     // merge contacts/channels from the newest export
 // Adds back any contact found in the flash backup, the SD mirror, the dated SD
