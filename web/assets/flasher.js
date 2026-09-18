@@ -41,6 +41,14 @@ if (panel) {
 
   let busy = false;
   let port = null;            // kept between attempts so a retry doesn't re-prompt
+  // Watched from page load so a reconnect during a pause can't be missed:
+  // last = the port object the pager most recently appeared as; gone = the
+  // port that most recently dropped off USB.
+  const usb = { last: null, gone: null };
+  if (navigator.serial) {
+    navigator.serial.addEventListener("connect", (e) => { usb.last = e.target; });
+    navigator.serial.addEventListener("disconnect", (e) => { usb.gone = e.target; });
+  }
   let lastKind = "auto";
 
   const show = (title, cls) => { panel.hidden = false; head.textContent = title; head.className = "fl-head " + cls; };
@@ -128,85 +136,62 @@ if (panel) {
     return text;
   }
 
-  /* After the reset: open the port ONCE and keep it open while the pager boots.
-     Opening the port resets this board, so reopening it every few seconds (the
-     first version of this) restarted the pager mid-boot, over and over, and
-     then reported the loop it had caused. Retry only the open itself, while the
-     port is still coming back; once open, listen, and ask for status when the
-     firmware says it is ready (or every few seconds after it starts talking). */
+  /* After the reset, wait for the pager to come back and ask how it is.
+     Learned on the real board:
+     - opening the port RESETS the pager, so it is opened once per time the
+       pager appears on USB, never "reopened to see if that helps";
+     - the reset drops it off USB and it returns as a new port, 10-15 s later
+       counting its boot, so be patient: a minute, not seconds;
+     - opening straight after the reset can catch the old port just before it
+       drops, so USB connect/disconnect are watched the whole time (from page
+       load, below) and a disconnect ends that session and waits for the next. */
   async function listenForBoot(ms) {
     const until = Date.now() + ms;
-    // The reset drops the pager off USB and it comes back as a NEW port object;
-    // the old handle can never open again. Look for the pager among the ports
-    // this page is already allowed to use (same USB ids), no prompt needed.
     const info = (() => { try { return port.getInfo(); } catch (e) { return {}; } })();
     const same = (p) => { try { const i = p.getInfo(); return i.usbVendorId === info.usbVendorId && i.usbProductId === info.usbProductId; } catch (e) { return false; } };
-    // Wait for the pager to come BACK before opening anything. Opening straight
-    // after the reset caught the old port in the moment before it dropped off
-    // USB: the open succeeded, then 30 s of silence from a dead handle.
-    await new Promise((resolve) => {
-      const done = (p) => { navigator.serial.removeEventListener("connect", onConnect); clearTimeout(t); if (p) port = p; resolve(); };
-      const onConnect = (e) => { if (same(e.target)) { log("[flasher] pager is back on USB"); done(e.target); } };
-      const t = setTimeout(() => done(null), 8000);
-      navigator.serial.addEventListener("connect", onConnect);
-    });
-    await sleep(300);
-    // One listening session on a freshly opened port. Returns what it heard, and
-    // gives up early (so the caller can reconnect once) if the port stays silent.
-    const session = async (silentMs) => {
+    let text = "";
+    while (Date.now() < until && !/\[status\][^\n]*\n/.test(text)) {
+      // the most recent sighting of the pager on USB, else the one we had
+      if (usb.last && same(usb.last)) port = usb.last;
       let opened = false;
-      while (Date.now() < until && !opened) {
-        try { await port.open({ baudRate: 115200, bufferSize: 4096 }); opened = true; break; }
-        catch (e) { /* stale or not back yet */ }
-        try { const again = (await navigator.serial.getPorts()).find((p) => p !== port && same(p)); if (again) port = again; }
-        catch (e) { /* keep trying */ }
-        await sleep(500);
-      }
-      if (!opened) { log("[flasher] couldn't reopen the port after the reset"); return null; }
+      try { await port.open({ baudRate: 115200, bufferSize: 4096 }); opened = true; }
+      catch (e) { await sleep(500); continue; }         // not back yet
+      usb.gone = false;
+      const mine = port;
       log("[flasher] listening for the pager");
-      let text = "", reader = null, lastAsk = 0, pending = null;
-      const started = Date.now();
+      let reader = null, lastAsk = 0, pending = null;
       try {
         const dec = new TextDecoder();
         reader = port.readable.getReader();
-        // ONE outstanding read, reused across timeouts. Starting a fresh read after
-        // each timeout left the old one waiting, and whatever arrived went to it
-        // and was lost.
-        const next = (ms) => {
+        // ONE outstanding read, reused across timeouts; a fresh read per timeout
+        // left the old one pending and whatever arrived went to it and was lost.
+        const next = (t) => {
           if (!pending) pending = reader.read().then((r) => { pending = null; return r; });
-          return Promise.race([pending, sleep(ms).then(() => ({ timeout: true }))]);
+          return Promise.race([pending, sleep(t).then(() => ({ timeout: true }))]);
         };
-        // A write to a port that has gone away can hang; never wait on it long.
         const ask = async () => {
           lastAsk = Date.now();
           const w = port.writable.getWriter();
           try { await Promise.race([w.write(new TextEncoder().encode("\nstatus\n")), sleep(1000)]); }
           finally { try { w.releaseLock(); } catch (e) {} }
         };
-        // Ask straight away (it may have finished booting already) and every few
-        // seconds until it answers; an early ask during boot is simply ignored.
         while (Date.now() < until && !/\[status\][^\n]*\n/.test(text)) {
-          if (!text && Date.now() - started > silentMs) { log("[flasher] no sound from the port, reconnecting"); break; }
-          if (Date.now() - lastAsk > 3000) await ask();
+          if (usb.gone === mine) { log("[flasher] the pager dropped off USB (restarting), waiting for it"); break; }
+          if (Date.now() - lastAsk > 3000) await ask();   // ignored while it boots, answered once it's up
           const chunk = await next(500);
           if (chunk.done) break;
           if (chunk.value) text += dec.decode(chunk.value, { stream: true });
         }
       } catch (e) {
-        log("[flasher] listening stopped: " + ((e && e.message) || e));
+        log("[flasher] lost the port (" + ((e && e.message) || e) + "), waiting for it");
       } finally {
         try { if (reader) { await Promise.race([reader.cancel(), sleep(1000)]); reader.releaseLock(); } } catch (e) {}
         try { await Promise.race([port.close(), sleep(1000)]); } catch (e) {}
       }
-      return text;
-    };
-    // Reconnecting resets this board, so only once, and only after hearing nothing.
-    let text = await session(8000);
-    if (text === "") {
-      try { const again = (await navigator.serial.getPorts()).find(same); if (again) port = again; } catch (e) {}
-      text = await session(until - Date.now());
+      if (!opened) await sleep(500);
     }
-    return text || "";
+    if (!/\[status\]/.test(text)) log("[flasher] no answer after " + Math.round(ms / 1000) + " s");
+    return text;
   }
 
   // What is on this pager? Squatch Mesh answers "status"; anything else stays quiet,
@@ -347,8 +332,7 @@ if (panel) {
       // 4. did it come back up
       show("Written. Asking the pager how it is…", "busy");
       say("");
-      await sleep(1500);
-      const boot = await listenForBoot(40000);
+      const boot = await listenForBoot(60000);
       if (boot.trim()) log(boot.trim());
       finish(wanted, version, boot, found);
     } catch (e) {
