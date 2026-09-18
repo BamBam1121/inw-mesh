@@ -9,6 +9,7 @@
 #include "dataio.h"
 #include "gps.h"
 #include "haptic.h"
+#include "audio_jingle.h"
 #include "backlight.h"
 #include "logstore.h"
 
@@ -255,13 +256,22 @@ static uint32_t armRemaining() {
   return e >= 5000 ? 0 : (5000 - e + 999) / 1000;
 }
 
+// A siren for each second of the countdown: a square wave sweeping up and back
+// down, ~0.9 s so one per second. Full volume even when the pager is muted or in
+// quiet hours - arming an SOS is deliberate, and whoever is nearby should hear
+// it. The user's volume comes back when the countdown ends either way.
+static const ToneStep SOS_SIREN[] = {{880, 440, 1400}, {1400, 440, 880}};
+static const Jingle SOS_SIREN_J = {"sos", SOS_SIREN, 2, WAVE_SQUARE, false};
+static void sirenOn()  { jingle.setVolume(100); jingle.play(&SOS_SIREN_J); }
+static void sirenOff() { app::applySound(); }
+
 class SosArmView : public View {
 public:
   SosArmView() { haptic.buzz(2); }
   void tick() override {
     if (!s_armAt) { if (nav.top() == this) nav.pop(); return; }   // sent or cancelled
     const uint32_t left = armRemaining();
-    if (left != _shown) { _shown = left; dirty = true; if (left) haptic.buzz(1); }
+    if (left != _shown) { _shown = left; dirty = true; }
   }
   void draw(Canvas& g) override {
     const Theme& t = nav.theme();
@@ -294,6 +304,7 @@ private:
   void cancel() {
     if (!s_armAt) return;
     s_armAt = 0;
+    sirenOff();
     logs.add(LOG_INFO, "sos countdown cancelled");
     nav.pop();
     nav.toast("sos cancelled");
@@ -310,8 +321,16 @@ void sosArm() {
 }
 
 static void armTick() {
-  if (!s_armAt || armRemaining()) return;
+  static uint32_t lastSec = 0;
+  if (!s_armAt) { lastSec = 0; return; }
+  // Siren and a buzz on every second, from here rather than the view so they
+  // carry on even if the countdown screen is covered.
+  const uint32_t left = armRemaining();
+  if (left && left != lastSec) { lastSec = left; haptic.buzz(1); sirenOn(); }
+  if (left) return;
+  lastSec = 0;
   s_armAt = 0;                               // the view sees this and closes itself
+  sirenOff();
   sosStart();
 }
 
