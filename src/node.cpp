@@ -678,13 +678,30 @@ bool nodeBegin() {
 
 void nodeLoop() {
   if (!g_node) return;
-  // Note for later: with a big contact list (1000+), MeshCore's own loop stalls
-  // for about a second whenever traffic marks contacts dirty - it rewrites the
-  // whole contacts file. Both that write and its timer are private to MyMesh,
-  // so it can't be deferred from here; fixing it means patching MeshCore.
+  // Store writes no longer happen here (tools/patch_meshcore.py moves them to a
+  // background task), yet the slow log still showed steady ~250 ms "msh"
+  // stalls. Name the packet that was being handled when one happens, so the
+  // cause is measured rather than guessed.
+  const uint32_t t0 = millis();
   g_node->loop();
+  const uint32_t t1 = millis();
   g_node->tick();
   rtc_clock.tick();
+  const uint32_t tLoop = t1 - t0, tTick = millis() - t1;
+  if (tLoop > 120 || tTick > 120) {
+    static const char* N[] = {"REQ", "RESP", "TXT", "ACK", "ADVERT", "GRP_TXT", "GRP_DATA", "ANON",
+                              "PATH", "TRACE", "MULTI", "CTRL", "?12", "?13", "?14", "RAW"};
+    static const char* R[] = {"tflood", "flood", "direct", "tdirect"};
+    const uint8_t n = g_node->pktCount;
+    if (n) {
+      const PacketLogEntry& e = g_node->pktLog[(g_node->pktHead + InwNode::PKT_LOG_MAX - 1) % InwNode::PKT_LOG_MAX];
+      Serial.printf("[W] mesh slow: loop %lums tick %lums; last pkt %s %s %s %uB %uh %lums ago, %d contacts\n",
+                    (unsigned long)tLoop, (unsigned long)tTick, e.tx ? "TX" : "rx", N[e.payloadType & 15],
+                    R[e.routeType & 3], e.len, e.hops, (unsigned long)(millis() - e.at), g_node->getNumContacts());
+    } else {
+      Serial.printf("[W] mesh slow: loop %lums tick %lums; no packets yet\n", (unsigned long)tLoop, (unsigned long)tTick);
+    }
+  }
 }
 
 bool bleEnabled()   { return g_ifaces.isBluetoothEnabled(); }

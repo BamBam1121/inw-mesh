@@ -60,6 +60,7 @@ View* makeHomeView();
 View* makeLockView();
 
 uint32_t g_shotAt = 0;
+extern char g_screenTitle[32];   // ui.cpp: the last header drawn
 static uint32_t s_prefsDirtyAt = 0, s_uiDirtyAt = 0;
 static uint32_t s_kbFlashUntil = 0;
 static bool s_radioOk = false;
@@ -990,6 +991,11 @@ void loop() {
     } else {
       if (detents && ui_settings.scrollTick) haptic.tick();
       else if ((anyKey || press) && ui_settings.keyHaptics) haptic.tick();
+      // Which input, on which screen, took the time (the "in" column of the slow log).
+      char before[32];
+      strlcpy(before, g_screenTitle, sizeof(before));
+      const uint32_t tIn = millis();
+      const char* what = detents ? "wheel" : press ? "press" : backspace ? "backspace" : "key";
       if (detents) nav.rotate(detents);
       if (press) nav.press();
       for (uint8_t i = 0; i < nchars; i++) {
@@ -998,6 +1004,8 @@ void loop() {
         else nav.key(chars[i]);
       }
       if (backspace) nav.backspace();
+      if (millis() - tIn > 120)
+        Serial.printf("[W] input slow: %s on '%s' took %lums\n", what, before, (unsigned long)(millis() - tIn));
     }
   }
 

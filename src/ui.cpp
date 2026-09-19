@@ -157,7 +157,9 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t) {
 }
 
 // ---- helpers ----------------------------------------------------------------------
+char g_screenTitle[32] = "home";   // last header drawn: names the screen in the slow log
 void drawHeader(Canvas& g, const char* title, const char* right) {
+  strlcpy(g_screenTitle, title ? title : "", sizeof(g_screenTitle));
   const Theme& t = nav.theme();
   g.setFont(&fonts::Font2);
   g.setTextColor(t.green, t.bg);
