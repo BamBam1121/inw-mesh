@@ -37,6 +37,8 @@ public:
     void setupCharger() {
         uint8_t r05, r07;
         if (!chgRead(0x05, r05) || !chgRead(0x07, r07)) return;
+        uint8_t r00;
+        if (chgRead(0x00, r00) && (r00 & 0x80)) chgWrite(0x00, r00 & ~0x80);   // input back on after a test
         chgWrite(0x05, r05 & 0xF0);                     // ITERM = 64 mA, pre-charge unchanged
         chgWrite(0x07, r07 & ~0x30);                    // WATCHDOG disabled
         // Charge at 1472 mA, about 1C for this 1500 mAh cell. It was charging at
@@ -80,22 +82,22 @@ public:
         if (read16(REG_CURRENT, v)) _currentMa = (int16_t)v;
         if (read16(0x12, v) && v > 100 && v < 5000) _fcc = v;
         uint8_t st;
-        if (chgRead(0x0B, st)) _vbus = (st >> 5) != 0;
-        // The gauge counts charge and is what we show. Voltage sags under radio
-        // and screen load, so it only takes over when the gauge is plainly wrong
-        // (it once sat at 60% on a full 4.197 V cell before it had seen a taper).
-        // While charging, the charger lifts the cell voltage well above its
-        // resting value (by more the emptier it is), so voltage says nothing
-        // useful then: show the gauge as is.
+        if (chgRead(0x0B, st)) {
+            _vbus = (st >> 5) != 0;
+            _chgDone = _vbus && ((st >> 3) & 3) == 3;
+        }
+        // The gauge counts charge and is what we show while it makes sense. It
+        // has sat at 60-67% on a full cell after missing the end of a charge, so
+        // the charger and the voltage get the final say when it plainly doesn't.
         uint8_t target = _gaugePct;
-        if (_millivolts && (charging() || _vbus)) {
-            // Near the top the charger holds the cell at its limit and the current
-            // tapers off: 1.47 A at roughly 85%, down to the 64 mA cut-off at full.
-            // That taper is a better guide than a gauge that hasn't learned the pack
-            // (it read 66% on a 4.20 V cell taking 150 mA, i.e. all but full).
-            uint8_t st;
-            if (chgRead(0x0B, st) && ((st >> 3) & 3) == 3) target = 100;
-            else if (_millivolts >= 4150 && _currentMa > 0) {
+        const bool up = charging() || _chgDone;
+        if (_millivolts && up) {
+            // While charging, the charger lifts the cell voltage above its resting
+            // value, so the voltage table means nothing. Near the top, though, the
+            // charger holds the cell at its limit and the current tapers off:
+            // 1.47 A at roughly 85%, down to the 64 mA cut-off at full.
+            if (_chgDone) target = 100;
+            else if (_millivolts >= 4150) {
                 const int ma = constrain((int)_currentMa, 64, 1472);
                 const uint8_t byTaper = 100 - (ma - 64) * 15 / (1472 - 64);
                 if (byTaper > target) target = byTaper;
@@ -104,12 +106,13 @@ public:
         } else if (_millivolts) {
             // Voltage sags under radio and screen load, and trusting it raw flipped
             // the figure between the gauge and the voltage table (the jumping people
-            // saw). Add back what the cell's resistance drops (~150 mOhm with the
-            // wiring) to get the resting voltage, then smooth it.
+            // saw). Add back what the cell's resistance drops (measured ~200 mOhm with
+            // the wiring: 4151 mV at 118 mA, 4103 mV at 352 mA) to get the resting
+            // voltage, then smooth it.
             const int drawMa = _currentMa < 0 ? -_currentMa : 0;
-            const int restMv = _millivolts + drawMa * 150 / 1000;
+            const int restMv = _millivolts + drawMa * 200 / 1000;
             _restMv = _restMv ? (_restMv * 3 + restMv) / 4 : restMv;
-            const uint8_t byVolt = fromVoltage(_restMv);
+            const uint8_t byVolt = _byVolt = fromVoltage(_restMv);
             // A pager that's running isn't at 0%: a near-empty gauge figure with
             // plenty of voltage behind it is the gauge being wrong.
             const bool falseEmpty = _gaugePct <= 5 && byVolt >= 15;
@@ -120,12 +123,29 @@ public:
             _voltTrust = gap > 20 ? true : (gap < 10 ? false : _voltTrust);
             if (falseEmpty || _voltTrust) target = byVolt;
         }
-        // Show it the way a phone does: unplugged it only counts down, plugged in it
-        // only counts up, one step at a time, so a noisy read never makes it bounce.
+        // Show it the way a phone does: charging it only counts up, otherwise it
+        // only counts down, one step at a time, so a noisy read never makes it bounce.
+        _target = target;
         if (!_shown) { _percent = target; _shown = true; }
-        else if (_vbus || charging()) { if (target > _percent) _percent++; }
+        else if (up) { if (target > _percent) _percent++; }
         else if (target < _percent) _percent--;
     }
+
+    // One line with everything the figure was worked out from.
+    void report() {
+        Serial.printf("[batt] shown %u%% target %u%% gauge %u%% volt %u%% | %umV rest %dmV %dmA | vbus %d done %d charging %d trustVolt %d hiz %d\n",
+                      _percent, _target, _gaugePct, _byVolt, _millivolts, _restMv, _currentMa,
+                      _vbus, _chgDone, charging(), _voltTrust, hiZ());
+    }
+
+    // Test aid: cut the charger's input so the pager runs from its battery while
+    // the USB cable stays in. begin() always turns it back off.
+    void setHiZ(bool on) {
+        uint8_t r;
+        if (chgRead(0x00, r)) chgWrite(0x00, on ? (r | 0x80) : (r & ~0x80));
+        _last = 0;
+    }
+    bool hiZ() { uint8_t r; return chgRead(0x00, r) && (r & 0x80); }
 
     uint8_t  percent() const { return _percent; }
     uint8_t  gaugePercent() const { return _gaugePct; }
@@ -281,7 +301,8 @@ private:
     uint8_t  _percent = 0, _gaugePct = 0;
     uint16_t _millivolts = 0, _designBefore = 0, _designNow = 0;
     int16_t  _currentMa = 0;
-    bool     _shown = false, _voltTrust = false;
+    bool     _shown = false, _voltTrust = false, _chgDone = false;
+    uint8_t  _target = 0, _byVolt = 0;
     int      _restMv = 0;
     uint32_t _last = 0, _lastDump = 0;
 };

@@ -162,6 +162,8 @@ bool inwStoreFlush(uint32_t ms);
 void inwStoreTick();
 void inwSetUserBusy(bool busy);
 
+static uint32_t s_hizUntil = 0;   // "batt hiz" test running until then
+
 void app::reboot() {
   if (g_node) {
     if (g_node->hasPendingWork()) g_node->saveContactsNow();   // contact saves are batched; don't drop one
@@ -541,6 +543,16 @@ static void usbCommands() {
     if (!strcmp(line, "log")) {             // the on-device log, including "slow" stalls
       for (uint8_t i = 0; i < logs.count(); i++) Serial.printf("[log] %s\n", logs.line(i));
       Serial.println("[log] end");
+      continue;
+    }
+    if (!strcmp(line, "batt")) { battery.report(); continue; }
+    // Run from the battery with the cable still in, to check the figure on
+    // battery. Turns itself back off after the given minutes (at most 30).
+    if (!strncmp(line, "batt hiz ", 9)) {
+      const int min = atoi(line + 9);
+      if (min > 0) { battery.setHiZ(true); s_hizUntil = (millis() + constrain(min, 1, 30) * 60000UL) | 1; }
+      else { battery.setHiZ(false); s_hizUntil = 0; }
+      battery.report();
       continue;
     }
     if (!strcmp(line, "status")) {
@@ -1021,6 +1033,7 @@ void loop() {
   { static bool w = false; if (wifi::connected() != w) { w = wifi::connected(); nav.statusChanged(); } }
   lap(2);
   battery.tick(millis());
+  if (s_hizUntil && (int32_t)(millis() - s_hizUntil) > 0) { s_hizUntil = 0; battery.setHiZ(false); Serial.println("[batt] charger input back on"); }
   power::tick();
   ota::tick();
   nodeLoop();
@@ -1085,6 +1098,8 @@ void loop() {
   if (total > 150) {
     logs.add(LOG_WARN, "slow %lu: in%u gps%u wf%u msh%u tk%u drw%u x%u bk%u",
              (unsigned long)total, laps[0], laps[1], laps[2], laps[3], laps[4], laps[5], laps[6], laps[7]);
+    extern char g_screenTitle[32];
+    if (laps[5] > 150) Serial.printf("[W] draw slow: %ums on '%s'%s\n", laps[5], g_screenTitle, dimmer.asleep() ? " (screen off)" : "");
   }
   // Screen off and nothing playing: poll gently. It used to spin every 2 ms with
   // the screen dark. The radio holds a received packet until it's read, so 30 ms
