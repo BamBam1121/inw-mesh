@@ -159,6 +159,7 @@ void app::applyTheme() {
 // these wait for it, and report what it finished.
 bool inwStoreFlush(uint32_t ms);
 void inwStoreTick();
+void inwSetUserBusy(bool busy);
 
 void app::reboot() {
   if (g_node) {
@@ -534,6 +535,11 @@ static void usbCommands() {
     }
     if (!strcmp(line, "backup")) {          // same job as Settings -> back up to sd now
       Serial.printf("[backup] %s\n", sdBackupNow(true));
+      continue;
+    }
+    if (!strcmp(line, "log")) {             // the on-device log, including "slow" stalls
+      for (uint8_t i = 0; i < logs.count(); i++) Serial.printf("[log] %s\n", logs.line(i));
+      Serial.println("[log] end");
       continue;
     }
     if (!strcmp(line, "status")) {
@@ -1063,9 +1069,12 @@ void loop() {
 
   lap(6);
   autoAdvertTick(); sdBackupTick(); inwStoreTick(); field::tick();
+  // Background flash writes wait while someone is using the pager (they stall
+  // both cores for a moment each).
+  inwSetUserBusy(!dimmer.asleep() && dimmer.idleFor() < 4000);
   lap(7);
   const uint32_t total = millis() - tLoop;
-  if (total > 300) {
+  if (total > 150) {
     logs.add(LOG_WARN, "slow %lu: in%u gps%u wf%u msh%u tk%u drw%u x%u bk%u",
              (unsigned long)total, laps[0], laps[1], laps[2], laps[3], laps[4], laps[5], laps[6], laps[7]);
   }

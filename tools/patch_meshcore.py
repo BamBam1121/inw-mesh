@@ -47,7 +47,31 @@ struct InwDone { char path[24]; size_t bytes; bool ok; };
 static InwDone inw_done[4];
 static volatile uint8_t inw_done_n = 0;
 
+// Flash writes stall BOTH cores for a moment (the cache is off while flash is
+// written), so even a background write is felt as small hitches. The loop tells
+// us when someone is actively using the pager, and writes wait for a lull -
+// never longer than a minute, so a save can't be held off forever.
+static volatile bool inw_user_busy = false;
+void inwSetUserBusy(bool busy) { inw_user_busy = busy; }
+static void inwWaitForLull() {
+  for (uint32_t t0 = millis(); inw_user_busy && millis() - t0 < 60000;) vTaskDelay(pdMS_TO_TICKS(100));
+}
+
+// Advert blobs (MeshCore keeps each contact's last raw advert in /bl/<key> to
+// share or export it). It rewrote that file on the UI loop for EVERY advert
+// heard, and on this SPIFFS a file open by name scans the whole partition: the
+// 200-300 ms "msh" stalls in the slow log on a busy mesh. Queue them here
+// instead, latest wins per contact; reads check the queue first.
+struct InwBlob { char path[24]; uint8_t len; uint8_t data[255]; bool used; };
+static InwBlob* inw_blobs = nullptr;
+static const int INW_BLOBS = 24;
+static FILESYSTEM* inw_blob_fs = nullptr;
+
+static bool inwQueueBlob(FILESYSTEM* fs, const char* path, const uint8_t* src, uint8_t len);
+static int inwQueuedBlob(const char* path, uint8_t* dest);
+
 static void inwWriteJob(InwJob& j) {
+  inwWaitForLull();
   char tmp[32];
   snprintf(tmp, sizeof(tmp), "%s.tmp", j.path);
   const uint32_t t0 = millis();
@@ -57,6 +81,7 @@ static void inwWriteJob(InwJob& j) {
     const size_t n = j.len - off < 4096 ? j.len - off : 4096;
     ok = f.write(j.buf + off, n) == n;
     vTaskDelay(pdMS_TO_TICKS(8));       // let the UI run between chunks
+    inwWaitForLull();                   // and hold off while someone is using it
   }
   if (f) f.close();
   const uint32_t t1 = millis();
@@ -71,20 +96,81 @@ static void inwWriteJob(InwJob& j) {
 }
 
 static void inwStoreTask(void*) {
+  static InwBlob blob;                  // one being written, copied out of the queue
   for (;;) {
     InwJob job = {};
+    bool haveBlob = false;
     xSemaphoreTake(inw_mx, portMAX_DELAY);
     for (auto& q : inw_q) if (q.buf) { job = q; q = InwJob{}; break; }
-    inw_busy = job.buf != nullptr;
+    if (!job.buf && inw_blobs)
+      for (int i = 0; i < INW_BLOBS; i++) if (inw_blobs[i].used) { blob = inw_blobs[i]; haveBlob = true; break; }
+    inw_busy = job.buf != nullptr || haveBlob;
     xSemaphoreGive(inw_mx);
     if (job.buf) { inwWriteJob(job); inw_busy = false; continue; }
+    if (haveBlob) {
+      inwWaitForLull();
+      File f = inw_blob_fs->open(blob.path, "w", true);
+      const bool ok = f && f.write(blob.data, blob.len) == blob.len;
+      if (f) f.close();
+      if (!ok) inw_blob_fs->remove(blob.path);
+      // Clear the slot only if nothing newer replaced it while we wrote.
+      xSemaphoreTake(inw_mx, portMAX_DELAY);
+      for (int i = 0; i < INW_BLOBS; i++)
+        if (inw_blobs[i].used && !strcmp(inw_blobs[i].path, blob.path) &&
+            inw_blobs[i].len == blob.len && !memcmp(inw_blobs[i].data, blob.data, blob.len)) inw_blobs[i].used = false;
+      inw_busy = false;
+      xSemaphoreGive(inw_mx);
+      continue;
+    }
     ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
   }
 }
 
-static void inwSubmit(FILESYSTEM* fs, const char* path, uint8_t* buf, size_t len) {
+static void inwStartTask() {
   if (!inw_mx) inw_mx = xSemaphoreCreateMutex();
   if (!inw_task) xTaskCreatePinnedToCore(inwStoreTask, "inw_store", 6144, nullptr, 1, &inw_task, 0);
+}
+
+static bool inwQueueBlob(FILESYSTEM* fs, const char* path, const uint8_t* src, uint8_t len) {
+  inwStartTask();
+  xSemaphoreTake(inw_mx, portMAX_DELAY);
+  if (!inw_blobs) inw_blobs = (InwBlob*)ps_calloc(INW_BLOBS, sizeof(InwBlob));
+  InwBlob* slot = nullptr;
+  if (inw_blobs) {
+    for (int i = 0; i < INW_BLOBS && !slot; i++) if (inw_blobs[i].used && !strcmp(inw_blobs[i].path, path)) slot = &inw_blobs[i];
+    for (int i = 0; i < INW_BLOBS && !slot; i++) if (!inw_blobs[i].used) slot = &inw_blobs[i];
+    if (slot) {
+      inw_blob_fs = fs;
+      strlcpy(slot->path, path, sizeof(slot->path));
+      memcpy(slot->data, src, len); slot->len = len; slot->used = true;
+    }
+  }
+  xSemaphoreGive(inw_mx);
+  if (!slot) return false;              // queue full: caller writes it directly, as before
+  xTaskNotifyGive(inw_task);
+  return true;
+}
+
+// Forgetting a contact deletes its blob; a queued write must not bring it back.
+static void inwDropBlob(const char* path) {
+  if (!inw_mx || !inw_blobs) return;
+  xSemaphoreTake(inw_mx, portMAX_DELAY);
+  for (int i = 0; i < INW_BLOBS; i++) if (inw_blobs[i].used && !strcmp(inw_blobs[i].path, path)) inw_blobs[i].used = false;
+  xSemaphoreGive(inw_mx);
+}
+
+static int inwQueuedBlob(const char* path, uint8_t* dest) {
+  if (!inw_mx || !inw_blobs) return -1;
+  int len = -1;
+  xSemaphoreTake(inw_mx, portMAX_DELAY);
+  for (int i = 0; i < INW_BLOBS; i++)
+    if (inw_blobs[i].used && !strcmp(inw_blobs[i].path, path)) { memcpy(dest, inw_blobs[i].data, inw_blobs[i].len); len = inw_blobs[i].len; break; }
+  xSemaphoreGive(inw_mx);
+  return len;
+}
+
+static void inwSubmit(FILESYSTEM* fs, const char* path, uint8_t* buf, size_t len) {
+  inwStartTask();
   xSemaphoreTake(inw_mx, portMAX_DELAY);
   InwJob* slot = nullptr;
   for (auto& q : inw_q) if (q.buf && !strcmp(q.path, path)) slot = &q;       // replace a queued one
@@ -105,7 +191,9 @@ bool inwStoreFlush(uint32_t ms) {
   for (;;) {
     xSemaphoreTake(inw_mx, portMAX_DELAY);
     bool idle = !inw_busy && !inw_q[0].buf && !inw_q[1].buf;
+    if (inw_blobs) for (int i = 0; i < INW_BLOBS; i++) if (inw_blobs[i].used) idle = false;
     xSemaphoreGive(inw_mx);
+    inw_user_busy = false;               // a flush means "now": don't wait for a lull
     if (idle) return true;
     if (millis() - t0 > ms) return false;
     delay(20);
@@ -237,6 +325,18 @@ def patch_datastore(src):
     src = patch_save(src, "saveContacts", "/contacts3", "saving contacts")
     src = patch_save(src, "saveChannels", "/channels2", "saving channels")
     src = patch_load(src)
+    # Advert blobs (ESP32 branch: one file per contact under /bl): writes go to
+    # the background writer; reads see a queued write before the file.
+    old_put = "  File f = openWrite(_fs, path);\n  if (f) {\n    int n = f.write(src_buf, len);"
+    old_get = "  if (_fs->exists(path)) {\n    File f = openRead(_fs, path);"
+    if src.count(old_put) != 1 or src.count(old_get) != 1:
+        raise SystemExit("patch_meshcore.py: DataStore blob functions changed upstream, patch did not apply")
+    src = src.replace(old_put, "  if (inwQueueBlob(_fs, path, src_buf, len)) return true;   // INW: written in the background\n" + old_put)
+    src = src.replace(old_get, "  { const int q = inwQueuedBlob(path, dest_buf); if (q >= 0) return (uint8_t)q; }   // INW: not on flash yet\n" + old_get)
+    d = src.index("bool DataStore::deleteBlobByKey(", src.index(old_put))
+    old_del = "  _fs->remove(path);"
+    e = src.index(old_del, d)
+    src = src[:e] + "  inwDropBlob(path);   // INW: a queued write would recreate it\n" + src[e:]
     if src.count("file.submit(") != 2 or src.count("InwBufFile file(") != 2 or src.count("inw_ok = false; break;") != 2:
         raise SystemExit("patch_meshcore.py: DataStore.cpp changed upstream, patch did not apply")
     return src
