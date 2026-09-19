@@ -88,7 +88,20 @@ public:
         // resting value (by more the emptier it is), so voltage says nothing
         // useful then: show the gauge as is.
         uint8_t target = _gaugePct;
-        if (_millivolts && !charging()) {
+        if (_millivolts && (charging() || _vbus)) {
+            // Near the top the charger holds the cell at its limit and the current
+            // tapers off: 1.47 A at roughly 85%, down to the 64 mA cut-off at full.
+            // That taper is a better guide than a gauge that hasn't learned the pack
+            // (it read 66% on a 4.20 V cell taking 150 mA, i.e. all but full).
+            uint8_t st;
+            if (chgRead(0x0B, st) && ((st >> 3) & 3) == 3) target = 100;
+            else if (_millivolts >= 4150 && _currentMa > 0) {
+                const int ma = constrain((int)_currentMa, 64, 1472);
+                const uint8_t byTaper = 100 - (ma - 64) * 15 / (1472 - 64);
+                if (byTaper > target) target = byTaper;
+            }
+            _voltTrust = false;
+        } else if (_millivolts) {
             const uint8_t byVolt = fromVoltage(_millivolts);
             // A pager that's running isn't at 0%: a near-empty gauge figure with
             // plenty of voltage behind it is the gauge being wrong.
@@ -97,7 +110,13 @@ public:
             // or screen load it sags, and trusting it then flipped the figure between
             // the gauge and the voltage table, which is the jumping people saw.
             const bool rested = abs(_currentMa) < 120;
-            if (falseEmpty || (rested && abs((int)_gaugePct - (int)byVolt) > 35)) target = byVolt;
+            const int gap = abs((int)_gaugePct - (int)byVolt);
+            // Once a rested reading shows the gauge is well off, stay with voltage
+            // until the gauge agrees again, and hold still while under load rather
+            // than sliding back to the gauge's wrong figure.
+            if (rested) _voltTrust = gap > 20 ? true : (gap < 10 ? false : _voltTrust);
+            if (falseEmpty || (rested && _voltTrust)) target = byVolt;
+            else if (_voltTrust && _shown) target = _percent;
         }
         // Show it the way a phone does: unplugged it only counts down, plugged in it
         // only counts up, one step at a time, so a noisy read never makes it bounce.
@@ -260,6 +279,6 @@ private:
     uint8_t  _percent = 0, _gaugePct = 0;
     uint16_t _millivolts = 0, _designBefore = 0, _designNow = 0;
     int16_t  _currentMa = 0;
-    bool     _shown = false;
+    bool     _shown = false, _voltTrust = false;
     uint32_t _last = 0, _lastDump = 0;
 };
