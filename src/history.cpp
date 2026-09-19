@@ -17,7 +17,23 @@ bool History::begin() {
   return true;
 }
 
+// Background store writer (tools/patch_meshcore.py). Every message and every
+// status change (sending, sent, delivered, each "heard x3") used to open the log
+// on the UI loop, and on this 8 MB SPIFFS an open by name scans the partition:
+// a few hundred ms per record, several per message on a busy channel. Records
+// are queued in order and appended by the task instead; if the queue can't take
+// one, it's written here as before.
+bool inwQueueAppend(const char* path, const uint8_t* data, size_t len);
+bool inwQueueReplace(const char* path, const uint8_t* data, size_t len);
+void inwDropPath(const char* path);
+
 void History::appendRecord(char kind, const void* data, size_t len) {
+  uint8_t rec[1 + sizeof(HistMsg)];
+  if (1 + len <= sizeof(rec)) {
+    rec[0] = (uint8_t)kind;
+    memcpy(rec + 1, data, len);
+    if (inwQueueAppend(LOG_PATH, rec, 1 + len)) return;
+  }
   File f = SPIFFS.open(LOG_PATH, FILE_APPEND);
   if (!f) return;
   f.write((const uint8_t*)&kind, 1);
@@ -219,6 +235,8 @@ void History::clearConv(const ConvKey& k) {
 
 void History::clearAll() {
   _count = 0; _head = 0;
+  inwDropPath(LOG_PATH);          // queued records would recreate what's being cleared
+  inwDropPath(READS_PATH);
   SPIFFS.remove(LOG_PATH);
   _readCount = 0;
   SPIFFS.remove(READS_PATH);
@@ -238,6 +256,7 @@ uint16_t History::conversations(ConvKey* out, uint16_t max) {
 }
 
 void History::saveReads() {
+  if (inwQueueReplace(READS_PATH, (const uint8_t*)_reads, sizeof(ReadMark) * _readCount)) return;
   File f = SPIFFS.open(READS_PATH, FILE_WRITE);
   if (!f) return;
   f.write((const uint8_t*)_reads, sizeof(ReadMark) * _readCount);

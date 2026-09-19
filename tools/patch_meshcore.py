@@ -36,10 +36,18 @@ HELPER = r'''
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
+#include <SPIFFS.h>
 void inwStoreSaved(const char* path, size_t bytes);
 
 struct InwJob { FILESYSTEM* fs; char path[24]; uint8_t* buf; size_t len; };
-static InwJob inw_q[2];                 // one queued save per file
+static InwJob inw_q[4];                 // one queued save per file (contacts, channels, read marks, spare)
+
+// One append stream (the message history log): records collect here in order
+// and the task appends them in one go. Only one path is supported; a different
+// path returns false and the caller writes directly, as before.
+static char inw_app_path[24] = "";
+static uint8_t* inw_app_buf = nullptr;
+static size_t inw_app_len = 0, inw_app_cap = 0;
 static volatile bool inw_busy = false;  // a save is being written right now
 static SemaphoreHandle_t inw_mx = nullptr;
 static TaskHandle_t inw_task = nullptr;
@@ -107,6 +115,26 @@ static void inwStoreTask(void*) {
     inw_busy = job.buf != nullptr || haveBlob;
     xSemaphoreGive(inw_mx);
     if (job.buf) { inwWriteJob(job); inw_busy = false; continue; }
+    // Pending history records: take them all and append in one open.
+    uint8_t* app = nullptr; size_t appLen = 0; char appPath[24] = "";
+    if (!haveBlob) {
+      xSemaphoreTake(inw_mx, portMAX_DELAY);
+      if (inw_app_len) {
+        app = inw_app_buf; appLen = inw_app_len; strlcpy(appPath, inw_app_path, sizeof(appPath));
+        inw_app_buf = nullptr; inw_app_len = inw_app_cap = 0;
+        inw_busy = true;
+      }
+      xSemaphoreGive(inw_mx);
+    }
+    if (app) {
+      inwWaitForLull();
+      File f = SPIFFS.open(appPath, FILE_APPEND);
+      if (f) { f.write(app, appLen); f.close(); }
+      else Serial.printf("[save] append to %s failed, %u bytes lost\n", appPath, (unsigned)appLen);
+      free(app);
+      inw_busy = false;
+      continue;
+    }
     if (haveBlob) {
       inwWaitForLull();
       File f = inw_blob_fs->open(blob.path, "w", true);
@@ -184,13 +212,84 @@ static void inwSubmit(FILESYSTEM* fs, const char* path, uint8_t* buf, size_t len
   xTaskNotifyGive(inw_task);
 }
 
+// For our own files (src/history.cpp): whole-file replace and append, both
+// written by the task. Replace copies the data, so the caller's buffer is free.
+bool inwQueueReplace(const char* path, const uint8_t* data, size_t len) {
+  uint8_t* b = (uint8_t*)ps_malloc(len ? len : 1);
+  if (!b) return false;
+  if (len) memcpy(b, data, len);
+  inwSubmit(&SPIFFS, path, b, len);
+  return true;
+}
+
+bool inwQueueAppend(const char* path, const uint8_t* data, size_t len) {
+  inwStartTask();
+  xSemaphoreTake(inw_mx, portMAX_DELAY);
+  bool ok = false;
+  if (!inw_app_len || !strcmp(inw_app_path, path)) {
+    if (inw_app_len + len > inw_app_cap) {
+      size_t nc = inw_app_cap ? inw_app_cap * 2 : 4096;
+      while (nc < inw_app_len + len) nc *= 2;
+      uint8_t* nb = (uint8_t*)ps_realloc(inw_app_buf, nc);
+      if (nb) { inw_app_buf = nb; inw_app_cap = nc; }
+    }
+    if (inw_app_len + len <= inw_app_cap) {
+      strlcpy(inw_app_path, path, sizeof(inw_app_path));
+      memcpy(inw_app_buf + inw_app_len, data, len);
+      inw_app_len += len;
+      ok = true;
+    }
+  }
+  xSemaphoreGive(inw_mx);
+  if (ok) xTaskNotifyGive(inw_task);
+  return ok;
+}
+
+// A write-only Stream into PSRAM, for MeshCore's prefs serializer: the JSON is
+// built in memory and handed to the background writer instead of being written
+// field by field through SPIFFS on the UI loop.
+class InwStreamBuf : public Stream {
+public:
+  uint8_t* data = nullptr;
+  size_t len = 0, cap = 0;
+  bool bad = false;
+  ~InwStreamBuf() { free(data); }
+  size_t write(uint8_t c) override { return write(&c, 1); }
+  size_t write(const uint8_t* p, size_t n) override {
+    if (bad) return 0;
+    if (len + n > cap) {
+      size_t nc = cap ? cap * 2 : 1024;
+      while (nc < len + n) nc *= 2;
+      uint8_t* nb = (uint8_t*)ps_realloc(data, nc);
+      if (!nb) { bad = true; return 0; }
+      data = nb; cap = nc;
+    }
+    memcpy(data + len, p, n); len += n;
+    return n;
+  }
+  int available() override { return 0; }
+  int read() override { return -1; }
+  int peek() override { return -1; }
+  void flush() override {}
+};
+
+// Throws away anything queued for a file that is about to be deleted.
+void inwDropPath(const char* path) {
+  if (!inw_mx) return;
+  xSemaphoreTake(inw_mx, portMAX_DELAY);
+  for (auto& q : inw_q) if (q.buf && !strcmp(q.path, path)) { free(q.buf); q = InwJob{}; }
+  if (inw_app_len && !strcmp(inw_app_path, path)) { free(inw_app_buf); inw_app_buf = nullptr; inw_app_len = inw_app_cap = 0; }
+  xSemaphoreGive(inw_mx);
+}
+
 // Everything queued is on flash when this returns true.
 bool inwStoreFlush(uint32_t ms) {
   if (!inw_mx) return true;
   const uint32_t t0 = millis();
   for (;;) {
     xSemaphoreTake(inw_mx, portMAX_DELAY);
-    bool idle = !inw_busy && !inw_q[0].buf && !inw_q[1].buf;
+    bool idle = !inw_busy && !inw_app_len;
+    for (auto& q : inw_q) if (q.buf) idle = false;
     if (inw_blobs) for (int i = 0; i < INW_BLOBS; i++) if (inw_blobs[i].used) idle = false;
     xSemaphoreGive(inw_mx);
     inw_user_busy = false;               // a flush means "now": don't wait for a lull
@@ -333,6 +432,19 @@ def patch_datastore(src):
         raise SystemExit("patch_meshcore.py: DataStore blob functions changed upstream, patch did not apply")
     src = src.replace(old_put, "  if (inwQueueBlob(_fs, path, src_buf, len)) return true;   // INW: written in the background\n" + old_put)
     src = src.replace(old_get, "  { const int q = inwQueuedBlob(path, dest_buf); if (q >= 0) return (uint8_t)q; }   // INW: not on flash yet\n" + old_get)
+    # Prefs: serialize into memory, write in the background (falls back to the
+    # direct write if memory or the queue says no).
+    old_prefs = ('bool DataStore::savePrefs(NodePrefs& _prefs) {\n'
+                 '  File file = openWrite(_fs, "/prefs.json");\n')
+    if src.count(old_prefs) != 1:
+        raise SystemExit("patch_meshcore.py: DataStore::savePrefs changed upstream, patch did not apply")
+    src = src.replace(old_prefs,
+                      'bool DataStore::savePrefs(NodePrefs& _prefs) {\n'
+                      '  {  // INW: built in PSRAM, written by the background task\n'
+                      '    InwStreamBuf buf;\n'
+                      '    if (_prefs.saveSerial(buf) && !buf.bad && inwQueueReplace("/prefs.json", buf.data, buf.len)) return true;\n'
+                      '  }\n'
+                      '  File file = openWrite(_fs, "/prefs.json");\n')
     d = src.index("bool DataStore::deleteBlobByKey(", src.index(old_put))
     old_del = "  _fs->remove(path);"
     e = src.index(old_del, d)

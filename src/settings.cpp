@@ -48,6 +48,7 @@ void UiSettings::save() {
 
 // Same bytes as the NVS blob, one version byte in front. Only written when it
 // changed: the mirror is flash too, and save() runs on every settings edit.
+bool inwQueueReplace(const char* path, const uint8_t* data, size_t len);   // tools/patch_meshcore.py
 void UiSettings::saveMirror() {
   static uint8_t last[sizeof(UiSettings) + 1];
   static bool have = false;
@@ -55,6 +56,9 @@ void UiSettings::saveMirror() {
   buf[0] = VERSION;
   memcpy(buf + 1, this, sizeof(UiSettings));
   if (have && !memcmp(last, buf, sizeof(buf))) return;
+  // Written by the background store task: an open by name on this SPIFFS scans
+  // the partition, and save() runs on every settings edit and on leaving the map.
+  if (inwQueueReplace(MIRROR, buf, sizeof(buf))) { memcpy(last, buf, sizeof(buf)); have = true; return; }
   File f = SPIFFS.open(MIRROR, FILE_WRITE);
   if (!f) return;
   if (f.write(buf, sizeof(buf)) == sizeof(buf)) { memcpy(last, buf, sizeof(buf)); have = true; }
