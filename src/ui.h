@@ -11,6 +11,8 @@
 
 using Canvas = lgfx::LGFX_Sprite;
 
+namespace fx { bool active(); }       // fx.h: effects running keep the screen redrawing
+
 // Layout constants shared by every screen.
 namespace L {
   constexpr int W = 480, H = 222;
@@ -65,13 +67,16 @@ public:
   void backspace();
   void tick();
   void draw();
+  // Draw the top view into the canvas without sending it to the panel, for a
+  // transition to reveal (or collapse) the real picture.
+  void compose();
 
   Canvas& canvas() { return _canvas; }
   LGFX* display() { return _d; }
   Theme& theme() { return *_t; }
   // Overlays (toast, banner) painted on top of whatever the view drew.
   void drawOverlays(lgfx::LovyanGFX& g);
-  bool overlayActive() const { return _toastUntil || _bannerUntil; }
+  bool overlayActive() const { return _toastUntil || _bannerUntil || fx::active(); }
 
 private:
   LGFX* _d = nullptr;

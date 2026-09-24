@@ -83,15 +83,26 @@ static void inwWriteJob(InwJob& j) {
   char tmp[32];
   snprintf(tmp, sizeof(tmp), "%s.tmp", j.path);
   const uint32_t t0 = millis();
-  File f = j.fs->open(tmp, "w", true);
-  bool ok = (bool)f;
-  for (size_t off = 0; ok && off < j.len; off += 4096) {
-    const size_t n = j.len - off < 4096 ? j.len - off : 4096;
-    ok = f.write(j.buf + off, n) == n;
-    vTaskDelay(pdMS_TO_TICKS(8));       // let the UI run between chunks
-    inwWaitForLull();                   // and hold off while someone is using it
+  bool ok = false;
+  // A write can fail once and work the next time (seen on /contacts3 with a
+  // thousand files on the partition). Dropping it left the changes in RAM only,
+  // so try again before giving up; the old file stays whole throughout.
+  for (int attempt = 1; attempt <= 3 && !ok; attempt++) {
+    if (attempt > 1) {
+      Serial.printf("[save] %s failed, retrying (%d of 3)\n", j.path, attempt);
+      j.fs->remove(tmp);
+      vTaskDelay(pdMS_TO_TICKS(500));
+    }
+    File f = j.fs->open(tmp, "w", true);
+    ok = (bool)f;
+    for (size_t off = 0; ok && off < j.len; off += 4096) {
+      const size_t n = j.len - off < 4096 ? j.len - off : 4096;
+      ok = f.write(j.buf + off, n) == n;
+      vTaskDelay(pdMS_TO_TICKS(8));       // let the UI run between chunks
+      inwWaitForLull();                   // and hold off while someone is using it
+    }
+    if (f) f.close();
   }
-  if (f) f.close();
   const uint32_t t1 = millis();
   if (ok) { j.fs->remove(j.path); j.fs->rename(tmp, j.path); }
   else j.fs->remove(tmp);

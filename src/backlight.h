@@ -57,6 +57,7 @@ public:
     }
 
     bool fading() const { return _fading; }
+    void setNow(uint8_t level) { _fading = false; setLevel(level); }   // cancels any fade
 
 private:
     // Stepping only goes down, so climbing means wrapping through 16.
@@ -96,6 +97,9 @@ public:
 
     // Screen off now, the way the side button works on a phone.
     void sleepNow() { if (_state != SLEEP) { _state = SLEEP; _bl->fadeTo(0, 250); } }
+    // No fade: an animation has already done the turning on or off.
+    void wakeInstant()  { _lastActivity = millis(); _state = FULL; _bl->setNow(_full); }
+    void sleepInstant() { _state = SLEEP; _bl->setNow(0); }
 
     bool asleep() const { return _state == SLEEP; }
     bool dimmed() const { return _state == DIM; }

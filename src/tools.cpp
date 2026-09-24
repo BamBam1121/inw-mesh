@@ -5,6 +5,7 @@
 #include "gps.h"
 #include "logstore.h"
 #include "fieldtools.h"
+#include "fx.h"
 #include <SPIFFS.h>
 #include <SD.h>
 
@@ -24,12 +25,24 @@ public:
     if (!g_node || !g_node->discover()) { nav.toast("radio busy"); return; }
     _started = millis();
     _focus = 0;
+    _seen = 0;
+    _doneDrawn = false;
     dirty = true;
   }
   void tick() override {
     if (!g_node) return;
-    if (g_node->discoveredCount != _seen) { _seen = g_node->discoveredCount; dirty = true; }
-    if (millis() - _started < 12000 && millis() - _last > 1000) { _last = millis(); dirty = true; }
+    if (g_node->discoveredCount != _seen) {
+      // Each new answer lands on the scope with the theme's ping.
+      for (uint8_t i = _seen; i < g_node->discoveredCount; i++) {
+        int x, y;
+        blipPos(g_node->discovered[i], x, y);
+        fx::ping(x, y);
+      }
+      _seen = g_node->discoveredCount;
+      dirty = true;
+    }
+    if (millis() - _started < LISTEN_MS) dirty = true;     // the sweep turns every frame
+    else if (!_doneDrawn) { _doneDrawn = true; dirty = true; }
   }
   void rotate(int d) override {
     const int n = g_node ? g_node->discoveredCount : 0;
@@ -44,46 +57,80 @@ public:
   }
   void draw(Canvas& g) override {
     const Theme& t = nav.theme();
-    const bool live = millis() - _started < 12000;
+    const uint32_t age = millis() - _started;
+    const bool live = age < LISTEN_MS;
     char right[32];
     snprintf(right, sizeof(right), live ? "listening %lus" : "done  r = rescan",
-             (unsigned long)(12 - (millis() - _started) / 1000));
+             (unsigned long)((LISTEN_MS - min(age, LISTEN_MS)) / 1000 + 1));
     drawHeader(g, "Discover nearby", right);
     const int n = g_node ? g_node->discoveredCount : 0;
+
+    // The scope on the left: a sweep while listening, a blip for each answer.
+    fx::radar(g, RX, RY, RR, live ? age * 6.2832f / 1700.0f - 1.5708f : -1);
+    for (int i = 0; i < n; i++) {
+      int x, y;
+      blipPos(g_node->discovered[i], x, y);
+      const uint32_t since = millis() - g_node->discovered[i].at;
+      fx::blip(g, x, y, since < 900 ? 1.0f - since / 900.0f : 0, i == _focus);
+    }
+
+    // The list on the right.
+    const int lx = RX + RR + 16;
     if (!n) {
       g.setTextColor(t.dim, t.bg);
-      g.drawString(live ? "asking repeaters in direct range to answer..." : "no answers. press to try again", 14, L::BODY_Y + 10);
+      g.drawString(live ? "asking repeaters in" : "no answers.", lx, L::BODY_Y + 30);
+      g.drawString(live ? "direct range to answer..." : "press to try again", lx, L::BODY_Y + 48);
       return;
     }
     g.setTextColor(t.greenDim, t.bg);
-    g.drawString("node", 14, L::BODY_Y + 2);
-    g.drawString("they hear us", 250, L::BODY_Y + 2);
-    g.drawString("we hear them", 365, L::BODY_Y + 2);
-    for (int i = 0; i < n && i < 7; i++) {
+    g.drawString("node", lx, L::BODY_Y + 2);
+    g.drawString("they", 348, L::BODY_Y + 2);
+    g.drawString("we", 418, L::BODY_Y + 2);
+    const int first = max(0, min(_focus - 3, n - 7));
+    for (int i = first; i < n && i < first + 7; i++) {
       const DiscoverHit& h = g_node->discovered[i];
-      const int y = L::BODY_Y + 20 + i * 22;
+      const int y = L::BODY_Y + 20 + (i - first) * 22;
       const bool on = i == _focus;
-      if (on) g.fillRect(0, y - 2, L::W, 22, t.focus);
+      if (on) g.fillRect(lx - 4, y - 2, L::W - lx + 4, 22, t.focus);
       ContactInfo* c = g_node->contact(h.pub);
       char nm[36];
       if (c) sanitize(c->name, nm, sizeof(nm));
-      else snprintf(nm, sizeof(nm), "%02x%02x%02x%02x (new)", h.pub[0], h.pub[1], h.pub[2], h.pub[3]);
+      else snprintf(nm, sizeof(nm), "%02x%02x%02x (new)", h.pub[0], h.pub[1], h.pub[2]);
+      richFit(g, nm, 348 - lx - 6);
       const uint16_t bg = on ? t.focus : t.bg;
       g.setTextColor(on ? t.green : t.white, bg);
-      drawRich(g, nm, 14, y);
-      char a[20], b[24];
-      snprintf(a, sizeof(a), "%.1f dB", h.theirSnr4 / 4.0);
-      snprintf(b, sizeof(b), "%.1f dB %d", h.ourSnr4 / 4.0, h.rssi);
+      drawRich(g, nm, lx, y);
+      char a[12], b[12];
+      snprintf(a, sizeof(a), "%.0f", h.theirSnr4 / 4.0);
+      snprintf(b, sizeof(b), "%.0f", h.ourSnr4 / 4.0);
       g.setTextColor(h.theirSnr4 > 0 ? t.green : h.theirSnr4 > -28 ? t.amber : t.red, bg);
-      g.drawString(a, 250, y);
+      g.drawString(a, 348, y);
       g.setTextColor(h.ourSnr4 > 0 ? t.green : h.ourSnr4 > -28 ? t.amber : t.red, bg);
-      g.drawString(b, 365, y);
+      g.drawString(b, 418, y);
+      g.setTextColor(t.dim, bg);
+      g.drawString("dB", 348 + g.textWidth(a) + 3, y);
+      g.drawString("dB", 418 + g.textWidth(b) + 3, y);
     }
   }
 private:
-  uint32_t _started = 0, _last = 0;
+  static constexpr uint32_t LISTEN_MS = 12000;
+  static constexpr int RX = 92, RY = 132, RR = 82;     // the scope: centre and radius
+
+  // Where an answer sits on the scope: its bearing from its key (stable, so a
+  // node lands in the same place every scan), its distance from how well we
+  // heard it - a strong signal sits near the middle.
+  static void blipPos(const DiscoverHit& h, int& x, int& y) {
+    const float a = ((h.pub[0] << 8) | h.pub[1]) / 65536.0f * 6.2832f;
+    const float snr = h.ourSnr4 / 4.0f;
+    const float d = RR * max(0.18f, min(0.92f, (12.0f - snr) / 32.0f));
+    x = RX + (int)(cosf(a) * d);
+    y = RY + (int)(sinf(a) * d);
+  }
+
+  uint32_t _started = 0;
   uint8_t _seen = 0;
   int _focus = 0;
+  bool _doneDrawn = false;
 };
 
 // ---- text pages ------------------------------------------------------------------------------

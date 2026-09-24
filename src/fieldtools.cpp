@@ -272,12 +272,22 @@ public:
   SosArmView() { haptic.buzz(2); }
   void tick() override {
     if (!s_armAt) { if (nav.top() == this) nav.pop(); return; }   // sent or cancelled
-    const uint32_t left = armRemaining();
-    if (left != _shown) { _shown = left; dirty = true; }
+    _shown = armRemaining();
+    dirty = true;                                   // the shockwaves move every frame
   }
   void draw(Canvas& g) override {
     const Theme& t = nav.theme();
     g.fillRect(0, L::HEAD_Y, L::W, L::H - L::HEAD_Y, t.red);
+    // A shockwave out from the middle on every beat of the countdown. Red in
+    // every theme: an emergency screen should always look like one.
+    const uint32_t beat = (millis() - s_armAt) % 1000;
+    for (int k = 0; k < 2; k++) {
+      const float ph = (beat + k * 350) % 1000 / 1000.0f;
+      const int r = 10 + (int)(ph * 260);
+      const uint16_t c = ph < 0.35f ? t.white : ph < 0.7f ? 0xFD55 : 0xFB6D;   // white, pale red, soft red
+      g.drawCircle(L::W / 2, 118, r, c);
+      g.drawCircle(L::W / 2, 118, r + 1, c);
+    }
     g.setTextColor(t.white, t.red);
     g.setTextDatum(textdatum_t::middle_center);
     g.setFont(&fonts::Font4);

@@ -4,6 +4,8 @@
 #include "node.h"
 #include "history.h"
 #include "notify.h"
+#include "fx.h"
+#include "themes.h"
 
 ConvKey g_openConv;                 // the thread on screen, for notification muting
 
@@ -69,11 +71,13 @@ public:
     if (_sel >= _n) _sel = _n - 1;
     history.markRead(_key);
     _gen = history.gen;
+    noticeChanges();
   }
 
   void tick() override {
     if (history.gen != _gen) { refresh(); dirty = true; }
     if (millis() - _blinkAt > 530) { _blinkAt = millis(); _caret = !_caret; if (_sel < 0) dirty = true; }
+    if (_revealId && millis() - _revealAt < REVEAL_MS + 60) dirty = true;   // the decrypt effect
   }
 
   void setCompose(const String& s) { _compose = s; _sel = -1; dirty = true; }
@@ -141,6 +145,7 @@ public:
     }
     _compose = "";
     _sel = -1;
+    fx::burst(L::W - 40, L::H - 14);                  // off it goes, in the theme's style
     refresh();
     dirty = true;
   }
@@ -190,6 +195,7 @@ public:
     // Bottom-up: the anchor is the selected message, or the newest.
     const int anchor = _sel >= 0 ? _sel : _n - 1;
     int y = bottom - 2;
+    _posN = 0;
     // If a selection is scrolled up, keep a little of the next message visible.
     for (int i = anchor; i >= 0 && y > top; i--) {
       HistMsg* m = history.find(_ids[i]);
@@ -266,12 +272,14 @@ private:
       ty += 17;
     }
     g.setTextColor(t.white, bg);
+    scrambleIfNew(m.id, text);                        // a new arrival decrypts in front of you
     for (int i = 0; i < nl; i++) {
       drawRich(g, text + st[i], x + 8, ty, ln[i]);
       ty += 17;
     }
     g.setTextColor(m.status == ST_FAILED ? t.red : t.dim, bg);
     g.drawString(meta, x + w - 8 - metaW, ty);
+    notePos(m.id, x + w - 12, ty + 7);                // where its effects go: the status line
     return h;
   }
 
@@ -297,7 +305,86 @@ private:
     metaText(m, meta, sizeof(meta));
     g.setTextColor(m.status == ST_FAILED ? t.red : t.dim, selected ? t.focus : t.bg);
     g.drawString(meta, L::W - 8 - g.textWidth(meta), y + 1);
+    notePos(m.id, L::W - 16, y + 8);
     return h;
+  }
+
+  // ---- animation: what changed since the last look, and where it's on screen ----
+  static constexpr uint32_t REVEAL_MS = 650;
+  struct Seen { uint32_t id; uint8_t status, repeats; };
+  struct Pos  { uint32_t id; int16_t x, y; };
+  Seen _seen[16] = {};
+  uint8_t _seenN = 0;
+  Pos _pos[24] = {};
+  uint8_t _posN = 0;
+  uint32_t _maxId = 0, _revealId = 0, _revealAt = 0;
+  bool _seeded = false;
+
+  void notePos(uint32_t id, int x, int y) {
+    if (_posN < 24) _pos[_posN++] = {id, (int16_t)x, (int16_t)y};
+  }
+  const Pos* posOf(uint32_t id) const {
+    for (uint8_t i = 0; i < _posN; i++) if (_pos[i].id == id) return &_pos[i];
+    return nullptr;
+  }
+
+  // A repeat heard: a ping off the bubble. Delivered: a tick. Failed: a shake.
+  // A message that just arrived: it decrypts on screen. The first look at a
+  // thread only records what's there, so opening it doesn't set everything off.
+  void noticeChanges() {
+    const uint32_t now = millis();
+    uint32_t newest = _maxId;
+    for (int i = max(0, _n - 16); i < _n; i++) {
+      HistMsg* m = history.find(_ids[i]);
+      if (!m) continue;
+      newest = max(newest, _ids[i]);
+      if (!(m->flags & HF_OUT)) {
+        if (_seeded && _ids[i] > _maxId) { _revealId = _ids[i]; _revealAt = now; }
+        continue;
+      }
+      Seen* s = nullptr;
+      for (uint8_t k = 0; k < _seenN; k++) if (_seen[k].id == _ids[i]) s = &_seen[k];
+      if (!s) {
+        if (_seenN < 16) s = &_seen[_seenN++];
+        else { memmove(_seen, _seen + 1, sizeof(Seen) * 15); s = &_seen[15]; }
+        *s = {_ids[i], m->status, m->repeats};
+        continue;
+      }
+      if (_seeded) {
+        const Pos* p = posOf(_ids[i]);
+        if (p && m->repeats > s->repeats)
+          for (int r = 0; r < min(3, m->repeats - s->repeats); r++) fx::ping(p->x - r * 14, p->y);
+        if (m->status != s->status) {
+          if (m->status == ST_DELIVERED && p) fx::check(p->x - 4, p->y - 2);
+          if (m->status == ST_FAILED) fx::fail();
+        }
+      }
+      s->status = m->status;
+      s->repeats = m->repeats;
+    }
+    _maxId = newest;
+    _seeded = true;
+  }
+
+  // While a new message is decrypting, each character not yet revealed shows as
+  // a random glyph from the theme's set; the reveal sweeps left to right.
+  void scrambleIfNew(uint32_t id, char* text) {
+    if (id != _revealId) return;
+    const uint32_t age = millis() - _revealAt;
+    if (age >= REVEAL_MS) { _revealId = 0; return; }
+    static const char* SETS[] = {"0123456789abcdef", "#%&@$=", "*+x~^o", ".:*+~'"};
+    const char* set = SETS[app::themeSpec().style & 3];
+    const int setN = strlen(set);
+    int len = 0;
+    for (const char* p = text; *p; p++) if ((uint8_t)*p >= 0x20) len++;
+    const int shown = (int)(len * (age / (float)REVEAL_MS));
+    uint32_t seed = (age / 50) * 2654435761u + id;
+    int k = 0;
+    for (char* p = text; *p; p++) {
+      if (*p == 0x01 || *p == 0x02) { if (p[1]) p++; continue; }   // emoji markers stay whole
+      if ((uint8_t)*p < 0x21) { if ((uint8_t)*p >= 0x20) k++; continue; }
+      if (k++ >= shown) { seed = seed * 1103515245u + 12345u; *p = set[(seed >> 16) % setN]; }
+    }
   }
 
   void metaText(const HistMsg& m, char* out, size_t cap) {

@@ -37,6 +37,7 @@
 #include "dataio.h"
 #include "fieldtools.h"
 #include "netwifi.h"
+#include "fx.h"
 
 // Mesh callbacks (decrypt, verify, then our history write) run on the loop task;
 // give it room rather than finding the edge of the default 8 KB in the field.
@@ -307,11 +308,27 @@ void inwProgress(const char* what, uint32_t done, uint32_t total) {
 }
 void app::lock() { if (!nav.top() || !nav.top()->isLock()) nav.push(makeLockView()); }
 
+// The panel gets its own sleep command a moment after the backlight goes dark.
+static bool s_panelOff = false;
+
+// The side button waking the screen: the theme's turn-on animation, revealing
+// whatever is on top (usually the lock screen), then back to normal drawing.
+static void screenWakeAnimated() {
+  if (s_panelOff) { display.wakeup(); s_panelOff = false; }
+  nav.tick();                                    // let the top view catch up (the clock, say)
+  nav.compose();
+  display.fillScreen(TFT_BLACK);
+  dimmer.wakeInstant();
+  fx::screenOn(nav.canvas());
+  nav.invalidate();
+}
+
 static bool quietHours();
 // Plugged in: the theme's charge chime and one tap, like a phone. Quiet hours
 // keep it silent; the screen still shows the charge mark.
 void app::pluggedInFeedback() {
   nav.statusChanged();
+  if (!dimmer.asleep()) fx::charge(app::batteryPct());   // the theme's charging splash
   if (quietHours()) return;
   if (ui_settings.vibrate) { static const uint8_t TAP[] = {47}; haptic.pattern(TAP, 1); }
   if (ui_settings.sound) jingle.play(themeSpec().charge);
@@ -636,36 +653,80 @@ static void usbCommands() {
       continue;
     }
     if (!strcmp(line, "batt")) { battery.report(); continue; }
-    // Power-off animation, for checking it with the cable in: one frame as a
-    // screenshot ("gbframe -1" saving, "gbframe N" N ms into the teardown,
-    // "gbcrt P" the CRT squeeze at P% height), or the whole show live without
-    // turning anything off ("powershow").
-    if (!strncmp(line, "gbframe ", 8) || !strncmp(line, "gbcrt ", 6)) {
+    // Animations, for checking them with the cable in. One frame as a screenshot:
+    //   gbframe -1 / gbframe N   the goodbye screen saving / N ms into the teardown
+    //   fx on P / fx off P / fx down P   a transition at P% over the current screen
+    // or played live: fx play on|off|down|ping|burst|check|fail|charge
+    auto streamShot = [](lgfx::LovyanGFX& src, Canvas& buf) {
+      (void)src;
+      Serial.flush();
+      Serial.printf("SHOT565 %d %d\n", L::W, L::H);
+      Serial.write((const uint8_t*)buf.getBuffer(), L::W * L::H * 2);
+      Serial.flush();
+    };
+    if (!strncmp(line, "gbframe ", 8)) {
       Canvas& g = nav.canvas();
-      const bool crt = line[2] == 'c';
-      const int v = atoi(line + (crt ? 6 : 8));
-      goodbyeFrame(g, 1234, crt ? 980 : v);
-      if (crt) {
-        Canvas z;
-        z.setColorDepth(16);
-        z.setPsram(true);
-        if (z.createSprite(L::W, L::H)) {
-          z.fillScreen(TFT_BLACK);
-          const float sy = max(0.012f, v / 100.0f);
-          g.pushRotateZoom(&z, L::W / 2, L::H / 2, 0, 1.0f + 0.10f * (1.0f - sy), sy);
-          if (sy < 0.45f) z.drawFastHLine(0, L::H / 2, L::W, TFT_WHITE);
-          Serial.flush();
-          Serial.printf("SHOT565 %d %d\n", L::W, L::H);
-          Serial.write((const uint8_t*)z.getBuffer(), L::W * L::H * 2);
-          Serial.flush();
-          z.deleteSprite();
-        }
-      } else {
-        Serial.flush();
-        Serial.printf("SHOT565 %d %d\n", L::W, L::H);
-        Serial.write((const uint8_t*)g.getBuffer(), L::W * L::H * 2);
-        Serial.flush();
+      goodbyeFrame(g, 1234, atoi(line + 8));
+      streamShot(g, g);
+      nav.invalidate();
+      continue;
+    }
+    // "fx on 40 t2": optional tN renders in theme N just for this frame; the
+    // setting itself is put back untouched.
+    if (!strncmp(line, "fx on ", 6) || !strncmp(line, "fx off ", 7) || !strncmp(line, "fx down ", 8)) {
+      const uint8_t kind = line[3] == 'o' && line[4] == 'n' ? 0 : line[3] == 'o' ? 1 : 2;
+      const float p = atoi(line + (kind == 0 ? 6 : kind == 1 ? 7 : 8)) / 100.0f;
+      const char* tp = strstr(line, " t");
+      const uint8_t saved = ui_settings.themeId;
+      if (tp && atoi(tp + 2) < THEME_COUNT) { ui_settings.themeId = atoi(tp + 2); app::applyTheme(); }
+      Canvas* o = fx::scratch();
+      if (o) {
+        nav.compose();
+        fx::render(kind, nav.canvas(), *o, p);
+        streamShot(*o, *o);
+      } else Serial.println("[fx] no memory for the scratch frame");
+      if (ui_settings.themeId != saved) { ui_settings.themeId = saved; app::applyTheme(); }
+      nav.invalidate();
+      continue;
+    }
+    // "fx fx NAME tN": an overlay effect frozen partway, as a screenshot:
+    // NAME is ping, burst, check or charge, drawn over the current screen.
+    if (!strncmp(line, "fx fx ", 6)) {
+      const char* w = line + 6;
+      const char* tp = strstr(line, " t");
+      const uint8_t saved = ui_settings.themeId;
+      if (tp && atoi(tp + 2) < THEME_COUNT) { ui_settings.themeId = atoi(tp + 2); app::applyTheme(); }
+      if (!strncmp(w, "ping", 4))   { fx::ping(L::W / 2 - 60, L::H / 2); fx::ping(L::W / 2 + 60, L::H / 2); }
+      if (!strncmp(w, "burst", 5))  fx::burst(L::W / 2, L::H / 2);
+      if (!strncmp(w, "check", 5))  fx::check(L::W / 2, L::H / 2);
+      if (!strncmp(w, "charge", 6)) fx::charge(73);
+      delay(!strncmp(w, "charge", 6) ? 900 : !strncmp(w, "check", 5) ? 350 : 220);
+      nav.compose();
+      if (!strncmp(w, "radar", 5)) {                 // the Discover scope, mid-sweep, with blips
+        Canvas& g = nav.canvas();
+        g.fillRect(0, L::BODY_Y, L::W, L::H - L::BODY_Y, theme.bg);
+        fx::radar(g, 92, 132, 82, 0.9f);
+        fx::blip(g, 120, 100, 0, false);
+        fx::blip(g, 60, 160, 0, true);
+        fx::blip(g, 140, 170, 1, false);
       }
+      fx::draw(nav.canvas());
+      streamShot(nav.canvas(), nav.canvas());
+      if (ui_settings.themeId != saved) { ui_settings.themeId = saved; app::applyTheme(); }
+      nav.invalidate();
+      continue;
+    }
+    if (!strncmp(line, "fx play ", 8)) {
+      const char* w = line + 8;
+      if (!strcmp(w, "on"))        { nav.compose(); display.fillScreen(TFT_BLACK); fx::screenOn(nav.canvas()); }
+      else if (!strcmp(w, "off"))  { nav.compose(); fx::screenOff(nav.canvas()); delay(400); }
+      else if (!strcmp(w, "down")) { nav.compose(); fx::powerDown(nav.canvas()); delay(400); }
+      else if (!strcmp(w, "ping"))   { fx::ping(L::W / 2, L::H / 2); fx::ping(120, 120); }
+      else if (!strcmp(w, "burst"))  fx::burst(L::W / 2, L::H / 2);
+      else if (!strcmp(w, "check"))  fx::check(L::W / 2, L::H / 2);
+      else if (!strcmp(w, "fail"))   fx::fail();
+      else if (!strcmp(w, "charge")) fx::charge(app::batteryPct());
+      Serial.printf("[fx] played %s\n", w);
       nav.invalidate();
       continue;
     }
@@ -845,8 +906,8 @@ static void drawBootLogo() {
 // it back. While storage flushes the boot screen returns with the packet still
 // hopping; then the mesh drops link by link (each snapping with a spark, nodes
 // going hollow as they lose their last link, the centre flickering out last), the
-// wordmark tears, the boot bar drains, and the picture collapses like an old CRT:
-// into a line, into a dot, into dark.
+// wordmark tears, the boot bar drains, and the theme's power-down
+// (fx.cpp) takes it to dark.
 static const uint8_t KILL_ORDER[7] = {4, 0, 3, 6, 1, 5, 2};   // outer ring first, centre's links last
 constexpr int32_t KILL_STEP = 95, SPARK_MS = 130, TEAR_END = 820, BREAK_MS = 980;
 
@@ -933,58 +994,6 @@ static void goodbyeFrame(Canvas& g, uint32_t ms, int32_t brk) {
   if (left > 0) g.fillRect(91, 185, (int)(298 * left), 3, theme.green);
 }
 
-// The picture squeezes into a bright line, the line pulls in to a dot, the dot fades.
-static void crtCollapse(Canvas& src) {
-  LGFX* d = nav.display();
-  const int W = L::W, H = L::H, cx = W / 2, cy = H / 2;
-  uint32_t t0 = millis();
-  for (;;) {
-    const float t = min(1.0f, (millis() - t0) / 300.0f);
-    const float sy = max(0.012f, 1.0f - t * t);
-    const int band = max(2, (int)(H * sy)), top = cy - band / 2;
-    if (top > 0) {
-      d->fillRect(0, 0, W, top, TFT_BLACK);
-      d->fillRect(0, top + band, W, H - top - band, TFT_BLACK);
-    }
-    src.pushRotateZoom(d, cx, cy, 0, 1.0f + 0.10f * t, sy);   // stretches a touch sideways, like a beam
-    if (t > 0.55f) d->drawFastHLine(0, cy, W, TFT_WHITE);      // the beam heating up
-    if (t >= 1.0f) break;
-  }
-  d->fillScreen(TFT_BLACK);
-  haptic.buzz(1);
-  t0 = millis();
-  int prev = W / 2;
-  for (;;) {
-    const float t = min(1.0f, (millis() - t0) / 220.0f);
-    const int half = max(1, (int)((W / 2) * (1.0f - t * t)));
-    d->fillRect(cx - prev, cy - 3, prev * 2, 7, TFT_BLACK);
-    d->fillRect(cx - half, cy - 2, half * 2, 5, theme.greenDim);
-    d->fillRect(cx - half, cy - 1, half * 2, 3, theme.green);
-    d->drawFastHLine(cx - half, cy, half * 2, TFT_WHITE);
-    prev = half;
-    if (t >= 1.0f) break;
-    delay(8);
-  }
-  t0 = millis();
-  for (;;) {
-    const float t = min(1.0f, (millis() - t0) / 420.0f);
-    d->fillRect(cx - 12, cy - 12, 25, 25, TFT_BLACK);
-    if (t < 0.4f) {
-      d->fillCircle(cx, cy, 6, theme.greenDim);
-      d->fillCircle(cx, cy, 3, theme.green);
-      d->fillCircle(cx, cy, 1, TFT_WHITE);
-    } else if (t < 0.75f) {
-      d->fillCircle(cx, cy, 3, theme.greenDim);
-      d->fillCircle(cx, cy, 1, theme.green);
-    } else if (t < 1.0f) {
-      d->fillCircle(cx, cy, 1, theme.greenDim);
-    }
-    if (t >= 1.0f) break;
-    delay(15);
-  }
-  d->fillScreen(TFT_BLACK);
-}
-
 static void powerOffShow() {
   Canvas& g = nav.canvas();
   backlight.setLevel(dimmer.full());       // the dimmer isn't ticking from here on
@@ -1005,7 +1014,7 @@ static void powerOffShow() {
     g.pushSprite(nav.display(), 0, 0);
     if (b >= BREAK_MS) break;
   }
-  crtCollapse(g);
+  fx::powerDown(g);               // the theme's last word
 }
 
 static uint32_t s_bootT0 = 0, s_bootStepAt = 0;   // so a slow boot says which step was slow
@@ -1311,16 +1320,19 @@ void loop() {
     // Screen off: only the side button wakes it. Keys and the wheel get pressed in
     // a pocket, and each stray wake lit the screen and let the next bump unlock it.
     // Their events were read above so they don't pile up; here they are dropped.
-    if (btnPress) { dimmer.note(); if (ui_settings.lockOnSleep) app::lock(); nav.invalidate(); }
+    if (btnPress) { if (ui_settings.lockOnSleep) app::lock(); screenWakeAnimated(); }
   } else if (detents || press || anyKey || btnTap) {
     // With wheel-only unlock, on the lock screen only a wheel press counts as someone
     // using it, so stray keys can't keep a pocketed screen lit.
     const bool onLock = nav.top() && nav.top()->isLock();
     if (!onLock || !ui_settings.wheelUnlock || press || btnTap) dimmer.note();
     if (btnTap) {
-      // Like a phone: a tap of the side button locks and turns the screen off.
+      // Like a phone: a tap of the side button locks and turns the screen off,
+      // with the theme's turn-off animation.
+      nav.compose();
+      fx::screenOff(nav.canvas());
       app::lock();
-      dimmer.sleepNow();
+      dimmer.sleepInstant();
     } else {
       if (detents && ui_settings.scrollTick) haptic.tick();
       else if ((anyKey || press) && ui_settings.keyHaptics) haptic.tick();
@@ -1370,15 +1382,14 @@ void loop() {
   // The panel follows the backlight: once it has been dark a moment it also gets
   // its sleep command, which saves more than the backlight alone.
   {
-    static bool panelOff = false;
     static uint32_t darkSince = 0;
     if (dimmer.asleep()) {
       s_lastDarkAt = millis();
       if (!darkSince) darkSince = millis() | 1;
-      if (!panelOff && millis() - darkSince > 1000) { display.sleep(); panelOff = true; }
+      if (!s_panelOff && (int32_t)(millis() - darkSince) > 1000) { display.sleep(); s_panelOff = true; }
     } else {
       darkSince = 0;
-      if (panelOff) { display.wakeup(); panelOff = false; nav.invalidate(); }
+      if (s_panelOff) { display.wakeup(); s_panelOff = false; nav.invalidate(); }
     }
   }
   // Woken onto the lock screen and left alone (a message, a bump of the button):

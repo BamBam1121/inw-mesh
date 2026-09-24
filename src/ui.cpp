@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "fx.h"
 #include "app.h"
 #include "statusbar.h"
 #include "node.h"
@@ -512,6 +513,20 @@ void Nav::tick() {
   if (_bannerUntil && (int32_t)(now - _bannerUntil) >= 0) { _bannerUntil = 0; invalidate(); }
   if (now - _lastStatus > 15000) { _lastStatus = now; _statusDirty = true; }
   if (top()) top()->tick();
+  // An effect running: redraw every frame until it's done (and once more after).
+  static bool fxWas = false;
+  const bool fxNow = fx::active();
+  if (fxNow || fxWas) invalidate();
+  fxWas = fxNow;
+}
+
+void Nav::compose() {
+  View* v = top();
+  if (!v || !_d) return;
+  _canvas.fillScreen(_t->bg);
+  if (!v->isLock()) drawStatusBar(_canvas, *_t);
+  v->draw(_canvas);
+  drawOverlays(_canvas);
 }
 
 void Nav::drawOverlays(lgfx::LovyanGFX& g) {
@@ -552,7 +567,10 @@ void Nav::draw() {
   if (!v->isLock()) drawStatusBar(_canvas, *_t);
   v->draw(_canvas);
   drawOverlays(_canvas);
-  _canvas.pushSprite(_d, 0, 0);
+  fx::draw(_canvas);
+  const int sx = fx::shakeX();                        // a failed send shakes the screen
+  if (sx) _d->fillRect(sx > 0 ? 0 : L::W + sx, 0, abs(sx), L::H, _t->bg);
+  _canvas.pushSprite(_d, sx, 0);
   v->dirty = false;
   _statusDirty = false;
 }
