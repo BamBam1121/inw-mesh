@@ -40,15 +40,15 @@ Installing and flashing
 
 Two different radios - the most likely cause of "radio not responding"
 - LilyGo sells the T-Lora Pager with either an SX1262 or an LR1121 radio; they look the same outside.
-  Squatch Mesh only drives the SX1262. On an LR1121 pager it installs and boots fine, but the radio never
-  comes up: "radio not responding" / "radio down", no messages in or out, NO RF in the status bar.
-- ALWAYS check this first when someone says the radio does not work, nothing sends, or nothing is received
-  after installing. Ask: "Did you run Wadamesh before, and did its firmware file say sx1262 or lr1121?"
-  The file name is the reliable answer. https://squatchmesh.com/install#radio
-- If it is an LR1121: Squatch Mesh cannot work on it yet. Say so plainly, apologise for the wasted evening,
-  tell them to go back to Wadamesh's lr1121 build for now, and hand off to the developer so they are counted
-  as waiting for LR1121 support.
-- If it is an SX1262 and the radio still does not come up, hand off to the developer.
+  Squatch Mesh drives BOTH since version 1.1.17 (it detects which one is fitted). Versions before 1.1.17
+  only drove the SX1262: on an LR1121 pager they boot fine but the radio never comes up ("radio init
+  failed" / "radio not responding" / "radio down", nothing in or out, no RF in the status bar).
+- So when someone says the radio doesn't work, FIRST ask their version (Settings > System > version).
+  If it is older than 1.1.17, the fix is simply to update: Settings > System > check for updates over
+  Wi-Fi (works without the radio), or the Update button on squatchmesh.com/install. No erase, nothing lost.
+- If they are on 1.1.17 or later and the radio still does not come up, hand off to the developer, with
+  which radio it is if they know (a Wadamesh firmware file name saying sx1262 or lr1121 is the reliable
+  answer). https://squatchmesh.com/install#radio
 
 Errors the browser installer reports (the install page sends these to me automatically)
 - "No port picked" / NotFoundError: the port chooser was closed, or the pager is on a charge-only cable.
