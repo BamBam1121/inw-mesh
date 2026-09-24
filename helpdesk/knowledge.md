@@ -9,6 +9,20 @@ Where people get help
 Finding the firmware version
 - On the pager: Settings > System > version.
 
+Buttons and power (the guide's "Buttons & power" section has the same)
+- Bottom edge, left to right: left = reset (restart, nothing lost); middle = BOOT, the one button the
+  firmware can use; right = power on only.
+- Turning it off needs firmware 1.2.0 or later: hold the middle button until "Power off?" appears, then
+  Enter (or press the wheel). Also Settings > power off. Before 1.2.0 there was no way to turn it off;
+  the answer then is to update (Settings > System > check for updates).
+- Turning it on: hold the right button about a second, or plug in USB. The right button is wired to the
+  charger chip, not the processor, so no firmware can give it another job.
+- It can't power off with USB plugged in (the charger keeps it running); unplug first.
+- Powered off hears nothing: messages sent meanwhile are missed. To save battery but keep receiving,
+  tap the middle button to turn just the screen off.
+- Five fast taps on the middle button start the SOS countdown (if SOS is set up under Tools > field).
+- Download mode for flashing: hold middle (BOOT), tap left (reset), let go of middle.
+
 Things to check before handing off a problem
 - Which firmware version, and whether it was installed from squatchmesh.com/install or updated over Wi-Fi.
 - What is on the screen (a photo helps the developer; the visitor can mention they have one and the

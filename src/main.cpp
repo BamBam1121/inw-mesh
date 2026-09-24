@@ -653,6 +653,7 @@ static void usbCommands() {
       continue;
     }
     if (!strcmp(line, "batt")) { battery.report(); continue; }
+#if INW_DEV   // developer build only (pio run -e t-lora-pager-dev); never in a release
     // Animations, for checking them with the cable in. One frame as a screenshot:
     //   gbframe -1 / gbframe N   the goodbye screen saving / N ms into the teardown
     //   fx on P / fx off P / fx down P   a transition at P% over the current screen
@@ -736,10 +737,6 @@ static void usbCommands() {
       nav.invalidate();
       continue;
     }
-    if (!strcmp(line, "poweroff")) {        // same path as the menu; refuses with USB in
-      if (!app::powerOff("usb command")) Serial.println("[power] refused: USB is plugged in");
-      continue;
-    }
     // Run from the battery with the cable still in, to check the figure on
     // battery. Turns itself back off after the given minutes (at most 30).
     if (!strncmp(line, "batt hiz ", 9)) {
@@ -747,6 +744,11 @@ static void usbCommands() {
       if (min > 0) { battery.setHiZ(true); s_hizUntil = (millis() + constrain(min, 1, 30) * 60000UL) | 1; }
       else { battery.setHiZ(false); s_hizUntil = 0; }
       battery.report();
+      continue;
+    }
+#endif
+    if (!strcmp(line, "poweroff")) {        // same path as the menu; refuses with USB in
+      if (!app::powerOff("usb command")) Serial.println("[power] refused: USB is plugged in");
       continue;
     }
     if (!strcmp(line, "status")) {
