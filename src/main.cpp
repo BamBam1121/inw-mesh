@@ -5,6 +5,8 @@
 #include <SPIFFS.h>
 #include <esp_system.h>
 #include <esp_sleep.h>
+#include <esp_rom_gpio.h>
+#include <driver/gpio.h>
 #include <nvs_flash.h>
 #include <Preferences.h>
 #include <soc/rtc_cntl_reg.h>
@@ -39,6 +41,17 @@
 // Mesh callbacks (decrypt, verify, then our history write) run on the loop task;
 // give it room rather than finding the edge of the default 8 KB in the field.
 SET_LOOP_TASK_STACK_SIZE(16 * 1024);
+
+// The backlight pin (GPIO42) is the chip's JTAG MTMS pin, pulled up at reset, so
+// the AW9364 lit the panel before any of our code ran and showed the random noise
+// in its memory: the "TV static" at power on. A global constructor runs before
+// Arduino starts (well before PSRAM and NVS init and setup()), so hold it low from
+// there; setup() turns the light on once the boot logo is drawn.
+__attribute__((constructor(101))) static void backlightOffEarly() {
+  esp_rom_gpio_pad_select_gpio(PIN_TFT_BL);
+  gpio_set_level((gpio_num_t)PIN_TFT_BL, 0);
+  gpio_set_direction((gpio_num_t)PIN_TFT_BL, GPIO_MODE_OUTPUT);
+}
 
 // ---- hardware ---------------------------------------------------------------------
 LGFX          display;
@@ -184,35 +197,24 @@ void app::rebootDiscard() {
 // The PWR button can't be read (it's the charger's QON pin, not a GPIO) and only
 // turns the pager on, so turning it off is ours: hold the side button, confirm
 // with the wheel. PWR held a second, or plugging in, turns it back on.
-static void drawPowerScreen(const char* title, const char* sub) {
-  Canvas& g = nav.canvas();
-  const Theme& t = theme;
-  g.fillScreen(t.bg);
-  g.setTextDatum(textdatum_t::middle_center);
-  g.setFont(&fonts::Font4);
-  g.setTextColor(t.txt, t.bg);
-  g.drawString(title, L::W / 2, L::H / 2 - 14);
-  g.setFont(&fonts::Font2);
-  g.setTextColor(t.dim, t.bg);
-  g.drawString(sub, L::W / 2, L::H / 2 + 20);
-  g.setTextDatum(textdatum_t::top_left);
-  g.pushSprite(nav.display(), 0, 0);
-}
+static void powerOffShow();                   // the goodbye animation, further down
+static void goodbyeFrame(Canvas& g, uint32_t ms, int32_t brk);
 
 bool app::powerOff(const char* why) {
   if (battery.pluggedIn()) return false;      // the charger can't cut the battery with USB in
   logs.add(LOG_INFO, "powering off (%s)", why);
-  drawPowerScreen("Powering off", "saving everything...");
+  // A flat battery can turn it off in a pocket with the screen dark: no show then.
+  const bool show = !dimmer.asleep();
   if (g_node) {
     if (g_node->hasPendingWork()) g_node->saveContactsNow();
     g_node->savePrefsNow();
   }
   ui_settings.save();
-  inwStoreFlush(10000);
-  drawPowerScreen("Off", "hold PWR for a second to turn on");
-  delay(800);
+  if (show) powerOffShow();                   // runs the storage flush while it animates
+  else inwStoreFlush(45000);
   Serial.println("[power] off");
   Serial.flush();
+  backlight.setLevel(0);
   battery.shipMode();
   delay(3000);
   // Still running: USB went in at the last moment, or the charger didn't take
@@ -634,6 +636,45 @@ static void usbCommands() {
       continue;
     }
     if (!strcmp(line, "batt")) { battery.report(); continue; }
+    // Power-off animation, for checking it with the cable in: one frame as a
+    // screenshot ("gbframe -1" saving, "gbframe N" N ms into the teardown,
+    // "gbcrt P" the CRT squeeze at P% height), or the whole show live without
+    // turning anything off ("powershow").
+    if (!strncmp(line, "gbframe ", 8) || !strncmp(line, "gbcrt ", 6)) {
+      Canvas& g = nav.canvas();
+      const bool crt = line[2] == 'c';
+      const int v = atoi(line + (crt ? 6 : 8));
+      goodbyeFrame(g, 1234, crt ? 980 : v);
+      if (crt) {
+        Canvas z;
+        z.setColorDepth(16);
+        z.setPsram(true);
+        if (z.createSprite(L::W, L::H)) {
+          z.fillScreen(TFT_BLACK);
+          const float sy = max(0.012f, v / 100.0f);
+          g.pushRotateZoom(&z, L::W / 2, L::H / 2, 0, 1.0f + 0.10f * (1.0f - sy), sy);
+          if (sy < 0.45f) z.drawFastHLine(0, L::H / 2, L::W, TFT_WHITE);
+          Serial.flush();
+          Serial.printf("SHOT565 %d %d\n", L::W, L::H);
+          Serial.write((const uint8_t*)z.getBuffer(), L::W * L::H * 2);
+          Serial.flush();
+          z.deleteSprite();
+        }
+      } else {
+        Serial.flush();
+        Serial.printf("SHOT565 %d %d\n", L::W, L::H);
+        Serial.write((const uint8_t*)g.getBuffer(), L::W * L::H * 2);
+        Serial.flush();
+      }
+      nav.invalidate();
+      continue;
+    }
+    if (!strcmp(line, "powershow")) {
+      powerOffShow();
+      Serial.println("[power] show done (still on)");
+      nav.invalidate();
+      continue;
+    }
     if (!strcmp(line, "poweroff")) {        // same path as the menu; refuses with USB in
       if (!app::powerOff("usb command")) Serial.println("[power] refused: USB is plugged in");
       continue;
@@ -797,6 +838,174 @@ static void drawBootLogo() {
   display.setTextColor(theme.dim);
   display.drawString("inland northwest  //  " FW_VERSION, 198, 146);
   display.drawRect(90, 184, 300, 5, theme.line);
+}
+
+// ---- power-off animation ---------------------------------------------------------
+// Boot plays forward: the mesh comes up and a packet hops round it. Power off plays
+// it back. While storage flushes the boot screen returns with the packet still
+// hopping; then the mesh drops link by link (each snapping with a spark, nodes
+// going hollow as they lose their last link, the centre flickering out last), the
+// wordmark tears, the boot bar drains, and the picture collapses like an old CRT:
+// into a line, into a dot, into dark.
+static const uint8_t KILL_ORDER[7] = {4, 0, 3, 6, 1, 5, 2};   // outer ring first, centre's links last
+constexpr int32_t KILL_STEP = 95, SPARK_MS = 130, TEAR_END = 820, BREAK_MS = 980;
+
+static void goodbyeWordmark(lgfx::LovyanGFX& g, int dx, int32_t tint) {
+  g.setFont(&fonts::FreeSansBold24pt7b);
+  g.setTextSize(1);
+  if (tint < 0) {
+    g.setTextColor(theme.greenDim);
+    g.drawString("SQUATCH", 199 + dx, 49);          // offset copy underneath reads as glow
+    g.setTextColor(theme.green);
+  } else {
+    g.setTextColor((uint16_t)tint);
+  }
+  g.drawString("SQUATCH", 196 + dx, 46);
+  g.setFont(&fonts::FreeSans12pt7b);
+  g.setTextColor(tint < 0 ? theme.txt : (uint16_t)tint);
+  g.drawString("M E S H", 198 + dx, 106);
+}
+
+// brk < 0: still saving (the boot logo, animated). brk >= 0: ms into the teardown.
+static void goodbyeFrame(Canvas& g, uint32_t ms, int32_t brk) {
+  g.fillScreen(theme.bg);
+  g.setTextDatum(textdatum_t::top_left);
+  if (brk < 0) {
+    drawLogoMark(g, 0, 0, ms, true);
+  } else {
+    int32_t linkDead[7], nodeDead[5] = {0, 0, 0, 0, 0};
+    for (int p = 0; p < 7; p++) linkDead[KILL_ORDER[p]] = p * KILL_STEP;
+    for (int i = 0; i < 7; i++)
+      for (int e = 0; e < 2; e++) nodeDead[LOGO_LINKS[i][e]] = max(nodeDead[LOGO_LINKS[i][e]], linkDead[i]);
+    for (int i = 0; i < 7; i++) {
+      const int x0 = LOGO_NX[LOGO_LINKS[i][0]], y0 = LOGO_NY[LOGO_LINKS[i][0]];
+      const int x1 = LOGO_NX[LOGO_LINKS[i][1]], y1 = LOGO_NY[LOGO_LINKS[i][1]];
+      const int32_t since = brk - linkDead[i];
+      if (since < 0) g.drawLine(x0, y0, x1, y1, theme.greenDim);
+      else if (since < 45) g.drawLine(x0, y0, x1, y1, theme.txt);      // flashes white as it snaps
+      if (since >= 0 && since < SPARK_MS) {
+        const int mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+        g.fillCircle(mx, my, max(1, (int)(4 - since * 4 / SPARK_MS)), since < 60 ? theme.txt : theme.green);
+        const int d = 3 + since / 11;                                 // two fragments flying apart
+        g.drawLine(mx - d, my - 1, mx - d - 4, my - 3, theme.green);
+        g.drawLine(mx + d, my + 1, mx + d + 4, my + 3, theme.green);
+      }
+    }
+    for (int i = 0; i < 5; i++) {
+      const bool big = i == 2;
+      const int32_t since = brk - nodeDead[i];
+      bool up = since < 0;
+      if (big && since >= 0 && since < 260) up = (since / 65) % 2 == 1;  // the centre flickers out
+      const int x = LOGO_NX[i], y = LOGO_NY[i];
+      if (up) {
+        g.fillCircle(x, y, big ? 9 : 6, theme.green);
+        g.drawCircle(x, y, big ? 13 : 9, theme.greenDim);
+      } else {
+        g.drawCircle(x, y, big ? 9 : 6, theme.greenDim);            // hollow: offline
+      }
+    }
+  }
+
+  goodbyeWordmark(g, 0, -1);
+  if (brk >= 0 && brk < TEAR_END && (brk / 70) % 2 == 0) {
+    // A tear: one slice of the wordmark jumps sideways, split red and green.
+    const uint32_t h = (uint32_t)(brk / 70 + 1) * 2654435761u;
+    const int gy = 44 + (int)((h >> 8) % 78), gh = 4 + (int)((h >> 16) % 12);
+    const int dx = (int)((h >> 4) % 19) - 9;
+    g.setClipRect(186, gy, 294, gh);
+    g.fillRect(186, gy, 294, gh, theme.bg);
+    goodbyeWordmark(g, dx - 3, theme.red);
+    goodbyeWordmark(g, dx + 2, theme.green);
+    g.clearClipRect();
+  }
+
+  g.setFont(&fonts::Font2);
+  g.setTextColor(theme.dim);
+  if (brk < 0) {
+    char cap[16];
+    snprintf(cap, sizeof(cap), "saving%.*s", (int)((ms / 300) % 4), "...");
+    g.drawString(cap, 198, 146);
+  } else {
+    g.drawString("going dark", 198, 146);
+  }
+  const float left = brk < 0 ? 1.0f : max(0.0f, 1.0f - brk / 800.0f);   // the boot bar, draining
+  g.drawRect(90, 184, 300, 5, theme.line);
+  if (left > 0) g.fillRect(91, 185, (int)(298 * left), 3, theme.green);
+}
+
+// The picture squeezes into a bright line, the line pulls in to a dot, the dot fades.
+static void crtCollapse(Canvas& src) {
+  LGFX* d = nav.display();
+  const int W = L::W, H = L::H, cx = W / 2, cy = H / 2;
+  uint32_t t0 = millis();
+  for (;;) {
+    const float t = min(1.0f, (millis() - t0) / 300.0f);
+    const float sy = max(0.012f, 1.0f - t * t);
+    const int band = max(2, (int)(H * sy)), top = cy - band / 2;
+    if (top > 0) {
+      d->fillRect(0, 0, W, top, TFT_BLACK);
+      d->fillRect(0, top + band, W, H - top - band, TFT_BLACK);
+    }
+    src.pushRotateZoom(d, cx, cy, 0, 1.0f + 0.10f * t, sy);   // stretches a touch sideways, like a beam
+    if (t > 0.55f) d->drawFastHLine(0, cy, W, TFT_WHITE);      // the beam heating up
+    if (t >= 1.0f) break;
+  }
+  d->fillScreen(TFT_BLACK);
+  haptic.buzz(1);
+  t0 = millis();
+  int prev = W / 2;
+  for (;;) {
+    const float t = min(1.0f, (millis() - t0) / 220.0f);
+    const int half = max(1, (int)((W / 2) * (1.0f - t * t)));
+    d->fillRect(cx - prev, cy - 3, prev * 2, 7, TFT_BLACK);
+    d->fillRect(cx - half, cy - 2, half * 2, 5, theme.greenDim);
+    d->fillRect(cx - half, cy - 1, half * 2, 3, theme.green);
+    d->drawFastHLine(cx - half, cy, half * 2, TFT_WHITE);
+    prev = half;
+    if (t >= 1.0f) break;
+    delay(8);
+  }
+  t0 = millis();
+  for (;;) {
+    const float t = min(1.0f, (millis() - t0) / 420.0f);
+    d->fillRect(cx - 12, cy - 12, 25, 25, TFT_BLACK);
+    if (t < 0.4f) {
+      d->fillCircle(cx, cy, 6, theme.greenDim);
+      d->fillCircle(cx, cy, 3, theme.green);
+      d->fillCircle(cx, cy, 1, TFT_WHITE);
+    } else if (t < 0.75f) {
+      d->fillCircle(cx, cy, 3, theme.greenDim);
+      d->fillCircle(cx, cy, 1, theme.green);
+    } else if (t < 1.0f) {
+      d->fillCircle(cx, cy, 1, theme.greenDim);
+    }
+    if (t >= 1.0f) break;
+    delay(15);
+  }
+  d->fillScreen(TFT_BLACK);
+}
+
+static void powerOffShow() {
+  Canvas& g = nav.canvas();
+  backlight.setLevel(dimmer.full());       // the dimmer isn't ticking from here on
+  // Save first, with the boot logo turning, until storage is idle. At most 45 s:
+  // an interrupted write leaves the previous file whole anyway.
+  const uint32_t t0 = millis();
+  for (;;) {
+    const bool idle = inwStoreFlush(20);
+    const uint32_t t = millis() - t0;
+    goodbyeFrame(g, t, -1);
+    g.pushSprite(nav.display(), 0, 0);
+    if ((idle && t >= 700) || t > 45000) break;
+  }
+  const uint32_t tb = millis();
+  for (;;) {
+    const int32_t b = (int32_t)(millis() - tb);
+    goodbyeFrame(g, millis() - t0, min(b, BREAK_MS));
+    g.pushSprite(nav.display(), 0, 0);
+    if (b >= BREAK_MS) break;
+  }
+  crtCollapse(g);
 }
 
 static uint32_t s_bootT0 = 0, s_bootStepAt = 0;   // so a slow boot says which step was slow
