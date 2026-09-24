@@ -186,6 +186,18 @@ static void lowBatterySave() {
   logs.add(LOG_WARN, "battery critical (%u%%, %umV): saved everything%s", battery.percent(), mv, landed ? "" : " (slow)");
 }
 
+// Flat: turn off properly instead of running the cell down into brownout resets
+// (which over-discharge it). A minute of readings must agree, so a radio burst
+// sagging the voltage can't do it.
+static void criticalPowerOff() {
+  static uint8_t lowRuns = 0;
+  if (battery.pluggedIn()) { lowRuns = 0; return; }
+  const uint16_t mv = battery.millivolts();
+  const bool flat = battery.percent() <= 1 && mv && mv < 3400;
+  lowRuns = flat ? (uint8_t)min(lowRuns + 1, 250) : 0;
+  if (lowRuns >= 12) app::powerOff("battery empty");     // 12 x 5 s
+}
+
 void tick() {
   static uint32_t last = 0, lastPoll = 0;
   if (!battery.present() || !battery.hasReading() || millis() < 15000) return;
@@ -199,6 +211,7 @@ void tick() {
   chargeTick();
   saverTick();
   lowBatterySave();
+  criticalPowerOff();
 }
 
 }  // namespace power

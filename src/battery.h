@@ -39,6 +39,8 @@ public:
         if (!chgRead(0x05, r05) || !chgRead(0x07, r07)) return;
         uint8_t r00;
         if (chgRead(0x00, r00) && (r00 & 0x80)) chgWrite(0x00, r00 & ~0x80);   // input back on after a test
+        uint8_t r09;
+        if (chgRead(0x09, r09) && (r09 & 0x20)) chgWrite(0x09, r09 & ~0x20);   // battery back on after a power-off
         chgWrite(0x05, r05 & 0xF0);                     // ITERM = 64 mA, pre-charge unchanged
         chgWrite(0x07, r07 & ~0x30);                    // WATCHDOG disabled
         // Charge at 1472 mA, about 1C for this 1500 mAh cell. It was charging at
@@ -180,6 +182,15 @@ public:
     // Throw away what the gauge has learned and start from the pack's rating.
     // It re-learns over the next full charge and discharge.
     bool relearn() { return setCapacity(DESIGN_MAH); }
+
+    // Power off: the charger disconnects the battery from everything (BATFET_DIS,
+    // ship mode, ~26 uA). It only takes hold with USB unplugged. The PWR button
+    // (wired to the charger's QON, not to a GPIO) or plugging in brings it back.
+    bool shipMode() {
+        uint8_t r09;
+        if (!_gauge || !chgRead(0x09, r09)) return false;
+        return chgWrite(0x09, (r09 | 0x20) & ~0x08);   // BATFET off, no 10 s delay
+    }
 
     bool     pluggedIn() const { return _vbus; }
     // Cheap single-register check, so plugging in is noticed within a moment.

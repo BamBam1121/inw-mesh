@@ -44,6 +44,8 @@ namespace app {
   void     lock();                // show the lock face
   void     reboot();
   void     rebootDiscard();          // restart WITHOUT saving contacts (after deleting them on purpose)
+  void     powerOffPrompt();         // "Power off?" screen (side button held, or Settings)
+  bool     powerOff(const char* why); // saves, then cuts the battery; false if USB is in
   // Distance/bearing helpers for the map and contact detail.
   bool     myPosition(double& lat, double& lon);
   double   distanceKm(double lat1, double lon1, double lat2, double lon2);

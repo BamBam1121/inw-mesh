@@ -657,6 +657,7 @@ static void systemMenu() {
   m->action("device info", [] { deviceInfoPage(); });
   m->action("log", [] { logsPage(); });
   m->action("reboot", [] { confirm("Reboot?", "", [] { app::reboot(); }); });
+  m->action("power off", [] { app::powerOffPrompt(); });
   m->action("reset screen/sound settings", [] {
     confirm("Reset UI settings?", "mesh identity, contacts and channels are kept", [] {
       const uint8_t done = ui_settings.importDone;

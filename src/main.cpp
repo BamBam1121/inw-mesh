@@ -4,6 +4,7 @@
 #include <Wire.h>
 #include <SPIFFS.h>
 #include <esp_system.h>
+#include <esp_sleep.h>
 #include <nvs_flash.h>
 #include <Preferences.h>
 #include <soc/rtc_cntl_reg.h>
@@ -177,6 +178,90 @@ void app::reboot() {
 void app::rebootDiscard() {
   inwStoreFlush(10000);
   ui_settings.save(); delay(200); ESP.restart();
+}
+
+// ---- power off -----------------------------------------------------------------
+// The PWR button can't be read (it's the charger's QON pin, not a GPIO) and only
+// turns the pager on, so turning it off is ours: hold the side button, confirm
+// with the wheel. PWR held a second, or plugging in, turns it back on.
+static void drawPowerScreen(const char* title, const char* sub) {
+  Canvas& g = nav.canvas();
+  const Theme& t = theme;
+  g.fillScreen(t.bg);
+  g.setTextDatum(textdatum_t::middle_center);
+  g.setFont(&fonts::Font4);
+  g.setTextColor(t.txt, t.bg);
+  g.drawString(title, L::W / 2, L::H / 2 - 14);
+  g.setFont(&fonts::Font2);
+  g.setTextColor(t.dim, t.bg);
+  g.drawString(sub, L::W / 2, L::H / 2 + 20);
+  g.setTextDatum(textdatum_t::top_left);
+  g.pushSprite(nav.display(), 0, 0);
+}
+
+bool app::powerOff(const char* why) {
+  if (battery.pluggedIn()) return false;      // the charger can't cut the battery with USB in
+  logs.add(LOG_INFO, "powering off (%s)", why);
+  drawPowerScreen("Powering off", "saving everything...");
+  if (g_node) {
+    if (g_node->hasPendingWork()) g_node->saveContactsNow();
+    g_node->savePrefsNow();
+  }
+  ui_settings.save();
+  inwStoreFlush(10000);
+  drawPowerScreen("Off", "hold PWR for a second to turn on");
+  delay(800);
+  Serial.println("[power] off");
+  Serial.flush();
+  battery.shipMode();
+  delay(3000);
+  // Still running: USB went in at the last moment, or the charger didn't take
+  // it. Sleep instead; the side button wakes it with a fresh boot.
+  Serial.println("[power] battery not cut, sleeping instead");
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+  esp_deep_sleep_start();
+  return true;
+}
+
+class PowerOffView : public View {
+public:
+  PowerOffView() : _at(millis()), _plugged(battery.pluggedIn()) { haptic.buzz(1); }
+  void tick() override {
+    if (millis() - _at > 10000) { if (nav.top() == this) nav.pop(); return; }   // left alone: cancel
+    if (battery.pluggedIn() != _plugged) { _plugged = !_plugged; dirty = true; }
+  }
+  void draw(Canvas& g) override {
+    const Theme& t = nav.theme();
+    g.fillRect(0, L::HEAD_Y, L::W, L::H - L::HEAD_Y, t.bg);
+    g.setTextDatum(textdatum_t::middle_center);
+    g.setFont(&fonts::Font4);
+    g.setTextColor(t.txt, t.bg);
+    g.drawString("Power off?", L::W / 2, 80);
+    g.setFont(&fonts::Font2);
+    g.setTextColor(_plugged ? t.red : t.dim, t.bg);
+    g.drawString(_plugged ? "unplug USB first - it can't turn off while plugged in"
+                          : "press the wheel to turn off", L::W / 2, 120);
+    g.setTextColor(t.dim, t.bg);
+    g.drawString("anything else cancels. PWR turns it back on.", L::W / 2, 146);
+    g.setTextDatum(textdatum_t::top_left);
+  }
+  void press() override {
+    if (battery.pluggedIn()) { nav.pop(); nav.toast("unplug USB to power off", 3000); return; }
+    app::powerOff("user");
+  }
+  void key(char) override { nav.pop(); }
+  void rotate(int) override { nav.pop(); }
+  bool backspace() override { nav.pop(); return true; }
+  bool wantsAllKeys() override { return true; }
+private:
+  uint32_t _at;
+  bool _plugged;
+};
+
+void app::powerOffPrompt() {
+  dimmer.wake();
+  nav.push(new PowerOffView());
+  nav.invalidate();
 }
 
 // Full-screen progress for slow storage jobs (contact saves, backups). Called from
@@ -546,6 +631,10 @@ static void usbCommands() {
       continue;
     }
     if (!strcmp(line, "batt")) { battery.report(); continue; }
+    if (!strcmp(line, "poweroff")) {        // same path as the menu; refuses with USB in
+      if (!app::powerOff("usb command")) Serial.println("[power] refused: USB is plugged in");
+      continue;
+    }
     // Run from the battery with the cable still in, to check the figure on
     // battery. Turns itself back off after the given minutes (at most 30).
     if (!strncmp(line, "batt hiz ", 9)) {
@@ -978,6 +1067,16 @@ void loop() {
   const bool btn = digitalRead(PIN_BUTTON) == LOW;
   bool btnPress = btn && !btnWas;
   btnWas = btn;
+  // Held for 2.5 s: the power-off prompt. The press itself still locks the
+  // screen first, like a phone's side button.
+  static uint32_t btnDownAt = 0;
+  static bool btnHoldFired = false;
+  if (btnPress) { btnDownAt = millis() | 1; btnHoldFired = false; }
+  if (!btn) btnDownAt = 0;
+  else if (btnDownAt && !btnHoldFired && millis() - btnDownAt >= 2500) {
+    btnHoldFired = true;
+    app::powerOffPrompt();
+  }
   // Five fast presses arm an SOS (field tools). That press then only wakes the
   // screen to show the countdown, instead of locking it again.
   if (btnPress) {
