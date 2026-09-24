@@ -1063,26 +1063,33 @@ void loop() {
     if (ev.index == KEY_IDX_BACKSPACE) backspace = true;
     else if (ev.ch && nchars < sizeof(chars)) chars[nchars++] = ev.ch;
   }
+  // The side (middle) button, like a phone's: a tap sleeps or wakes the screen,
+  // a 2.5 s hold asks to power off, five fast taps arm an SOS. Screen-off happens
+  // on RELEASE of a tap, so holding never blanks the screen under the prompt.
+  // (The right-hand PWR button is wired to the charger and can't be read.)
   static bool btnWas = false;
   const bool btn = digitalRead(PIN_BUTTON) == LOW;
-  bool btnPress = btn && !btnWas;
+  const bool btnDown = btn && !btnWas, btnUp = !btn && btnWas;
   btnWas = btn;
-  // Held for 2.5 s: the power-off prompt. The press itself still locks the
-  // screen first, like a phone's side button.
   static uint32_t btnDownAt = 0;
-  static bool btnHoldFired = false;
-  if (btnPress) { btnDownAt = millis() | 1; btnHoldFired = false; }
-  if (!btn) btnDownAt = 0;
-  else if (btnDownAt && !btnHoldFired && millis() - btnDownAt >= 2500) {
-    btnHoldFired = true;
-    app::powerOffPrompt();
-  }
-  // Five fast presses arm an SOS (field tools). That press then only wakes the
-  // screen to show the countdown, instead of locking it again.
-  if (btnPress) {
+  static bool btnNoTap = false, btnHeld = false;
+  bool btnPress = false;                      // screen off: wake on the press itself
+  bool btnTap = false;                        // screen on: sleep on a short release
+  if (btnDown) {
+    btnDownAt = millis() | 1;
+    btnNoTap = btnHeld = false;
     View* before = nav.top();
     field::sosNoteButton();
-    if (nav.top() != before) { btnPress = false; dimmer.note(); nav.invalidate(); }
+    if (nav.top() != before) { btnNoTap = btnHeld = true; dimmer.note(); nav.invalidate(); }   // SOS armed
+    else if (dimmer.asleep()) { btnPress = true; btnNoTap = true; }   // its release mustn't sleep again
+  }
+  if (btn && btnDownAt && !btnHeld && millis() - btnDownAt >= 2500) {
+    btnHeld = btnNoTap = true;
+    app::powerOffPrompt();
+  }
+  if (btnUp && btnDownAt) {
+    if (!btnNoTap) btnTap = true;
+    btnDownAt = 0;
   }
 
   if (dimmer.asleep()) {
@@ -1090,13 +1097,13 @@ void loop() {
     // a pocket, and each stray wake lit the screen and let the next bump unlock it.
     // Their events were read above so they don't pile up; here they are dropped.
     if (btnPress) { dimmer.note(); if (ui_settings.lockOnSleep) app::lock(); nav.invalidate(); }
-  } else if (detents || press || anyKey || btnPress) {
+  } else if (detents || press || anyKey || btnTap) {
     // With wheel-only unlock, on the lock screen only a wheel press counts as someone
     // using it, so stray keys can't keep a pocketed screen lit.
     const bool onLock = nav.top() && nav.top()->isLock();
-    if (!onLock || !ui_settings.wheelUnlock || press || btnPress) dimmer.note();
-    if (btnPress) {
-      // Like a phone: the side button locks and turns the screen off at once.
+    if (!onLock || !ui_settings.wheelUnlock || press || btnTap) dimmer.note();
+    if (btnTap) {
+      // Like a phone: a tap of the side button locks and turns the screen off.
       app::lock();
       dimmer.sleepNow();
     } else {
