@@ -22,6 +22,7 @@ import re
 Import("env")  # noqa: F821
 
 SAVE_BATCH_MS = 2 * 60 * 1000
+ROUTINE_SAVE_MS = 20 * 60 * 1000   # adverts and path changes: see patch_mymesh
 
 HELPER = r'''
 // --- INW: buffered, atomic store writes, off the UI loop (tools/patch_meshcore.py) ---
@@ -55,14 +56,16 @@ struct InwDone { char path[24]; size_t bytes; bool ok; };
 static InwDone inw_done[4];
 static volatile uint8_t inw_done_n = 0;
 
-// Flash writes stall BOTH cores for a moment (the cache is off while flash is
-// written), so even a background write is felt as small hitches. The loop tells
-// us when someone is actively using the pager, and writes wait for a lull -
-// never longer than a minute, so a save can't be held off forever.
+// Flash writes stall BOTH cores and PSRAM (the cache is off while flash is
+// written), and the screen is drawn in PSRAM: every write while someone is
+// looking shows up as dropped frames. The loop tells us whether the screen is on,
+// and writes wait for it to go off - each kind for as long as it safely can: the
+// message log a minute, contacts and settings ten minutes, advert blobs (which
+// only matter for sharing a contact) indefinitely.
 static volatile bool inw_user_busy = false;
 void inwSetUserBusy(bool busy) { inw_user_busy = busy; }
-static void inwWaitForLull() {
-  for (uint32_t t0 = millis(); inw_user_busy && millis() - t0 < 60000;) vTaskDelay(pdMS_TO_TICKS(100));
+static void inwWaitForLull(uint32_t deadline) {        // 0: no deadline
+  while (inw_user_busy && (!deadline || (int32_t)(deadline - millis()) > 0)) vTaskDelay(pdMS_TO_TICKS(100));
 }
 
 // Advert blobs (MeshCore keeps each contact's last raw advert in /bl/<key> to
@@ -72,14 +75,15 @@ static void inwWaitForLull() {
 // instead, latest wins per contact; reads check the queue first.
 struct InwBlob { char path[24]; uint8_t len; uint8_t data[255]; bool used; };
 static InwBlob* inw_blobs = nullptr;
-static const int INW_BLOBS = 24;
+static const int INW_BLOBS = 256;      // ~72 KB of PSRAM: holds a long stretch of screen-on time
 static FILESYSTEM* inw_blob_fs = nullptr;
 
 static bool inwQueueBlob(FILESYSTEM* fs, const char* path, const uint8_t* src, uint8_t len);
 static int inwQueuedBlob(const char* path, uint8_t* dest);
 
 static void inwWriteJob(InwJob& j) {
-  inwWaitForLull();
+  const uint32_t deadline = millis() + 10UL * 60UL * 1000UL;
+  inwWaitForLull(deadline);
   char tmp[32];
   snprintf(tmp, sizeof(tmp), "%s.tmp", j.path);
   const uint32_t t0 = millis();
@@ -99,10 +103,11 @@ static void inwWriteJob(InwJob& j) {
       const size_t n = j.len - off < 4096 ? j.len - off : 4096;
       ok = f.write(j.buf + off, n) == n;
       vTaskDelay(pdMS_TO_TICKS(8));       // let the UI run between chunks
-      inwWaitForLull();                   // and hold off while someone is using it
+      inwWaitForLull(deadline);           // and pause if the screen comes on
     }
     if (f) f.close();
   }
+  inwWaitForLull(deadline);             // the swap is seconds of flash work: screen off for it too
   const uint32_t t1 = millis();
   if (ok) { j.fs->remove(j.path); j.fs->rename(tmp, j.path); }
   else j.fs->remove(tmp);
@@ -121,7 +126,8 @@ static void inwStoreTask(void*) {
     bool haveBlob = false;
     xSemaphoreTake(inw_mx, portMAX_DELAY);
     for (auto& q : inw_q) if (q.buf) { job = q; q = InwJob{}; break; }
-    if (!job.buf && inw_blobs)
+    // Blobs only with the screen off (and after any message log records, below).
+    if (!job.buf && inw_blobs && !inw_user_busy && !inw_app_len)
       for (int i = 0; i < INW_BLOBS; i++) if (inw_blobs[i].used) { blob = inw_blobs[i]; haveBlob = true; break; }
     inw_busy = job.buf != nullptr || haveBlob;
     xSemaphoreGive(inw_mx);
@@ -138,7 +144,7 @@ static void inwStoreTask(void*) {
       xSemaphoreGive(inw_mx);
     }
     if (app) {
-      inwWaitForLull();
+      inwWaitForLull(millis() + 60000);   // messages matter: at most a minute's wait
       File f = SPIFFS.open(appPath, FILE_APPEND);
       if (f) { f.write(app, appLen); f.close(); }
       else Serial.printf("[save] append to %s failed, %u bytes lost\n", appPath, (unsigned)appLen);
@@ -146,8 +152,7 @@ static void inwStoreTask(void*) {
       inw_busy = false;
       continue;
     }
-    if (haveBlob) {
-      inwWaitForLull();
+    if (haveBlob) {                       // picked up only with the screen off
       File f = inw_blob_fs->open(blob.path, "w", true);
       const bool ok = f && f.write(blob.data, blob.len) == blob.len;
       if (f) f.close();
@@ -185,7 +190,10 @@ static bool inwQueueBlob(FILESYSTEM* fs, const char* path, const uint8_t* src, u
     }
   }
   xSemaphoreGive(inw_mx);
-  if (!slot) return false;              // queue full: caller writes it directly, as before
+  // Queue full: drop this one rather than write it on the loop (that stalled the
+  // screen). A blob is only the contact's last raw advert, kept for sharing it;
+  // the copy already on flash, a little older, does that job just as well.
+  if (!slot) return inw_blobs != nullptr;
   xTaskNotifyGive(inw_task);
   return true;
 }
@@ -466,12 +474,38 @@ def patch_datastore(src):
 
 
 def patch_mymesh(src):
+    # Two kinds of contact change. Routine churn - a known node's advert, a new
+    # path to someone, a sync_since bump - happens every few seconds on a busy
+    # mesh with 1500 contacts, and each one used to schedule a rewrite of the whole
+    # 230 KB file two minutes out, so it was rewritten every two minutes, ~28 s of
+    # flash writes each time, freezing PSRAM (and the screen) while it ran. That
+    # now waits 20 minutes. Anything someone did (add, edit, remove, reset a path)
+    # still saves within 2 minutes, pulling a pending routine save in with it.
+    # Power off, restart and a flat battery always save whatever is pending.
     src = re.sub(r"#define LAZY_CONTACTS_WRITE_DELAY\s+\d+",
-                 "#define LAZY_CONTACTS_WRITE_DELAY       %d" % SAVE_BATCH_MS, src)
+                 ("#define LAZY_CONTACTS_WRITE_DELAY       %d\n"
+                  "#define INW_ROUTINE_SAVE_MS             %d\n"
+                  "#define INW_SAVE_ROUTINE() do { if (!dirty_contacts_expiry) "
+                  "dirty_contacts_expiry = futureMillis(INW_ROUTINE_SAVE_MS); } while (0)\n"
+                  "#define INW_SAVE_SOON() do { unsigned long inw_s = futureMillis(LAZY_CONTACTS_WRITE_DELAY); "
+                  "if (!dirty_contacts_expiry || (long)(dirty_contacts_expiry - inw_s) > 0) "
+                  "dirty_contacts_expiry = inw_s; } while (0)") % (SAVE_BATCH_MS, ROUTINE_SAVE_MS), src)
     old = "dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);"
     n = src.count(old)
-    src = src.replace(old, "if (!dirty_contacts_expiry) " + old)
-    if n < 5 or str(SAVE_BATCH_MS) not in src:
+    routine = [
+        (r"if \(!is_new\) dirty_contacts_expiry = futureMillis\(LAZY_CONTACTS_WRITE_DELAY\);",
+         "if (!is_new) INW_SAVE_ROUTINE();"),
+        (r"(// NOTE: app may not be connected\s*\n\s*)dirty_contacts_expiry = futureMillis\(LAZY_CONTACTS_WRITE_DELAY\);",
+         r"\1INW_SAVE_ROUTINE();"),
+        (r"(// from\.sync_since change needs to be persisted\s*\n\s*)dirty_contacts_expiry = futureMillis\(LAZY_CONTACTS_WRITE_DELAY\);",
+         r"\1INW_SAVE_ROUTINE();"),
+    ]
+    for pat, rep in routine:
+        src, k = re.subn(pat, rep, src)
+        if k != 1:
+            raise SystemExit("patch_meshcore.py: MyMesh.cpp routine save site changed upstream: " + pat[:40])
+    src = src.replace(old, "INW_SAVE_SOON();")
+    if n < 5 or str(SAVE_BATCH_MS) not in src or src.count("INW_SAVE_ROUTINE();") != 3:
         raise SystemExit("patch_meshcore.py: MyMesh.cpp changed upstream, patch did not apply")
     # (Saves used to be held until the screen was off, because they froze the UI.
     # They are written in the background now, so they go when they come due.)

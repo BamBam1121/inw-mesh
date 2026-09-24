@@ -67,6 +67,23 @@ Gps           gps;
 Es8311        codec;
 JinglePlayer  jingle;
 Battery       battery;
+// The battery count (battery.h) has to outlive a restart and a power off. RTC
+// memory survives restarts and crashes but not a power off; flash covers that.
+RTC_NOINIT_ATTR static uint32_t s_battMagic;
+RTC_NOINIT_ATTR static float    s_battMah;
+static constexpr uint32_t BATT_MAGIC = 0xB477C0DEu;
+static void battSave(bool toFlash) {
+  const float mah = battery.remainingMah();
+  if (mah < 0) return;
+  s_battMah = mah;
+  s_battMagic = BATT_MAGIC;
+  if (toFlash) { Preferences p; if (p.begin("inw-batt", false)) { p.putFloat("mah", mah); p.end(); } }
+}
+static void battRestore() {
+  if (s_battMagic == BATT_MAGIC) { battery.restoreMah(s_battMah, true); return; }
+  Preferences p;
+  if (p.begin("inw-batt", true)) { const float mah = p.getFloat("mah", -1); p.end(); battery.restoreMah(mah, false); }
+}
 Rtc           rtc;
 LogStore      logs;
 
@@ -180,6 +197,7 @@ void inwSetUserBusy(bool busy);
 static uint32_t s_hizUntil = 0;   // "batt hiz" test running until then
 
 void app::reboot() {
+  battSave(true);
   if (g_node) {
     if (g_node->hasPendingWork()) g_node->saveContactsNow();   // contact saves are batched; don't drop one
     g_node->savePrefsNow();
@@ -213,6 +231,7 @@ bool app::powerOff(const char* why) {
   ui_settings.save();
   if (show) powerOffShow();                   // runs the storage flush while it animates
   else inwStoreFlush(45000);
+  battSave(true);                            // the battery count, for when it comes back on
   Serial.println("[power] off");
   Serial.flush();
   backlight.setLevel(0);
@@ -653,6 +672,7 @@ static void usbCommands() {
       continue;
     }
     if (!strcmp(line, "batt")) { battery.report(); continue; }
+    if (!strcmp(line, "gauge")) { battery.configReport(); continue; }   // read-only gauge settings
 #if INW_DEV   // developer build only (pio run -e t-lora-pager-dev); never in a release
     // Animations, for checking them with the cable in. One frame as a screenshot:
     //   gbframe -1 / gbframe N   the goodbye screen saving / N ms into the teardown
@@ -728,6 +748,25 @@ static void usbCommands() {
       else if (!strcmp(w, "fail"))   fx::fail();
       else if (!strcmp(w, "charge")) fx::charge(app::batteryPct());
       Serial.printf("[fx] played %s\n", w);
+      nav.invalidate();
+      continue;
+    }
+    // "drawtime tN": how long the current screen takes to draw into the canvas and
+    // to send to the panel, averaged over 5, in theme N (the setting is put back).
+    if (!strncmp(line, "drawtime", 8)) {
+      const char* tp = strstr(line, " t");
+      const uint8_t saved = ui_settings.themeId;
+      if (tp && atoi(tp + 2) < THEME_COUNT) { ui_settings.themeId = atoi(tp + 2); app::applyTheme(); }
+      nav.compose();                                // warm up (first draw builds caches)
+      uint32_t t0 = millis();
+      for (int i = 0; i < 5; i++) nav.compose();
+      const uint32_t c = (millis() - t0) / 5;
+      t0 = millis();
+      for (int i = 0; i < 5; i++) nav.canvas().pushSprite(&display, 0, 0);
+      const uint32_t p = (millis() - t0) / 5;
+      Serial.printf("[draw] theme %u, top '%s' lock=%d: draw %lums, send %lums\n", ui_settings.themeId,
+                    g_screenTitle, nav.top() && nav.top()->isLock() ? 1 : 0, (unsigned long)c, (unsigned long)p);
+      if (ui_settings.themeId != saved) { ui_settings.themeId = saved; app::applyTheme(); }
       nav.invalidate();
       continue;
     }
@@ -1110,6 +1149,7 @@ void setup() {
   bootStep("keyboard", keyboard.begin(Wire));
   keyboard.setBacklight(ui_settings.kbBacklight);
   bootStep("battery gauge", battery.begin(Wire));
+  battRestore();
   battery.tick(millis());
   if (battery.present())
     logs.add(battery.configured() ? LOG_WARN : LOG_INFO, "battery %u%% (gauge %u%%) %umV, pack %umAh%s", battery.percent(),
@@ -1368,6 +1408,11 @@ void loop() {
   { static bool w = false; if (wifi::connected() != w) { w = wifi::connected(); nav.statusChanged(); } }
   lap(2);
   battery.tick(millis());
+  {   // keep the battery count through restarts (RTC, every 5 s) and power loss (flash, every 30 min)
+    static uint32_t rtcAt = 0, flashAt = 0;
+    if (millis() - rtcAt > 5000) { rtcAt = millis(); battSave(false); }
+    if (millis() - flashAt > 30UL * 60UL * 1000UL) { flashAt = millis(); battSave(true); }
+  }
   if (s_hizUntil && (int32_t)(millis() - s_hizUntil) > 0) { s_hizUntil = 0; battery.setHiZ(false); Serial.println("[batt] charger input back on"); }
   power::tick();
   ota::tick();
@@ -1424,9 +1469,10 @@ void loop() {
 
   lap(6);
   autoAdvertTick(); sdBackupTick(); inwStoreTick(); field::tick();
-  // Background flash writes wait while someone is using the pager (they stall
-  // both cores for a moment each).
-  inwSetUserBusy(!dimmer.asleep() && dimmer.idleFor() < 4000);
+  // Background flash writes wait for the screen to be off: they freeze PSRAM, where
+  // the screen is drawn, so a write while it's lit is dropped frames (the choppy
+  // animations). Idle-with-the-screen-on used to count as a lull too.
+  inwSetUserBusy(!dimmer.asleep());
   lap(7);
   const uint32_t total = millis() - tLoop;
   if (total > 150) {

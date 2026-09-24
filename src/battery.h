@@ -88,43 +88,48 @@ public:
             _vbus = (st >> 5) != 0;
             _chgDone = _vbus && ((st >> 3) & 3) == 3;
         }
-        // The gauge counts charge and is what we show while it makes sense. It
-        // has sat at 60-67% on a full cell after missing the end of a charge, so
-        // the charger and the voltage get the final say when it plainly doesn't.
-        uint8_t target = _gaugePct;
+        // ---- our own charge count -------------------------------------------------
+        // The gauge's percentage can't be trusted: its battery model is TI's generic
+        // default (a 3000 mAh cell), it has never once flagged a full charge, and it
+        // "learned" this 1500 mAh pack down to 865 mAh, so its figure fell ~1.6x too
+        // fast. Its coulomb counter is exact, though. So: count every mAh in and out
+        // from that counter; call it 100% only when the charger says it has finished;
+        // and at rest, drift gently toward what the voltage says if the two disagree
+        // a lot, which mops up any error without the number ever jumping.
         const bool up = charging() || _chgDone;
-        if (_millivolts && up) {
-            // While charging, the charger lifts the cell voltage above its resting
-            // value, so the voltage table means nothing. Near the top, though, the
-            // charger holds the cell at its limit and the current tapers off:
-            // 1.47 A at roughly 85%, down to the 64 mA cut-off at full.
-            if (_chgDone) target = 100;
-            else if (_millivolts >= 4150) {
-                const int ma = constrain((int)_currentMa, 64, 1472);
-                const uint8_t byTaper = 100 - (ma - 64) * 15 / (1472 - 64);
-                if (byTaper > target) target = byTaper;
-            }
-            _voltTrust = false; _restMv = 0;
-        } else if (_millivolts) {
-            // Voltage sags under radio and screen load, and trusting it raw flipped
-            // the figure between the gauge and the voltage table (the jumping people
-            // saw). Add back what the cell's resistance drops (measured ~200 mOhm with
-            // the wiring: 4151 mV at 118 mA, 4103 mV at 352 mA) to get the resting
-            // voltage, then smooth it.
-            const int drawMa = _currentMa < 0 ? -_currentMa : 0;
-            const int restMv = _millivolts + drawMa * 200 / 1000;
+        if (_millivolts) {
+            const int drawMa = _currentMa < 0 ? -_currentMa : 0;   // cell resistance ~200 mOhm with wiring
+            const int restMv = _millivolts + (up ? 0 : drawMa * 200 / 1000);
             _restMv = _restMv ? (_restMv * 3 + restMv) / 4 : restMv;
-            const uint8_t byVolt = _byVolt = fromVoltage(_restMv);
-            // A pager that's running isn't at 0%: a near-empty gauge figure with
-            // plenty of voltage behind it is the gauge being wrong.
-            const bool falseEmpty = _gaugePct <= 5 && byVolt >= 15;
-            // Once the gauge is well off the voltage, go by voltage until they
-            // agree again (it read 67% on a full cell after a charge it never
-            // noticed finishing, and the figure slid down to that on unplugging).
-            const int gap = abs((int)_gaugePct - (int)byVolt);
-            _voltTrust = gap > 20 ? true : (gap < 10 ? false : _voltTrust);
-            if (falseEmpty || _voltTrust) target = byVolt;
+            _byVolt = fromVoltage(_restMv);
         }
+        uint16_t raw;
+        if (read16(REG_RAW_CC, raw)) {                 // mAh, up on discharge, down on charge
+            if (_ccValid) {
+                const int16_t d = (int16_t)(raw - _ccLast);
+                if (abs(d) <= 60) _mah -= d;              // more in 5 s is a reset or a bad read
+            }
+            _ccLast = raw;
+            _ccValid = true;
+        }
+        if (!_mahKnown && _millivolts) {               // first reading after boot
+            const float byVolt = CAP_MAH * _byVolt / 100.0f;
+            // A saved figure from before a power off or restart is better than the
+            // voltage, unless the two are far apart (charged or used while we weren't
+            // counting).
+            _mah = (_savedMah >= 0 && fabsf(_savedMah - byVolt) < CAP_MAH * 0.25f && !up) ? _savedMah : byVolt;
+            if (up && _savedMah >= 0) _mah = max(_savedMah, byVolt * 0.9f);
+            _mahKnown = true;
+        }
+        if (_chgDone) _mah = CAP_MAH;                   // the only reliable 100%
+        else if (_mahKnown && !up && abs(_currentMa) < 130) {
+            const float byVolt = CAP_MAH * _byVolt / 100.0f;
+            if (fabsf(byVolt - _mah) > CAP_MAH * 0.12f) _mah += (byVolt - _mah) * 0.02f;
+        }
+        _mah = constrain(_mah, 0.0f, (float)CAP_MAH);
+        uint8_t target = (uint8_t)(_mah * 100.0f / CAP_MAH + 0.5f);
+        if (up && !_chgDone && target > 99) target = 99; // not full until the charger says so
+        if (!up && _millivolts && _millivolts < 3480 && target > 5) target = 5;   // nearly flat whatever the count says
         // Show it the way a phone does: charging it only counts up, otherwise it
         // only counts down, one step at a time, so a noisy read never makes it bounce.
         _target = target;
@@ -133,11 +138,19 @@ public:
         else if (target < _percent) _percent--;
     }
 
+    // What main.cpp keeps across restarts (RTC memory) and power offs (flash).
+    float remainingMah() const { return _mahKnown ? _mah : -1; }
+    void  restoreMah(float mah, bool exact) {
+        if (mah < 0 || mah > CAP_MAH) return;
+        if (exact) { _mah = mah; _mahKnown = true; }  // a restart: nothing happened in between
+        else _savedMah = mah;                           // a power off: check it against the voltage
+    }
+
     // One line with everything the figure was worked out from.
     void report() {
-        Serial.printf("[batt] shown %u%% target %u%% gauge %u%% volt %u%% | %umV rest %dmV %dmA | vbus %d done %d charging %d trustVolt %d hiz %d\n",
-                      _percent, _target, _gaugePct, _byVolt, _millivolts, _restMv, _currentMa,
-                      _vbus, _chgDone, charging(), _voltTrust, hiZ());
+        Serial.printf("[batt] shown %u%% target %u%% | counted %.0f/%u mAh | voltage says %u%% | gauge says %u%% (fcc %u) | %umV rest %dmV %dmA | vbus %d done %d charging %d hiz %d\n",
+                      _percent, _target, _mah, CAP_MAH, _byVolt, _gaugePct, _fcc, _millivolts, _restMv, _currentMa,
+                      _vbus, _chgDone, charging(), hiZ());
     }
 
     // Test aid: cut the charger's input so the pager runs from its battery while
@@ -179,6 +192,30 @@ public:
         }
     }
 
+    // The gauge's own settings that decide when it calls the pack full, read-only.
+    // It only resets its count to 100% after two 40 s windows with the charge
+    // current under Taper Current yet still flowing, above Charging Voltage minus
+    // Taper Voltage - if those don't match what the charger does, it never learns.
+    void configReport() {
+        struct { uint16_t addr; const char* name; bool hex; } R[] = {
+            {0x91FD, "charging voltage mV", false}, {0x9201, "taper current mA", false},
+            {0x92A5, "taper voltage mV", false},    {0x929D, "full charge cap mAh", false},
+            {0x929F, "design cap mAh", false},      {0x9206, "op config A", true},
+            {0x9208, "op config B", true},          {0x929B, "gauging config", true},
+        };
+        uint16_t st = 0;
+        read16(REG_OP_STATUS, st);
+        Serial.printf("[gauge] access %u (1 full, 2 unsealed, 3 sealed)\n", (st >> 1) & 3);
+        for (auto& r : R) {
+            uint16_t v;
+            if (readRomWord(r.addr, v)) Serial.printf(r.hex ? "[gauge] %-20s 0x%04X\n" : "[gauge] %-20s %u\n", r.name, v);
+            else Serial.printf("[gauge] %-20s (unreadable)\n", r.name);
+        }
+        uint16_t flags = 0, rm = 0, fcc = 0;
+        read16(0x0A, flags); read16(0x10, rm); read16(0x12, fcc);
+        Serial.printf("[gauge] now: RM %u / FCC %u mAh, FC %d, CHGINH %d\n", rm, fcc, (flags >> 9) & 1, (flags >> 3) & 1);
+    }
+
     // Throw away what the gauge has learned and start from the pack's rating.
     // It re-learns over the next full charge and discharge.
     bool relearn() { return setCapacity(DESIGN_MAH); }
@@ -218,9 +255,12 @@ private:
     enum : uint8_t {
         REG_CONTROL = 0x00, REG_VOLTAGE = 0x08, REG_CURRENT = 0x0C, REG_SOC = 0x2C,
         REG_OP_STATUS = 0x3A, REG_DESIGN_CAP = 0x3C, REG_ROM_ADDR = 0x3E,
-        REG_MAC_DATA = 0x40, REG_MAC_SUM = 0x60, REG_MAC_LEN = 0x61,
+        REG_MAC_DATA = 0x40, REG_MAC_SUM = 0x60, REG_MAC_LEN = 0x61, REG_RAW_CC = 0x22,
     };
     static constexpr uint16_t ROM_FULL_CHARGE_CAP = 0x929D, ROM_DESIGN_CAP = 0x929F;
+    // What 100% holds: the 1500 mAh rating less a little for age and the charger
+    // stopping at 64 mA. The resting-voltage drift corrects it if it's off.
+    static constexpr uint16_t CAP_MAH = 1450;
     static constexpr uint32_t REFRESH_MS = 5000;
 
     // Typical single-cell Li-ion curve under light load.
@@ -273,6 +313,22 @@ private:
         return false;
     }
 
+    // Read one data-memory word: point MACDataControl at the address, then the
+    // block appears at MACData, big-endian.
+    bool readRomWord(uint16_t addr, uint16_t& out) {
+        const uint8_t sel[] = {REG_ROM_ADDR, (uint8_t)addr, (uint8_t)(addr >> 8)};
+        if (!write(sel, 3)) return false;
+        delay(12);
+        _w->beginTransmission(ADDR_BQ27220_GAUGE);
+        _w->write((uint8_t)REG_ROM_ADDR);
+        if (_w->endTransmission(false) != 0) return false;
+        if (_w->requestFrom((uint8_t)ADDR_BQ27220_GAUGE, (uint8_t)4) != 4) return false;
+        const uint8_t a0 = _w->read(), a1 = _w->read(), hi = _w->read(), lo = _w->read();
+        if (((a1 << 8) | a0) != addr) return false;       // the gauge didn't take the address
+        out = (uint16_t)((hi << 8) | lo);
+        return true;
+    }
+
     // One data-memory word: address, big-endian value, checksum, length.
     void writeRomWord(uint16_t addr, uint16_t value) {
         const uint8_t a0 = (uint8_t)addr, a1 = (uint8_t)(addr >> 8);
@@ -312,8 +368,11 @@ private:
     uint8_t  _percent = 0, _gaugePct = 0;
     uint16_t _millivolts = 0, _designBefore = 0, _designNow = 0;
     int16_t  _currentMa = 0;
-    bool     _shown = false, _voltTrust = false, _chgDone = false;
+    bool     _shown = false, _chgDone = false;
     uint8_t  _target = 0, _byVolt = 0;
+    float    _mah = 0, _savedMah = -1;          // our count of what's left
+    bool     _mahKnown = false, _ccValid = false;
+    uint16_t _ccLast = 0;
     int      _restMv = 0;
     uint32_t _last = 0, _lastDump = 0;
 };
