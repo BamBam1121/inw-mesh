@@ -240,20 +240,23 @@ public:
     g.setFont(&fonts::Font2);
     g.setTextColor(_plugged ? t.red : t.dim, t.bg);
     g.drawString(_plugged ? "unplug USB first - it can't turn off while plugged in"
-                          : "press the wheel to turn off", L::W / 2, 120);
+                          : "press Enter (or the wheel) to turn off", L::W / 2, 120);
     g.setTextColor(t.dim, t.bg);
-    g.drawString("anything else cancels. PWR turns it back on.", L::W / 2, 146);
+    g.drawString("backspace or any other key cancels. PWR turns it back on.", L::W / 2, 146);
     g.setTextDatum(textdatum_t::top_left);
   }
-  void press() override {
-    if (battery.pluggedIn()) { nav.pop(); nav.toast("unplug USB to power off", 3000); return; }
-    app::powerOff("user");
-  }
-  void key(char) override { nav.pop(); }
-  void rotate(int) override { nav.pop(); }
+  void press() override { confirm(); }
+  void key(char c) override { if (c == '\n') confirm(); else nav.pop(); }
+  // Turning the wheel does nothing: it's easy to nudge while pressing it, and a
+  // nudge shouldn't cancel (or confirm) anything.
+  void rotate(int) override {}
   bool backspace() override { nav.pop(); return true; }
   bool wantsAllKeys() override { return true; }
 private:
+  void confirm() {
+    if (battery.pluggedIn()) { nav.pop(); nav.toast("unplug USB to power off", 3000); return; }
+    app::powerOff("user");
+  }
   uint32_t _at;
   bool _plugged;
 };
@@ -1083,7 +1086,10 @@ void loop() {
     if (nav.top() != before) { btnNoTap = btnHeld = true; dimmer.note(); nav.invalidate(); }   // SOS armed
     else if (dimmer.asleep()) { btnPress = true; btnNoTap = true; }   // its release mustn't sleep again
   }
-  if (btn && btnDownAt && !btnHeld && millis() - btnDownAt >= 2500) {
+  // Signed: btnDownAt is millis()|1, so on an even millisecond it is 1 ahead of
+  // millis() and an unsigned difference wraps to ~4e9 - which fired the prompt
+  // on a plain tap about half the time.
+  if (btn && btnDownAt && !btnHeld && (int32_t)(millis() - btnDownAt) >= 2500) {
     btnHeld = btnNoTap = true;
     app::powerOffPrompt();
   }

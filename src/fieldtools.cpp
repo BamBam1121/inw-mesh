@@ -252,8 +252,10 @@ static void sosTick() {
 static uint32_t s_armAt = 0;                 // millis the countdown started; 0 = not armed
 static uint32_t armRemaining() {
   if (!s_armAt) return 0;
-  const uint32_t e = millis() - s_armAt;
-  return e >= 5000 ? 0 : (5000 - e + 999) / 1000;
+  // Signed: s_armAt is millis()|1, one ahead of millis() on an even millisecond.
+  // Unsigned, that wrapped to "5 s passed" and could skip the cancel window.
+  const int32_t e = max((int32_t)(millis() - s_armAt), (int32_t)0);
+  return e >= 5000 ? 0 : (uint32_t)(5000 - e + 999) / 1000;
 }
 
 // A siren for each second of the countdown: a square wave sweeping up and back
