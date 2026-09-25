@@ -329,11 +329,14 @@ void app::lock() { if (!nav.top() || !nav.top()->isLock()) nav.push(makeLockView
 
 // The panel gets its own sleep command a moment after the backlight goes dark.
 static bool s_panelOff = false;
+static bool s_uiReady = false;   // set once setup() is done: no animations while booting
+bool app::animationsOk() { return s_uiReady && !dimmer.asleep() && !s_panelOff; }
 
 // The side button waking the screen: the theme's turn-on animation, revealing
 // whatever is on top (usually the lock screen), then back to normal drawing.
 static void screenWakeAnimated() {
   if (s_panelOff) { display.wakeup(); s_panelOff = false; }
+  nav.cancelTransition();                        // the wake animation is the transition
   nav.tick();                                    // let the top view catch up (the clock, say)
   nav.compose();
   display.fillScreen(TFT_BLACK);
@@ -748,6 +751,44 @@ static void usbCommands() {
       else if (!strcmp(w, "fail"))   fx::fail();
       else if (!strcmp(w, "charge")) fx::charge(app::batteryPct());
       Serial.printf("[fx] played %s\n", w);
+      nav.invalidate();
+      continue;
+    }
+    // "tr fwd|back|unlock|lock MS tN": a screen change MS ms in, from the current
+    // screen to a stand-in "new screen", as a screenshot, in theme N.
+    if (!strncmp(line, "tr ", 3)) {
+      char kindName[12] = "";
+      int ms = 100;
+      sscanf(line + 3, "%11s %d", kindName, &ms);
+      const fx::Trans kind = !strcmp(kindName, "back") ? fx::Trans::Back : !strcmp(kindName, "unlock") ? fx::Trans::Unlock
+                           : !strcmp(kindName, "lock") ? fx::Trans::Lock : fx::Trans::Forward;
+      const char* tp = strstr(line, " t");
+      const uint8_t saved = ui_settings.themeId;
+      if (tp && atoi(tp + 2) < THEME_COUNT) { ui_settings.themeId = atoi(tp + 2); app::applyTheme(); }
+      Canvas to;
+      to.setColorDepth(16);
+      to.setPsram(true);
+      Canvas* out = fx::scratch();
+      if (out && to.createSprite(L::W, L::H)) {
+        nav.compose();                               // "from": whatever is showing
+        to.fillScreen(theme.bg);
+        drawStatusBar(to, theme);
+        drawHeader(to, "New screen", "demo");
+        to.setFont(&fonts::Font4);
+        to.setTextColor(theme.green, theme.bg);
+        to.drawString("Squatch Mesh", 24, 60);
+        to.setFont(&fonts::Font2);
+        for (int i = 0; i < 5; i++) {
+          const int y = 100 + i * 22;
+          if (i == 1) to.fillRect(0, y - 2, L::W, 22, theme.focus);
+          to.setTextColor(i == 1 ? theme.green : theme.txt, i == 1 ? theme.focus : theme.bg);
+          to.drawString(i == 0 ? "messages" : i == 1 ? "contacts" : i == 2 ? "map" : i == 3 ? "tools" : "settings", 24, y);
+        }
+        fx::transitionFrame(kind, nav.canvas(), to, *out, ms);
+        streamShot(*out, *out);
+        to.deleteSprite();
+      } else Serial.println("[fx] no memory");
+      if (ui_settings.themeId != saved) { ui_settings.themeId = saved; app::applyTheme(); }
       nav.invalidate();
       continue;
     }
@@ -1258,6 +1299,7 @@ void setup() {
     delay(5);
   }
   nav.invalidate();
+  s_uiReady = true;                               // from here on, screen changes animate
 }
 
 // ---- loop -------------------------------------------------------------------------------------------
@@ -1373,8 +1415,8 @@ void loop() {
       // with the theme's turn-off animation.
       nav.compose();
       fx::screenOff(nav.canvas());
+      dimmer.sleepInstant();                     // dark first, so locking doesn't animate unseen
       app::lock();
-      dimmer.sleepInstant();
     } else {
       if (detents && ui_settings.scrollTick) haptic.tick();
       else if ((anyKey || press) && ui_settings.keyHaptics) haptic.tick();

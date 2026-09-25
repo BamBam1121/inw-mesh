@@ -1,7 +1,6 @@
 #include "fx.h"
 #include <math.h>
 #include "app.h"
-#include "themes.h"
 #include "haptic.h"
 
 namespace fx {
@@ -9,7 +8,7 @@ namespace {
 
 constexpr int W = L::W, H = L::H, CX = W / 2, CY = H / 2;
 
-uint8_t style() { return app::themeSpec().style; }
+uint8_t style() { return nav.theme().style; }
 const Theme& T() { return nav.theme(); }
 
 float clamp01(float v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
@@ -526,6 +525,219 @@ void blip(lgfx::LovyanGFX& g, int x, int y, float fresh, bool focus) {
   case STYLE_AURORA: g.fillCircle(x, y, 4, c.greenDim); g.fillCircle(x, y, 2, col); if (focus) g.drawCircle(x, y, 8, c.blue); break;
   default:           g.fillCircle(x, y, 3, col); if (focus) g.drawCircle(x, y, 7, c.amber);
   }
+}
+
+// ---- screen-to-screen transitions ---------------------------------------------------------
+// All drawn straight to the panel, and only what changes each frame, so they run at
+// the panel's speed rather than the canvas's.
+namespace {
+// Normally the panel and the real clock. transitionFrame() points them at a
+// sprite and a clock that ticks 16 ms per frame, and stops at a chosen moment.
+lgfx::LovyanGFX* s_target = nullptr;
+bool s_test = false, s_stopped = false;
+uint32_t s_vclock = 0, s_stopMs = 0;
+lgfx::LovyanGFX* P() { return s_target ? s_target : (lgfx::LovyanGFX*)nav.display(); }
+uint32_t tnow() { return s_test ? s_vclock : millis(); }
+bool testStop(uint32_t t0) {
+  if (!s_test) return false;
+  s_vclock += 16;
+  if (s_vclock - t0 > s_stopMs) s_stopped = true;
+  return s_stopped;
+}
+
+// Copy one rectangle of a full-screen sprite to the same place on the panel.
+void pushRect(Canvas& src, int x, int y, int w, int h, int dx = 0, int dy = 0) {
+  if (w <= 0 || h <= 0) return;
+  lgfx::LovyanGFX* d = P();
+  d->setClipRect(x, y, w, h);
+  src.pushSprite(d, dx, dy);
+  d->clearClipRect();
+}
+
+// Squatch: a scanline sweeps the new screen on, down going in, up coming back.
+void scanWipe(Canvas& from, Canvas& to, bool down, uint16_t ms) {
+  const Theme& c = T();
+  lgfx::LovyanGFX* d = P();
+  int prev = 0;
+  for (uint32_t t0 = tnow();;) {
+    const float p = clamp01((tnow() - t0) / (float)ms);
+    const int y = (int)(H * easeInOut(p));
+    if (down) pushRect(to, 0, prev, W, y - prev);
+    else      pushRect(to, 0, H - y, W, y - prev);
+    if (p >= 1) break;
+    // The beam, on the old side of the edge (which the next frame paints over).
+    // Going up, row H-y is already new: the beam starts one row above it.
+    const int e = down ? y : H - y - 1;
+    const int s = down ? 1 : -1;
+    d->drawFastHLine(0, e, W, TFT_WHITE);
+    d->drawFastHLine(0, e + s, W, c.green);
+    d->drawFastHLine(0, e + 2 * s, W, c.green);
+    d->drawFastHLine(0, e + 3 * s, W, c.greenDim);
+    prev = y;
+    if (testStop(t0)) break;
+  }
+  (void)from;
+}
+
+// Blocks: the new screen flips on tile by tile in a diagonal wave; a tile shows
+// a bright edge the frame it lands.
+void tileWave(Canvas& from, Canvas& to, bool fromRight, uint16_t ms) {
+  const Theme& c = T();
+  lgfx::LovyanGFX* d = P();
+  static uint8_t state[TROWS][TCOLS];                // 0 old, 1 just landed, 2 done
+  memset(state, 0, sizeof(state));
+  const float span = (TCOLS - 1) + (TROWS - 1) * 0.6f;
+  for (uint32_t t0 = tnow();;) {
+    const float p = clamp01((tnow() - t0) / (float)ms);
+    for (int ty = 0; ty < TROWS; ty++)
+      for (int tx = 0; tx < TCOLS; tx++) {
+        const int x = tx * TILE, y = ty * TILE, h = min(TILE, H - y);
+        if (state[ty][tx] == 1) { pushRect(to, x, y, TILE, h); state[ty][tx] = 2; continue; }
+        if (state[ty][tx]) continue;
+        const float start = ((fromRight ? TCOLS - 1 - tx : tx) + ty * 0.6f) / span * 0.8f;
+        if (p < start && p < 1) continue;
+        pushRect(to, x, y, TILE, h);
+        if (p < 1) { d->drawRect(x, y, TILE, h, c.green); state[ty][tx] = 1; }
+        else state[ty][tx] = 2;
+      }
+    if (p >= 1 || testStop(t0)) break;
+  }
+  if (!s_stopped) pushRect(to, 0, 0, W, H);
+  (void)from;
+}
+
+// Hero: the new screen slides in over the old, with gold speed lines at the seam.
+void comicSlide(Canvas& from, Canvas& to, bool fromRight, uint16_t ms) {
+  const Theme& c = T();
+  lgfx::LovyanGFX* d = P();
+  for (uint32_t t0 = tnow();;) {
+    const float p = clamp01((tnow() - t0) / (float)ms);
+    const int x = (int)(W * easeOut(p));
+    if (fromRight) { from.pushSprite(d, -x, 0); to.pushSprite(d, W - x, 0); }
+    else           { from.pushSprite(d, x, 0);  to.pushSprite(d, x - W, 0); }
+    if (p >= 1) break;
+    const int seam = fromRight ? W - x : x;
+    const int dir = fromRight ? 1 : -1;               // speed lines trail behind the new screen
+    for (int k = 0; k < 4; k++) {
+      const int y = 30 + k * 52 + ((k * 37 + x / 7) % 14);
+      const int len = 18 + (k * 23 % 30);
+      d->drawFastHLine(fromRight ? seam : seam - len, y, len, k % 2 ? c.amber : c.green);
+      d->drawFastHLine(fromRight ? seam + 6 * dir : seam - len - 6, y + 3, len / 2, c.green);
+    }
+    if (testStop(t0)) break;
+  }
+  if (!s_stopped) pushRect(to, 0, 0, W, H);
+}
+
+// Aurora: a seam of light sweeps across, the new screen behind it.
+void lightSweep(Canvas& from, Canvas& to, bool leftward, uint16_t ms) {
+  const Theme& c = T();
+  lgfx::LovyanGFX* d = P();
+  const uint16_t cols[3] = {c.green, c.blue, c.greenDim};
+  int prev = 0;
+  for (uint32_t t0 = tnow();;) {
+    const float p = clamp01((tnow() - t0) / (float)ms);
+    const int w = (int)(W * easeInOut(p));           // how much is new
+    if (leftward) pushRect(to, W - w, 0, w - prev, H);
+    else          pushRect(to, prev, 0, w - prev, H);
+    if (p >= 1) break;
+    const int e = leftward ? W - w - 1 : w;           // the seam, on the old side
+    const int s = leftward ? -1 : 1;
+    d->drawFastVLine(e, 0, H, TFT_WHITE);
+    for (int k = 0; k < 3; k++) { d->drawFastVLine(e + s * (1 + 2 * k), 0, H, cols[k]); d->drawFastVLine(e + s * (2 + 2 * k), 0, H, cols[k]); }
+    prev = w;
+    if (testStop(t0)) break;
+  }
+  (void)from;
+}
+
+// Unlock: the lock screen slides up and off, the new screen standing still behind
+// it, with the theme's edge under it.
+void slideUp(Canvas& from, Canvas& to, uint16_t ms) {
+  const Theme& c = T();
+  lgfx::LovyanGFX* d = P();
+  const uint8_t st = style();
+  int prev = 0;
+  for (uint32_t t0 = tnow();;) {
+    const float p = clamp01((tnow() - t0) / (float)ms);
+    const int dy = (int)(H * easeIn(p));
+    pushRect(to, 0, H - dy, W, dy - prev + 6);        // uncovered at the bottom
+    pushRect(from, 0, 0, W, H - dy, 0, -dy);          // the lock screen, moved up
+    if (p >= 1) break;
+    const int e = H - dy;
+    if (st == STYLE_AURORA) { d->drawFastHLine(0, e, W, c.green); d->drawFastHLine(0, e + 1, W, c.blue); d->drawFastHLine(0, e + 2, W, c.greenDim); }
+    else if (st == STYLE_HERO) { d->fillRect(0, e, W, 2, c.green); for (int k = 0; k < 6; k++) star(*d, 40 + k * 80, e + 5, 2, c.amber); }
+    else { d->fillRect(0, e, W, 2, c.green); d->drawFastHLine(0, e + 2, W, c.greenDim); }
+    prev = dy;
+    if (testStop(t0)) break;
+  }
+  if (!s_stopped) pushRect(to, 0, 0, W, H);
+}
+
+// Blocks unlock: the lock screen shatters, its tiles dropping away under gravity,
+// the bottom rows first.
+void shatter(Canvas& from, Canvas& to, uint16_t ms) {
+  lgfx::LovyanGFX* d = P();
+  for (uint32_t t0 = tnow();;) {
+    const float p = clamp01((tnow() - t0) / (float)ms);
+    to.pushSprite(d, 0, 0);
+    bool any = false;
+    for (int ty = 0; ty < TROWS; ty++)
+      for (int tx = 0; tx < TCOLS; tx++) {
+        const float delay = (hash32(ty * 64 + tx + 7) % 1000) / 1000.0f * 0.3f + (TROWS - 1 - ty) * 0.018f;
+        const float tf = max(0.0f, p - delay);
+        const int off = (int)(tf * tf * 1400);          // px: falls about the screen in ~0.4 of the run
+        const int x = tx * TILE, y = ty * TILE, h = min(TILE, H - y);
+        if (y + off >= H) continue;
+        any = true;
+        const int drift = off ? (int)(((int)(hash32(tx * 131 + ty) % 7) - 3) * tf * 30) : 0;
+        pushRect(from, x + drift, y + off, TILE, min(h, H - y - off), drift, off);
+      }
+    if (p >= 1 || !any || testStop(t0)) break;
+  }
+  if (!s_stopped) to.pushSprite(d, 0, 0);
+}
+
+// Lock: the lock screen slides down over whatever was showing.
+void slideDown(Canvas& from, Canvas& to, uint16_t ms) {
+  const Theme& c = T();
+  lgfx::LovyanGFX* d = P();
+  for (uint32_t t0 = tnow();;) {
+    const float p = clamp01((tnow() - t0) / (float)ms);
+    const int dy = (int)(H * easeOut(p));
+    pushRect(to, 0, 0, W, dy, 0, dy - H);
+    if (p >= 1) break;
+    d->fillRect(0, dy, W, 2, c.green);
+    d->drawFastHLine(0, dy + 2, W, c.greenDim);
+    if (testStop(t0)) break;
+  }
+  if (!s_stopped) pushRect(to, 0, 0, W, H);
+  (void)from;
+}
+}  // namespace
+
+void transition(Trans kind, Canvas& from, Canvas& to) {
+  if (kind == Trans::None) { to.pushSprite(P(), 0, 0); return; }
+  const uint8_t st = style();
+  if (kind == Trans::Unlock) { st == STYLE_BLOCKS ? shatter(from, to, 620) : slideUp(from, to, 300); return; }
+  if (kind == Trans::Lock)   { slideDown(from, to, 260); return; }
+  const bool fwd = kind == Trans::Forward;
+  switch (st) {
+  case STYLE_BLOCKS: tileWave(from, to, fwd, 230); break;
+  case STYLE_HERO:   comicSlide(from, to, fwd, 200); break;
+  case STYLE_AURORA: lightSweep(from, to, fwd, 220); break;
+  default:           scanWipe(from, to, fwd, 200);
+  }
+}
+
+// One moment of a screen change, for checking it over USB: dst starts as `from`
+// (as the panel would), the transition runs on a 16 ms-a-frame clock, and stops
+// once atMs has passed.
+void transitionFrame(Trans kind, Canvas& from, Canvas& to, lgfx::LovyanGFX& dst, uint32_t atMs) {
+  s_target = &dst; s_test = true; s_stopped = false; s_vclock = 0; s_stopMs = atMs;
+  from.pushSprite(&dst, 0, 0);
+  transition(kind, from, to);
+  s_target = nullptr; s_test = false; s_stopped = false;
 }
 
 void screenOn(Canvas& frame)  { play(0, frame, 320); }

@@ -463,8 +463,21 @@ void Nav::begin(LGFX* d, Theme* t) {
   _canvas.createSprite(L::W, L::H);
 }
 
+// Every change of screen is animated (fx::transition): save what's showing now, and
+// the next draw() animates from it to the new screen. Several changes in one frame
+// (popToHome, replaceTop) make one transition, from the first picture to the last.
+void Nav::beginTransition(uint8_t kind) {
+  if (_trans || !_d || !top() || !app::animationsOk()) return;
+  Canvas* old = fx::scratch();
+  if (!old) return;
+  compose();                               // exactly what's on the panel now
+  memcpy(old->getBuffer(), _canvas.getBuffer(), (size_t)L::W * L::H * 2);
+  _trans = kind;
+}
+
 void Nav::push(View* v) {
   if (_depth >= 12) { delete v; return; }
+  if (_depth) beginTransition((uint8_t)(v->isLock() ? fx::Trans::Lock : fx::Trans::Forward));
   _stack[_depth++] = v;
   v->dirty = true;
   _statusDirty = true;
@@ -472,6 +485,7 @@ void Nav::push(View* v) {
 
 void Nav::pop() {
   if (_depth <= 1) return;                 // the home view is never popped
+  beginTransition((uint8_t)(top()->isLock() ? fx::Trans::Unlock : fx::Trans::Back));
   s_graveyard.push_back(_stack[--_depth]);
   _stack[_depth] = nullptr;
   if (top()) top()->resume();
@@ -482,7 +496,11 @@ void Nav::popTo(View* v) { while (_depth > 1 && top() != v) pop(); }
 void Nav::popToHome() { while (_depth > 1) pop(); }
 
 void Nav::replaceTop(View* v) {
-  if (_depth > 1) { s_graveyard.push_back(_stack[--_depth]); _stack[_depth] = nullptr; }
+  if (_depth > 1) {
+    beginTransition((uint8_t)fx::Trans::Forward);
+    s_graveyard.push_back(_stack[--_depth]);
+    _stack[_depth] = nullptr;
+  }
   push(v);
 }
 
@@ -494,6 +512,7 @@ void Nav::backspace() {
 
 void Nav::toast(const char* msg, uint16_t ms) {
   strlcpy(_toast, msg, sizeof(_toast));
+  if (!_toastUntil) _toastAt = millis() | 1;         // slide in, unless one is already up
   _toastUntil = millis() + ms;
   invalidate();
 }
@@ -501,16 +520,38 @@ void Nav::toast(const char* msg, uint16_t ms) {
 void Nav::banner(const char* title, const char* text, uint16_t ms) {
   strlcpy(_bannerTitle, title, sizeof(_bannerTitle));
   sanitize(text, _bannerText, sizeof(_bannerText) - 4);
+  if (!_bannerUntil) _bannerAt = millis() | 1;
   _bannerUntil = millis() + ms;
   invalidate();
+}
+
+// Toasts rise from the bottom and banners drop from the top, each with a little
+// overshoot, and leave the way they came.
+static constexpr uint32_t OVL_IN = 240, OVL_OUT = 200;
+static float overlayShow(uint32_t at, uint32_t until) {
+  const uint32_t now = millis();
+  float s = 1;
+  if (at && (int32_t)(now - at) < (int32_t)OVL_IN) {
+    const float t = (now - at) / (float)OVL_IN;       // ease out with a small overshoot
+    const float c = 1.9f;
+    s = 1 + (c + 1) * powf(t - 1, 3) + c * powf(t - 1, 2);
+  }
+  const int32_t left = (int32_t)(until - now);
+  if (left < (int32_t)OVL_OUT) s = min(s, max(0.0f, left / (float)OVL_OUT));
+  return s;
+}
+static bool overlayMoving(uint32_t at, uint32_t until) {
+  const uint32_t now = millis();
+  return until && ((at && (int32_t)(now - at) < (int32_t)OVL_IN + 40) || (int32_t)(until - now) < (int32_t)OVL_OUT + 40);
 }
 
 void Nav::tick() {
   for (View* v : s_graveyard) delete v;
   s_graveyard.clear();
   const uint32_t now = millis();
-  if (_toastUntil && (int32_t)(now - _toastUntil) >= 0) { _toastUntil = 0; invalidate(); }
-  if (_bannerUntil && (int32_t)(now - _bannerUntil) >= 0) { _bannerUntil = 0; invalidate(); }
+  if (_toastUntil && (int32_t)(now - _toastUntil) >= 0) { _toastUntil = 0; _toastAt = 0; invalidate(); }
+  if (_bannerUntil && (int32_t)(now - _bannerUntil) >= 0) { _bannerUntil = 0; _bannerAt = 0; invalidate(); }
+  if (overlayMoving(_toastAt, _toastUntil) || overlayMoving(_bannerAt, _bannerUntil)) invalidate();
   if (now - _lastStatus > 15000) { _lastStatus = now; _statusDirty = true; }
   if (top()) top()->tick();
   // An effect running: redraw every frame until it's done (and once more after).
@@ -532,10 +573,19 @@ void Nav::compose() {
 void Nav::drawOverlays(lgfx::LovyanGFX& g) {
   const Theme& t = *_t;
   g.setFont(&fonts::Font2);
+  // Corners and edges follow the theme: square for Blocks, a gold double edge for
+  // Hero, an aurora edge for Aurora.
+  const int rad = t.style == STYLE_BLOCKS ? 0 : 8;
+  auto edge = [&](int x, int y, int w, int h, int r) {
+    g.drawRoundRect(x, y, w, h, r, t.green);
+    if (t.style == STYLE_HERO) g.drawRoundRect(x + 2, y + 2, w - 4, h - 4, r > 2 ? r - 2 : 0, t.amber);
+    if (t.style == STYLE_AURORA) { g.drawRoundRect(x - 1, y - 1, w + 2, h + 2, r + 1, t.blue); g.drawRoundRect(x + 1, y + 1, w - 2, h - 2, r > 1 ? r - 1 : 0, t.greenDim); }
+  };
   if (_bannerUntil) {
-    const int y = 20, h = 42;
-    g.fillRoundRect(6, y, L::W - 12, h, 8, t.panel);
-    g.drawRoundRect(6, y, L::W - 12, h, 8, t.green);
+    const int h = 42;
+    const int y = 20 - (int)((1 - overlayShow(_bannerAt, _bannerUntil)) * (h + 26));
+    g.fillRoundRect(6, y, L::W - 12, h, rad, t.panel);
+    edge(6, y, L::W - 12, h, rad);
     g.setTextColor(t.green, t.panel);
     drawUtf8(g, _bannerTitle, 16, y + 4, L::W - 36);
     g.setTextColor(t.txt, t.panel);
@@ -546,8 +596,11 @@ void Nav::drawOverlays(lgfx::LovyanGFX& g) {
   }
   if (_toastUntil) {
     const int w = min(L::W - 20, (int)g.textWidth(_toast) + 24);
-    const int x = (L::W - w) / 2, y = L::H - 28;
-    g.fillRoundRect(x, y, w, 22, 11, t.greenDim);
+    const int x = (L::W - w) / 2;
+    const int y = L::H - 28 + (int)((1 - overlayShow(_toastAt, _toastUntil)) * 34);
+    const int r = t.style == STYLE_BLOCKS ? 0 : 11;
+    g.fillRoundRect(x, y, w, 22, r, t.greenDim);
+    if (t.style != STYLE_INW) edge(x, y, w, 22, r);
     g.setTextColor(t.white, t.greenDim);
     g.drawString(_toast, x + (w - g.textWidth(_toast)) / 2, y + 3);
   }
@@ -556,6 +609,17 @@ void Nav::drawOverlays(lgfx::LovyanGFX& g) {
 void Nav::draw() {
   View* v = top();
   if (!v || !_d) return;
+  if (_trans) {                            // a screen change: animate to it
+    const uint8_t k = _trans;
+    _trans = 0;
+    Canvas* old = fx::scratch();
+    compose();
+    if (old && app::animationsOk()) fx::transition((fx::Trans)k, *old, _canvas);
+    else _canvas.pushSprite(_d, 0, 0);
+    v->dirty = false;
+    _statusDirty = false;
+    return;
+  }
   if (!v->dirty && !_statusDirty) return;
   if (v->customRender()) {
     v->render(_statusDirty);

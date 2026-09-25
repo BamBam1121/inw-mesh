@@ -5,7 +5,6 @@
 #include "history.h"
 #include "notify.h"
 #include "fx.h"
-#include "themes.h"
 
 ConvKey g_openConv;                 // the thread on screen, for notification muting
 
@@ -373,7 +372,7 @@ private:
     const uint32_t age = millis() - _revealAt;
     if (age >= REVEAL_MS) { _revealId = 0; return; }
     static const char* SETS[] = {"0123456789abcdef", "#%&@$=", "*+x~^o", ".:*+~'"};
-    const char* set = SETS[app::themeSpec().style & 3];
+    const char* set = SETS[nav.theme().style & 3];
     const int setN = strlen(set);
     int len = 0;
     for (const char* p = text; *p; p++) if ((uint8_t)*p >= 0x20) len++;

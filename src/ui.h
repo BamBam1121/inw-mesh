@@ -56,7 +56,8 @@ public:
 
   void toast(const char* msg, uint16_t ms = 2500);
   // Puts a notice on screen right away, before a slow blocking job starts.
-  void busy(const char* msg) { toast(msg, 60000); draw(); }
+  // Shown at once (no slide-in): the caller is about to block.
+  void busy(const char* msg) { toast(msg, 60000); _toastAt = 0; draw(); }
   void banner(const char* title, const char* text, uint16_t ms = 4500);
   void invalidate() { if (top()) top()->dirty = true; _statusDirty = true; }
   void statusChanged() { _statusDirty = true; }
@@ -85,11 +86,17 @@ private:
   View* _stack[12] = {nullptr};
   int _depth = 0;
   char _toast[64] = "";
-  uint32_t _toastUntil = 0;
+  uint32_t _toastUntil = 0, _toastAt = 0;
   char _bannerTitle[48] = "", _bannerText[128] = "";
-  uint32_t _bannerUntil = 0;
+  uint32_t _bannerUntil = 0, _bannerAt = 0;
   bool _statusDirty = true;
   uint32_t _lastStatus = 0;
+  // A push or pop since the last frame: the old picture is saved (fx::scratch) and
+  // the next draw() animates to the new one. Holds an fx::Trans.
+  uint8_t _trans = 0;
+  void beginTransition(uint8_t kind);
+public:
+  void cancelTransition() { _trans = 0; }   // e.g. the screen is about to go dark anyway
 };
 
 extern Nav nav;
