@@ -23,6 +23,17 @@ Buttons and power (the guide's "Buttons & power" section has the same)
 - Five fast taps on the middle button start the SOS countdown (if SOS is set up under Tools > field).
 - Download mode for flashing: hold middle (BOOT), tap left (reset), let go of middle.
 
+Sound, battery and screen (1.2.1)
+- No sound at all, though sound is on in Settings: before 1.2.1 one bad moment (a restart in the middle of
+  a sound, say) could leave the speaker stuck silent until the pager was fully powered off, and it can't
+  power off on USB. Fix: update to 1.2.1 (Settings > System > check for updates). Also check the volume
+  isn't at 0. If it's still silent on 1.2.1, hand off to the developer.
+- Battery percentage: from 1.2.1 the pager counts the charge going in and out itself. It shows 99% while
+  charging and 100% only once the charger reports full. If the figure seems off after updating, charging
+  to full once sets it straight.
+- Every theme has its own animation when you move between screens, unlock and lock. They're meant to be
+  there; there's no setting to turn them off.
+
 Things to check before handing off a problem
 - Which firmware version, and whether it was installed from squatchmesh.com/install or updated over Wi-Fi.
 - What is on the screen (a photo helps the developer; the visitor can mention they have one and the
