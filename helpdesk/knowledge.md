@@ -5,6 +5,8 @@ Where people get help
 - GitHub, for public questions and bug reports: https://github.com/BamBam1121/inw-mesh/issues and
   https://github.com/BamBam1121/inw-mesh/discussions (needs a free GitHub account).
 - The developer, by the hand-off from this helper. One volunteer; replies can take a few days.
+- Email: support@squatchmesh.com reaches the developer directly, for anyone who'd rather write an email.
+  The hand-off is still best from here, because it sends the conversation along.
 
 Finding the firmware version
 - On the pager: Settings > System > version.
