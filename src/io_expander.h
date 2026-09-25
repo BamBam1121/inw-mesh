@@ -38,6 +38,9 @@ public:
         _write(pin < 8 ? REG_OUTPUT0 : REG_OUTPUT1, pin < 8 ? _out[0] : _out[1]);
     }
 
+    // The chip's own output and direction registers, both ports (diagnostics).
+    bool regs(uint8_t* out, uint8_t* cfg) { return _ok && _read(REG_OUTPUT0, out) && _read(REG_CONFIG0, cfg); }
+
     int digitalRead(uint8_t pin) {
         if (!_ok || pin > 15) return -1;
         uint8_t in[2];

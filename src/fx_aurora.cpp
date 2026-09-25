@@ -36,11 +36,13 @@ inline uint16_t blendSw(uint16_t s, uint16_t c, uint8_t a) { return sw(mix565(sw
 // their ribbon to the full height. Worked out once a frame, drawn strip by strip.
 struct Storm { float gain, zoom, fill, reach; };
 struct Ray { int16_t x, y, len, wd; uint16_t col[4]; bool hem; };
-Ray s_rays[320];
+struct Rays { Ray r[320]; };
+Rays* s_rays = nullptr;
 int s_nRays = 0;
 
 void buildRays(const Theme& t, float ph, const Storm& s, uint32_t flick) {
   s_nRays = 0;
+  if (!psram(s_rays)) return;
   const bool apart = s.zoom > 1.01f;                     // spread out, the bands take turns
   const int wd = s.fill <= 0 ? 1 : max(1, (int)(3 * s.zoom * s.fill + 0.5f));
   for (int band = 0; band < 2; band++) {
@@ -57,7 +59,7 @@ void buildRays(const Theme& t, float ph, const Storm& s, uint32_t flick) {
       if (s.reach > 0) { y = lerpf(y, 0, s.reach); len = lerpf(len, H, s.reach); }
       const float glow = 0.55f + 0.45f * sinf(fx * 1.7f + ph * 2.4f);
       const bool dim = s.gain > 0.2f && hash32(i * 31 + flick * 7) % 5 == 0;   // rays flicker
-      Ray& r = s_rays[s_nRays++];
+      Ray& r = s_rays->r[s_nRays++];
       r.x = (int16_t)x; r.y = (int16_t)y; r.len = (int16_t)len; r.wd = (int16_t)wd;
       r.hem = s.gain > 0.5f && s.reach < 0.5f;
       for (int k2 = 0; k2 < 4; k2++) {
@@ -73,7 +75,7 @@ void buildRays(const Theme& t, float ph, const Storm& s, uint32_t flick) {
 
 void drawRays(const Strip& s, const Theme& t) {
   for (int i = 0; i < s_nRays; i++) {
-    const Ray& r = s_rays[i];
+    const Ray& r = s_rays->r[i];
     if (!touches(s, r.y, r.y + r.len + 2)) continue;
     for (int k2 = 0; k2 < 4; k2++) {
       const int yy = r.y + k2 * r.len / 4, hh = r.len / 4 + 1;
@@ -126,9 +128,10 @@ void curtain(Canvas& from, Canvas& to, uint16_t ms) {
   const uint16_t* A = bufOf(from);
   const uint16_t* B = bufOf(to);
   constexpr int NS = W / 4;                              // 4 px columns of the curtain
-  static int16_t hem[NS], sxo[NS];
-  static bool shade[NS];
-  static uint32_t step[NS];
+  struct Cols { int16_t hem[NS], sxo[NS]; bool shade[NS]; uint32_t step[NS]; };
+  static Cols* cols = nullptr;
+  if (!psram(cols)) { pushFull(to); return; }
+  int16_t* hem = cols->hem; int16_t* sxo = cols->sxo; bool* shade = cols->shade; uint32_t* step = cols->step;
   const uint16_t rayTop = mix565(c.red, c.green, 110), rayLow = mix565(c.green, TFT_WHITE, 120);
   int lastRows = 0;
   uint32_t frame = 0;

@@ -21,7 +21,8 @@ constexpr int NT = TCOLS * TROWS;
 constexpr int16_t GONE = -32768;
 
 // Where every block of the old and new screens is this frame (GONE: not drawn).
-int16_t s_ax[NT], s_ay[NT], s_bx[NT], s_by[NT];
+struct Tiles { int16_t ax[NT], ay[NT], bx[NT], by[NT]; bool landed[NT]; };
+Tiles* s_t = nullptr;
 
 void drawTiles(const Strip& s, const uint16_t* src, const int16_t* xs, const int16_t* ys) {
   for (int i = 0; i < NT; i++) {
@@ -38,8 +39,10 @@ void blockDrop(Canvas& from, Canvas& to, bool up, bool heavy, uint16_t ms) {
   const Theme& c = T();
   const uint16_t* A = bufOf(from);
   const uint16_t* B = bufOf(to);
-  static bool landed[NT];
-  memset(landed, 0, sizeof(landed));
+  if (!psram(s_t)) { pushFull(to); return; }
+  int16_t *s_ax = s_t->ax, *s_ay = s_t->ay, *s_bx = s_t->bx, *s_by = s_t->by;
+  bool* landed = s_t->landed;
+  memset(landed, 0, NT);
   Mote bits[60] = {};
   const float g = up ? -1700.0f : 1700.0f;             // px/s^2, sign is the direction of fall
   const float fall = 0.17f;                             // share of the run a block spends falling in
@@ -121,6 +124,8 @@ void blast(Canvas& from, Canvas& to, uint16_t ms) {
   const Theme& c = T();
   const uint16_t* A = bufOf(from);
   const uint16_t* B = bufOf(to);
+  if (!psram(s_t)) { pushFull(to); return; }
+  int16_t *s_ax = s_t->ax, *s_ay = s_t->ay;
   const float fuse = 0.16f;
   const int ctx = TCOLS / 2, cty = TROWS / 2;               // the block that goes off
   const float bx = ctx * TILE + 8, by = cty * TILE + 8;

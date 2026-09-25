@@ -33,9 +33,12 @@ public:
     if (!j || !_codec || !_codec->ok() || _busy || !_vol) return;
     _busy = true;
     _j = j;
-    if (xTaskCreatePinnedToCore(task, "jingle", 4096, this, 2, nullptr, 0) != pdPASS) _busy = false;
+    if (xTaskCreatePinnedToCore(task, "jingle", 4096, this, 2, nullptr, 0) != pdPASS) { _busy = false; _fail = 1; }
   }
 
+  // Why the last sound didn't play (1: no task, 2: I2S wouldn't start), once,
+  // for the log: a sound that fails is otherwise just silence.
+  uint8_t takeFailure() { const uint8_t f = _fail; _fail = 0; return f; }
   void tick() {}
   bool playing() const { return _busy; }
 
@@ -50,7 +53,7 @@ private:
       for (uint8_t i = 0; i < p->_j->count; i++) p->tone(p->_j->steps[i]);
       p->tone({0, 40});                  // let the last note drain before power-down
       p->_codec->stop();
-    }
+    } else p->_fail = 2;
     if (p->_amp) p->_amp(false);
     p->_busy = false;
     vTaskDelete(nullptr);
@@ -98,6 +101,7 @@ private:
 
   Es8311* _codec = nullptr;
   void (*_amp)(bool) = nullptr;
+  volatile uint8_t _fail = 0;
   const Jingle* _j = nullptr;
   volatile bool _busy = false;
   uint8_t _vol = 60;

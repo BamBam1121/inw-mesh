@@ -19,6 +19,9 @@
 #include "board_pins.h"
 #include "display_config.h"
 #include "io_expander.h"
+#if INW_DEV
+#include <soc/gdma_struct.h>
+#endif
 #include "bringup.h"
 #include "backlight.h"
 #include "rotary.h"
@@ -832,6 +835,44 @@ static void usbCommands() {
       nav.invalidate();
       continue;
     }
+    // "snd": a 1 s test tone, reporting each stage of the audio path.
+    if (!strcmp(line, "snd")) {
+      uint8_t o[2] = {0, 0}, c[2] = {0, 0};
+      const bool er = expander.regs(o, c);
+      Serial.printf("[snd] codec ok=%d sound=%d vol=%u busy=%d; expander read=%d out %02X %02X cfg %02X %02X\n", codec.ok(),
+                    ui_settings.sound, ui_settings.volume, jingle.playing(), er, o[0], o[1], c[0], c[1]);
+      expander.digitalWrite(EXP_AMP_EN, HIGH);
+      expander.regs(o, c);
+      Serial.printf("[snd] amp on: out %02X cfg %02X (pin 1 must be out=1, cfg=0)\n", o[0], c[0]);
+      delay(60);
+      if (!codec.start()) Serial.println("[snd] codec start FAILED");
+      else {
+        codec.setVolumePercent(90);
+        codec.setMute(false);
+        Serial.print("[snd] regs");
+        const uint8_t rs[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x10,
+                              0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x1B, 0x1C, 0x31, 0x32, 0x37, 0x44, 0x45};
+        for (uint8_t r : rs) Serial.printf(" %02X=%02X", r, codec.reg(r));
+        Serial.println();
+        Serial.print("[snd] gdma out peri_sel");
+        for (int ch = 0; ch < 5; ch++) Serial.printf(" ch%d=%u", ch, (unsigned)GDMA.channel[ch].out.peri_sel.sel);
+        Serial.println("  (0 SPI2, 3 I2S0, 63 none)");
+        static int16_t buf[256];
+        size_t total = 0;
+        const uint32_t t0 = millis();
+        for (int blk = 0; blk < 62; blk++) {                 // ~1 s of 1 kHz
+          for (int i = 0; i < 256; i++) buf[i] = (int16_t)(12000 * sinf((blk * 256 + i) * 6.2832f * 1000 / 16000));
+          size_t bw = 0;
+          i2s_write(I2S_NUM_0, buf, sizeof(buf), &bw, pdMS_TO_TICKS(200));
+          total += bw;
+        }
+        Serial.printf("[snd] wrote %u of %u bytes in %lu ms (should be all, ~1000 ms)\n", (unsigned)total, 62u * 512u,
+                      (unsigned long)(millis() - t0));
+        codec.stop();
+      }
+      expander.digitalWrite(EXP_AMP_EN, LOW);
+      continue;
+    }
     if (!strcmp(line, "powershow")) {
       powerOffShow();
       Serial.println("[power] show done (still on)");
@@ -945,10 +986,6 @@ static void drawLogoMark(lgfx::LovyanGFX& g, int ox, int oy, uint32_t ms, bool a
   }
 }
 
-// For the animations (fx_internal.h): the logo, drawn wherever they need it.
-namespace fx { namespace k {
-void logoMark(lgfx::LovyanGFX& g, int ox, int oy, uint32_t ms, bool animate) { drawLogoMark(g, ox, oy, ms, animate); }
-} }
 
 static volatile bool s_animRun = false;
 static SemaphoreHandle_t s_animDone = nullptr;
@@ -1493,6 +1530,11 @@ void loop() {
   lap(5);
   dimmer.tick();
   jingle.tick();
+  if (const uint8_t f = jingle.takeFailure())
+    logs.add(LOG_WARN, "sound failed: %s, internal RAM %u kB free, largest %u kB",
+             f == 1 ? "no task" : "no I2S",
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+             (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));
 
   // The panel follows the backlight: once it has been dark a moment it also gets
   // its sleep command, which saves more than the backlight alone.

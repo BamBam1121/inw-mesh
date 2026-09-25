@@ -28,6 +28,7 @@ public:
     ok &= wr(0x01, 0x3F);                           // clocks from the MCLK pin
     ok &= wr(0x13, 0x10); ok &= wr(0x1B, 0x0A); ok &= wr(0x1C, 0x6A);
     ok &= wr(0x44, 0x58);                           // internal reference
+    ok &= wr(0x31, 0x60);                           // DAC muted, and nothing else left over from before a reset
     _ok = ok;
     return ok;
   }
@@ -72,16 +73,19 @@ public:
     i2s_driver_uninstall(PORT);
   }
 
-  void setMute(bool m) {
-    uint8_t v = rd(0x31) & 0x9F;
-    wr(0x31, m ? (v | 0x60) : v);
-  }
+  // Written outright, never read-modify-write: the other bits of 0x31 should be 0,
+  // and one bad read (an I2C glitch, or a reset mid-transfer) once left them set,
+  // which read-modify-write then copied back on every sound - silent until a power
+  // cycle, which on USB never comes.
+  void setMute(bool m) { wr(0x31, m ? 0x60 : 0x00); }
 
   // 0..100. The floor is the quietest level still clearly audible.
   void setVolumePercent(uint8_t pct) {
     if (pct > 100) pct = 100;
     wr(0x32, pct ? (uint8_t)(0x60 + (uint32_t)(0xFF - 0x60) * pct / 100) : 0);
   }
+
+  uint8_t reg(uint8_t r) { return rd(r); }   // diagnostics
 
   void write(const int16_t* mono, size_t n) {
     size_t bw = 0;

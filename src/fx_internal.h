@@ -36,6 +36,13 @@ constexpr int TILE = 16, TCOLS = (W + TILE - 1) / TILE, TROWS = (H + TILE - 1) /
 extern int g_rowLo, g_rowHi;
 inline bool rowOk(int y) { return y >= g_rowLo && y < g_rowHi; }
 
+// Working tables for the animations live in PSRAM, taken the first time they're
+// needed: internal RAM is tight with WiFi on, and every sound needs some of it.
+template <typename T> T* psram(T*& p) {
+  if (!p) p = (T*)heap_caps_calloc(1, sizeof(T), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  return p;
+}
+
 inline const Theme& T() { return nav.theme(); }
 inline uint8_t style() { return nav.theme().style; }
 
@@ -48,10 +55,6 @@ inline float easeInOut(float t) { return t < 0.5f ? 2 * t * t : 1 - 2 * (1 - t) 
 inline float easeOutCubic(float t) { const float u = 1 - t; return 1 - u * u * u; }
 inline float easeInCubic(float t) { return t * t * t; }
 inline float easeOutBack(float t, float s = 1.7f) { const float u = t - 1; return 1 + (s + 1) * u * u * u + s * u * u; }
-inline float easeOutElastic(float t) {
-  if (t <= 0 || t >= 1) return t;
-  return powf(2, -10 * t) * sinf((t * 10 - 0.75f) * 2.0944f) + 1;
-}
 // Phase of p inside [a, b], 0..1.
 inline float seg(float p, float a, float b) { return clamp01((p - a) / (b - a)); }
 inline uint32_t hash32(uint32_t x) {
@@ -172,8 +175,6 @@ template <size_t N> void drawMotes(lgfx::LovyanGFX& g, Mote (&m)[N], bool square
   }
 }
 
-// Push a finished frame with the screen shaken by (sx, sy), blacking the edge it uncovers.
-inline void pushShaken(Canvas& w, int sx, int sy);
 
 // ---- building a frame in strips ---------------------------------------------------------
 // One strip of the frame being built: rows [y0, y1) of `out`, which is indexed like a
@@ -202,27 +203,14 @@ bool stopped();                        // a test stopped partway: skip the final
 // shifted by (dx, dy) (the rectangle is where it lands).
 void pushRect(Canvas& src, int x, int y, int w, int h, int dx = 0, int dy = 0);
 inline void pushFull(Canvas& src) { src.pushSprite(P(), 0, 0); }
-Canvas* work();                        // a spare full-screen PSRAM sprite for compositing
-Canvas* work2();                       // and a second one
-
-// The Squatch mesh logo (main.cpp): 5 nodes, 7 links, a packet hopping when animate.
-void logoMark(lgfx::LovyanGFX& g, int ox, int oy, uint32_t ms, bool animate);
-
-inline void pushShaken(Canvas& w, int sx, int sy) {
-  lgfx::LovyanGFX* d = P();
-  w.pushSprite(d, sx, sy);
-  if (sx > 0) d->fillRect(0, 0, sx, H, TFT_BLACK);
-  if (sx < 0) d->fillRect(W + sx, 0, -sx, H, TFT_BLACK);
-  if (sy > 0) d->fillRect(0, 0, W, sy, TFT_BLACK);
-  if (sy < 0) d->fillRect(0, H + sy, W, -sy, TFT_BLACK);
-}
+Canvas* work();                        // a spare full-screen PSRAM sprite
 // The haptic buzz, but not while a USB test is stepping through frames.
 void buzzOnce();
 
 }  // namespace k
 
 // ---- each theme's own screen changes (fx_<theme>.cpp) --------------------------------
-// Return true when handled; false falls back to the default for that kind.
+// Return true when handled; false: a screen change cuts, a wake / sleep uses the default.
 // Wake: reveal `to` from a dark screen. Sleep: take `from` to dark.
 bool squatchTransition(Trans kind, Canvas& from, Canvas& to);
 bool blocksTransition(Trans kind, Canvas& from, Canvas& to);
