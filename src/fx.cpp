@@ -1,46 +1,12 @@
 #include "fx.h"
+#include "fx_internal.h"
 #include <math.h>
 #include "app.h"
 #include "haptic.h"
 
 namespace fx {
+using namespace k;
 namespace {
-
-constexpr int W = L::W, H = L::H, CX = W / 2, CY = H / 2;
-
-uint8_t style() { return nav.theme().style; }
-const Theme& T() { return nav.theme(); }
-
-float clamp01(float v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
-float easeIn(float t) { return t * t; }
-float easeOut(float t) { return 1 - (1 - t) * (1 - t); }
-float easeInOut(float t) { return t < 0.5f ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t); }
-uint32_t hash32(uint32_t x) {
-  x ^= x >> 16; x *= 0x7feb352d; x ^= x >> 15; x *= 0x846ca68b; x ^= x >> 16;
-  return x;
-}
-
-// ---- little shapes ------------------------------------------------------------------
-void heart(lgfx::LovyanGFX& g, int x, int y, int s, uint16_t c) {
-  if (s < 1) return;
-  const int r = s / 2 + 1;
-  g.fillCircle(x - r + 1, y, r, c);
-  g.fillCircle(x + r - 1, y, r, c);
-  g.fillTriangle(x - 2 * r + 1, y + 1, x + 2 * r - 1, y + 1, x, y + 2 * r + 1, c);
-}
-void star(lgfx::LovyanGFX& g, int x, int y, int s, uint16_t c) {
-  g.drawFastHLine(x - s, y, 2 * s + 1, c);
-  g.drawFastVLine(x, y - s, 2 * s + 1, c);
-  if (s > 1) { g.drawPixel(x - 1, y - 1, c); g.drawPixel(x + 1, y + 1, c);
-               g.drawPixel(x + 1, y - 1, c); g.drawPixel(x - 1, y + 1, c); }
-}
-void bolt(lgfx::LovyanGFX& g, int x, int y, int s, uint16_t c) {   // s ~ half height
-  g.fillTriangle(x + s / 3, y - s, x - s / 2, y + s / 6, x + s / 8, y + s / 6, c);
-  g.fillTriangle(x - s / 3, y + s, x + s / 2, y - s / 6, x - s / 8, y - s / 6, c);
-}
-void thickLine(lgfx::LovyanGFX& g, int x0, int y0, int x1, int y1, int w, uint16_t c) {
-  for (int k = -(w / 2); k <= w / 2; k++) { g.drawLine(x0, y0 + k, x1, y1 + k, c); g.drawLine(x0 + k, y0, x1 + k, y1, c); }
-}
 
 // ---- overlay state ------------------------------------------------------------------
 struct Ring  { int16_t x, y; uint32_t at; uint16_t life; bool used; };
@@ -257,7 +223,6 @@ void inwOn(Canvas& f, lgfx::LovyanGFX& d, float p) {
 
 // Blocks: the screen is 16 px tiles. Off breaks them away top first; on builds
 // them up from the ground. A tile about to change shows as a cracked block.
-constexpr int TILE = 16, TCOLS = (W + TILE - 1) / TILE, TROWS = (H + TILE - 1) / TILE;
 float tileRank(int tx, int ty, bool fromBottom) {
   const float rnd = (hash32(ty * 64 + tx + 1) % 1000) / 1000.0f;
   const float row = ty / (float)(TROWS - 1);
@@ -370,26 +335,6 @@ void auroraOn(Canvas& f, lgfx::LovyanGFX& d, float p) {
 
 Canvas s_scratch;
 bool s_scratchMade = false;
-
-void play(uint8_t kind, Canvas& frame, uint16_t ms) {
-  Canvas* o = scratch();
-  LGFX* d = nav.display();
-  if (!o) {                                          // no memory for it: just cut
-    if (kind == 0) frame.pushSprite(d, 0, 0); else d->fillScreen(TFT_BLACK);
-    return;
-  }
-  const uint32_t t0 = millis();
-  bool buzzed = kind != 2;
-  for (;;) {
-    const float p = clamp01((millis() - t0) / (float)ms);
-    if (!buzzed && p > 0.55f) { buzzed = true; haptic.buzz(1); }
-    render(kind, frame, *o, p);
-    o->pushSprite(d, 0, 0);
-    if (p >= 1) break;
-  }
-  if (kind == 0) frame.pushSprite(d, 0, 0);          // land exactly on the real frame
-  else d->fillScreen(TFT_BLACK);
-}
 
 }  // namespace
 
@@ -530,15 +475,16 @@ void blip(lgfx::LovyanGFX& g, int x, int y, float fresh, bool focus) {
 // ---- screen-to-screen transitions ---------------------------------------------------------
 // All drawn straight to the panel, and only what changes each frame, so they run at
 // the panel's speed rather than the canvas's.
-namespace {
+namespace k {
 // Normally the panel and the real clock. transitionFrame() points them at a
 // sprite and a clock that ticks 16 ms per frame, and stops at a chosen moment.
 lgfx::LovyanGFX* s_target = nullptr;
 bool s_test = false, s_stopped = false;
-uint32_t s_vclock = 0, s_stopMs = 0;
+uint32_t s_vclock = 0, s_stopMs = 0, s_frames = 0;
 lgfx::LovyanGFX* P() { return s_target ? s_target : (lgfx::LovyanGFX*)nav.display(); }
 uint32_t tnow() { return s_test ? s_vclock : millis(); }
 bool testStop(uint32_t t0) {
+  s_frames++;
   if (!s_test) return false;
   s_vclock += 16;
   if (s_vclock - t0 > s_stopMs) s_stopped = true;
@@ -546,13 +492,93 @@ bool testStop(uint32_t t0) {
 }
 
 // Copy one rectangle of a full-screen sprite to the same place on the panel.
-void pushRect(Canvas& src, int x, int y, int w, int h, int dx = 0, int dy = 0) {
+void pushRect(Canvas& src, int x, int y, int w, int h, int dx, int dy) {
   if (w <= 0 || h <= 0) return;
   lgfx::LovyanGFX* d = P();
   d->setClipRect(x, y, w, h);
   src.pushSprite(d, dx, dy);
   d->clearClipRect();
 }
+bool stopped() { return s_stopped; }
+void buzzOnce() { if (!s_test) haptic.buzz(1); }
+
+Canvas* work() {
+  static Canvas c;
+  static bool made = false;
+  if (!made) { c.setColorDepth(16); c.setPsram(true); made = c.createSprite(W, H) != nullptr; }
+  return made ? &c : nullptr;
+}
+
+int g_rowLo = 0, g_rowHi = H;
+
+// Two strips' worth of internal RAM (33 kB), taken for a screen change and given back
+// after it for the radio stacks: one is built while the other goes out. Each has a
+// spare row under it: drawWideLine clips itself one row short of the canvas it draws
+// on, so `band` is made a row taller than the strip and the row it misses is the spare.
+constexpr int BAND = 16;
+static uint16_t* s_band[2] = {nullptr, nullptr};
+static void releaseBands() { for (auto& b : s_band) { free(b); b = nullptr; } }
+static bool bandsReady() {
+  if (s_band[0]) return true;
+  for (auto& b : s_band) b = (uint16_t*)heap_caps_malloc(W * (BAND + 1) * 2, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+  if (s_band[0] && s_band[1]) return true;
+  releaseBands();
+  return false;
+}
+
+void frameStrips(int ya, int yb, const std::function<void(Strip&)>& fn, int sx, int sy) {
+  ya = max(ya, 0); yb = min(yb, H);
+  if (yb <= ya) return;
+  lgfx::LovyanGFX* d = P();
+  static Canvas tall, band;
+  if (!bandsReady()) {
+    // No internal RAM to spare: build the frame whole in a PSRAM sprite (slower).
+    Canvas* w = work();
+    if (!w) return;
+    Strip s{bufOf(*w), ya, yb, *w, *w, 0};
+    w->setClipRect(0, ya, W, yb - ya);
+    g_rowLo = ya; g_rowHi = yb;
+    fn(s);
+    g_rowLo = 0; g_rowHi = H;
+    w->clearClipRect();
+    pushRect(*w, 0, ya, W, yb - ya, sx, sy);
+  } else {
+    d->startWrite();
+    int k2 = 0;
+    for (int y0 = ya; y0 < yb; y0 += BAND, k2++) {
+      const int y1 = min(yb, y0 + BAND);
+      uint16_t* buf = s_band[k2 & 1];
+      // `tall` spans the whole frame but only this strip's rows are real memory, so
+      // it's clipped to them, and so are the row helpers. `band` is just the strip.
+      uint16_t* out = buf - y0 * W;
+      tall.setBuffer(out, W, H, 16);
+      tall.setClipRect(0, y0, W, y1 - y0);
+      band.setBuffer(buf, W, y1 - y0 + 1, 16);
+      g_rowLo = y0; g_rowHi = y1;
+      Strip s{out, y0, y1, tall, band, y0};
+      fn(s);
+      // The DMA of the strip before this one finishes before this one starts, so
+      // its buffer is free again by the time the next strip is built in it.
+      d->pushImageDMA(sx, y0 + sy, W, y1 - y0, (const lgfx::swap565_t*)buf);
+    }
+    g_rowLo = 0; g_rowHi = H;
+    d->endWrite();
+    d->waitDMA();
+  }
+  if (sx > 0) d->fillRect(0, 0, sx, H, TFT_BLACK);
+  if (sx < 0) d->fillRect(W + sx, 0, -sx, H, TFT_BLACK);
+  if (sy > 0 && ya == 0) d->fillRect(0, 0, W, sy, TFT_BLACK);
+  if (sy < 0 && yb == H) d->fillRect(0, H + sy, W, -sy, TFT_BLACK);
+}
+Canvas* work2() {
+  static Canvas c;
+  static bool made = false;
+  if (!made) { c.setColorDepth(16); c.setPsram(true); made = c.createSprite(W, H) != nullptr; }
+  return made ? &c : nullptr;
+}
+}  // namespace k
+
+namespace {
 
 // Squatch: a scanline sweeps the new screen on, down going in, up coming back.
 void scanWipe(Canvas& from, Canvas& to, bool down, uint16_t ms) {
@@ -716,8 +742,67 @@ void slideDown(Canvas& from, Canvas& to, uint16_t ms) {
 }
 }  // namespace
 
+// Each theme's own file (fx_<theme>.cpp) goes first; these stand in until it
+// exists, and whenever it returns false the defaults below run.
+__attribute__((weak)) bool squatchTransition(Trans, Canvas&, Canvas&) { return false; }
+__attribute__((weak)) bool blocksTransition(Trans, Canvas&, Canvas&) { return false; }
+__attribute__((weak)) bool heroTransition(Trans, Canvas&, Canvas&) { return false; }
+__attribute__((weak)) bool auroraTransition(Trans, Canvas&, Canvas&) { return false; }
+__attribute__((weak)) bool squatchWake(Canvas&) { return false; }
+__attribute__((weak)) bool squatchSleep(Canvas&) { return false; }
+__attribute__((weak)) bool blocksWake(Canvas&) { return false; }
+__attribute__((weak)) bool blocksSleep(Canvas&) { return false; }
+__attribute__((weak)) bool heroWake(Canvas&) { return false; }
+__attribute__((weak)) bool heroSleep(Canvas&) { return false; }
+__attribute__((weak)) bool auroraWake(Canvas&) { return false; }
+__attribute__((weak)) bool auroraSleep(Canvas&) { return false; }
+
+namespace {
+bool themeTransition(Trans kind, Canvas& from, Canvas& to) {
+  switch (style()) {
+  case STYLE_BLOCKS: return blocksTransition(kind, from, to);
+  case STYLE_HERO:   return heroTransition(kind, from, to);
+  case STYLE_AURORA: return auroraTransition(kind, from, to);
+  default:           return squatchTransition(kind, from, to);
+  }
+}
+bool themeWake(Canvas& to) {
+  switch (style()) {
+  case STYLE_BLOCKS: return blocksWake(to);
+  case STYLE_HERO:   return heroWake(to);
+  case STYLE_AURORA: return auroraWake(to);
+  default:           return squatchWake(to);
+  }
+}
+bool themeSleep(Canvas& from) {
+  switch (style()) {
+  case STYLE_BLOCKS: return blocksSleep(from);
+  case STYLE_HERO:   return heroSleep(from);
+  case STYLE_AURORA: return auroraSleep(from);
+  default:           return squatchSleep(from);
+  }
+}
+// The default wake / sleep / power-down: render() frames through a spare sprite.
+void playTo(uint8_t kind, Canvas& frame, uint16_t ms) {
+  Canvas* o = work();
+  if (!o) { if (kind == 0) pushFull(frame); else P()->fillScreen(TFT_BLACK); return; }
+  bool buzzed = kind != 2 || s_test;
+  for (uint32_t t0 = tnow();;) {
+    const float p = clamp01((tnow() - t0) / (float)ms);
+    if (!buzzed && p > 0.55f) { buzzed = true; haptic.buzz(1); }
+    render(kind, frame, *o, p);
+    o->pushSprite(P(), 0, 0);
+    if (p >= 1 || testStop(t0)) break;
+  }
+  if (!stopped()) { if (kind == 0) pushFull(frame); else P()->fillScreen(TFT_BLACK); }
+}
+}  // namespace
+
 void transition(Trans kind, Canvas& from, Canvas& to) {
   if (kind == Trans::None) { to.pushSprite(P(), 0, 0); return; }
+  if (kind == Trans::Wake)  { screenOn(to); return; }
+  if (kind == Trans::Sleep) { screenOff(from); return; }
+  if (themeTransition(kind, from, to)) { releaseBands(); return; }
   const uint8_t st = style();
   if (kind == Trans::Unlock) { st == STYLE_BLOCKS ? shatter(from, to, 620) : slideUp(from, to, 300); return; }
   if (kind == Trans::Lock)   { slideDown(from, to, 260); return; }
@@ -735,13 +820,16 @@ void transition(Trans kind, Canvas& from, Canvas& to) {
 // once atMs has passed.
 void transitionFrame(Trans kind, Canvas& from, Canvas& to, lgfx::LovyanGFX& dst, uint32_t atMs) {
   s_target = &dst; s_test = true; s_stopped = false; s_vclock = 0; s_stopMs = atMs;
-  from.pushSprite(&dst, 0, 0);
+  if (kind == Trans::Wake) dst.fillScreen(TFT_BLACK);      // waking starts from dark
+  else from.pushSprite(&dst, 0, 0);
   transition(kind, from, to);
   s_target = nullptr; s_test = false; s_stopped = false;
 }
 
-void screenOn(Canvas& frame)  { play(0, frame, 320); }
-void screenOff(Canvas& frame) { play(1, frame, 280); }
-void powerDown(Canvas& frame) { play(2, frame, 1150); }
+uint32_t framesDrawn() { return s_frames; }
+
+void screenOn(Canvas& frame)  { if (!themeWake(frame)) playTo(0, frame, 320); }
+void screenOff(Canvas& frame) { if (!themeSleep(frame)) playTo(1, frame, 280); }
+void powerDown(Canvas& frame) { playTo(2, frame, 1150); }
 
 }  // namespace fx

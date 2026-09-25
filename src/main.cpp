@@ -754,14 +754,18 @@ static void usbCommands() {
       nav.invalidate();
       continue;
     }
-    // "tr fwd|back|unlock|lock MS tN": a screen change MS ms in, from the current
-    // screen to a stand-in "new screen", as a screenshot, in theme N.
-    if (!strncmp(line, "tr ", 3)) {
+    // "tr fwd|back|unlock|lock|wake|sleep MS tN": a screen change MS ms in, as a
+    // screenshot, in theme N: from the current screen to a stand-in "new screen"
+    // (unlock starts from the lock screen, lock ends on it).
+    // "trlive KIND tN": the same played on the panel, printing its frame rate.
+    const bool trLive = !strncmp(line, "trlive ", 7);
+    if (!strncmp(line, "tr ", 3) || trLive) {
       char kindName[12] = "";
       int ms = 100;
-      sscanf(line + 3, "%11s %d", kindName, &ms);
+      sscanf(line + (trLive ? 7 : 3), "%11s %d", kindName, &ms);
       const fx::Trans kind = !strcmp(kindName, "back") ? fx::Trans::Back : !strcmp(kindName, "unlock") ? fx::Trans::Unlock
-                           : !strcmp(kindName, "lock") ? fx::Trans::Lock : fx::Trans::Forward;
+                           : !strcmp(kindName, "lock") ? fx::Trans::Lock : !strcmp(kindName, "wake") ? fx::Trans::Wake
+                           : !strcmp(kindName, "sleep") ? fx::Trans::Sleep : fx::Trans::Forward;
       const char* tp = strstr(line, " t");
       const uint8_t saved = ui_settings.themeId;
       if (tp && atoi(tp + 2) < THEME_COUNT) { ui_settings.themeId = atoi(tp + 2); app::applyTheme(); }
@@ -770,22 +774,39 @@ static void usbCommands() {
       to.setPsram(true);
       Canvas* out = fx::scratch();
       if (out && to.createSprite(L::W, L::H)) {
+        View* lockView = (kind == fx::Trans::Unlock || kind == fx::Trans::Lock) ? makeLockView() : nullptr;
         nav.compose();                               // "from": whatever is showing
-        to.fillScreen(theme.bg);
-        drawStatusBar(to, theme);
-        drawHeader(to, "New screen", "demo");
-        to.setFont(&fonts::Font4);
-        to.setTextColor(theme.green, theme.bg);
-        to.drawString("Squatch Mesh", 24, 60);
-        to.setFont(&fonts::Font2);
-        for (int i = 0; i < 5; i++) {
-          const int y = 100 + i * 22;
-          if (i == 1) to.fillRect(0, y - 2, L::W, 22, theme.focus);
-          to.setTextColor(i == 1 ? theme.green : theme.txt, i == 1 ? theme.focus : theme.bg);
-          to.drawString(i == 0 ? "messages" : i == 1 ? "contacts" : i == 2 ? "map" : i == 3 ? "tools" : "settings", 24, y);
+        if (kind == fx::Trans::Unlock) lockView->draw(nav.canvas());
+        if (kind == fx::Trans::Lock) lockView->draw(to);
+        else {
+          to.fillScreen(theme.bg);
+          drawStatusBar(to, theme);
+          drawHeader(to, "New screen", "demo");
+          to.setFont(&fonts::Font4);
+          to.setTextColor(theme.green, theme.bg);
+          to.drawString("Squatch Mesh", 24, 60);
+          to.setFont(&fonts::Font2);
+          for (int i = 0; i < 5; i++) {
+            const int y = 100 + i * 22;
+            if (i == 1) to.fillRect(0, y - 2, L::W, 22, theme.focus);
+            to.setTextColor(i == 1 ? theme.green : theme.txt, i == 1 ? theme.focus : theme.bg);
+            to.drawString(i == 0 ? "messages" : i == 1 ? "contacts" : i == 2 ? "map" : i == 3 ? "tools" : "settings", 24, y);
+          }
         }
-        fx::transitionFrame(kind, nav.canvas(), to, *out, ms);
-        streamShot(*out, *out);
+        delete lockView;
+        if (trLive) {
+          nav.canvas().pushSprite(&display, 0, 0);
+          const uint32_t f0 = fx::framesDrawn(), t0 = millis();
+          fx::transition(kind, nav.canvas(), to);
+          const uint32_t el = millis() - t0, n = fx::framesDrawn() - f0;
+          Serial.printf("[tr] %s theme %u: %lu frames in %lu ms, %.1f fps\n", kindName, ui_settings.themeId,
+                        (unsigned long)n, (unsigned long)el, n * 1000.0f / (el ? el : 1));
+          delay(700);
+        } else {
+          fx::transitionFrame(kind, nav.canvas(), to, *out, ms);
+          Serial.printf("[trframe] %s %d t%u\n", kindName, ms, ui_settings.themeId);   // says which picture follows
+          streamShot(*out, *out);
+        }
         to.deleteSprite();
       } else Serial.println("[fx] no memory");
       if (ui_settings.themeId != saved) { ui_settings.themeId = saved; app::applyTheme(); }
@@ -923,6 +944,11 @@ static void drawLogoMark(lgfx::LovyanGFX& g, int ox, int oy, uint32_t ms, bool a
     g.fillCircle(px, py, 3, theme.txt);
   }
 }
+
+// For the animations (fx_internal.h): the logo, drawn wherever they need it.
+namespace fx { namespace k {
+void logoMark(lgfx::LovyanGFX& g, int ox, int oy, uint32_t ms, bool animate) { drawLogoMark(g, ox, oy, ms, animate); }
+} }
 
 static volatile bool s_animRun = false;
 static SemaphoreHandle_t s_animDone = nullptr;

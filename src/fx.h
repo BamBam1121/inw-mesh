@@ -39,10 +39,11 @@ void powerDown(Canvas& frame);
 // ---- screen to screen ------------------------------------------------------------------
 // From `from` (the picture that was showing) to `to` (the new screen, already
 // composed), drawn to the panel. Nav calls this for every push and pop.
-enum class Trans : uint8_t { None, Forward, Back, Unlock, Lock };
+enum class Trans : uint8_t { None, Forward, Back, Unlock, Lock, Wake, Sleep };
 void transition(Trans kind, Canvas& from, Canvas& to);
 // The same, stopped atMs in and drawn into dst instead of the panel (USB checks).
 void transitionFrame(Trans kind, Canvas& from, Canvas& to, lgfx::LovyanGFX& dst, uint32_t atMs);
+uint32_t framesDrawn();               // frames any transition has drawn since boot (frame-rate checks)
 
 // For checking frames over USB: one moment of a transition, drawn into dst.
 // kind: 0 on, 1 off, 2 power down.
