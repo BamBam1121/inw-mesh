@@ -1471,8 +1471,11 @@ void loop() {
   autoAdvertTick(); sdBackupTick(); inwStoreTick(); field::tick();
   // Background flash writes wait for the screen to be off: they freeze PSRAM, where
   // the screen is drawn, so a write while it's lit is dropped frames (the choppy
-  // animations). Idle-with-the-screen-on used to count as a lull too.
-  inwSetUserBusy(!dimmer.asleep());
+  // animations). And off for 15 s, not just off: even a 276-byte file takes ~2.5 s
+  // on this SPIFFS, so a write that began the moment the side button darkened the
+  // screen was still running when it was tapped back on a second later, and the
+  // wake stalled 1.3 s. A timeout-sleep has already been idle far longer than that.
+  inwSetUserBusy(!dimmer.asleep() || dimmer.idleFor() < 15000);
   lap(7);
   const uint32_t total = millis() - tLoop;
   if (total > 150) {
