@@ -539,7 +539,8 @@ static void themeMenu() {
 }
 
 static void soundMenu() {
-  auto* m = new MenuView("Sound & vibration");
+  auto* m = new MenuView(BOARD_HAS_HAPTIC ? "Sound & vibration" : "Sound");
+#if BOARD_HAS_HAPTIC
   m->header("vibration");
   m->toggle("vibrate on messages", [] { return ui_settings.vibrate; },
             [] { ui_settings.vibrate = !ui_settings.vibrate; markUiDirty(); });
@@ -551,6 +552,7 @@ static void soundMenu() {
             [] { ui_settings.keyHaptics = !ui_settings.keyHaptics; markUiDirty(); });
   m->toggle("scroll tick", [] { return ui_settings.scrollTick; },
             [] { ui_settings.scrollTick = !ui_settings.scrollTick; markUiDirty(); });
+#endif
   m->header("sound");
   m->toggle("sounds", [] { return ui_settings.sound; }, [] { ui_settings.sound = !ui_settings.sound; app::applySound(); markUiDirty(); });
   m->adjust("volume", []() -> String { return String(ui_settings.volume) + "%"; },
@@ -671,6 +673,7 @@ static void batteryMenu() {
     else if (app::charging()) s += "  charging";
     else if (battery.pluggedIn()) s += "  plugged in";
     return s; });
+#if BOARD_HAS_CHARGER_IC
   // "82% health" first: "1244 of 1500 mAh (82%)" reads like a charge level.
   m->info("battery health", []() -> String {
     const uint16_t f = battery.fullChargeMah();
@@ -687,6 +690,7 @@ static void batteryMenu() {
     markUiDirty(); });
   m->info("status", []() -> String { return String(power::chargeStatus()); });
   m->action("charge to 100% now", [] { power::chargeFullNow(); nav.toast("charging to full this time"); });
+#endif
   m->header("battery saver");
   m->toggle("battery saver", [] { return power::saver(); }, [] { power::setSaver(!power::saver()); });
   m->toggle("turn on automatically", [] { return ui_settings.autoSaver; },
@@ -746,7 +750,9 @@ static void systemMenu() {
   m->action("device info", [] { deviceInfoPage(); });
   m->action("log", [] { logsPage(); });
   m->action("reboot", [] { confirm("Reboot?", "", [] { app::reboot(); }); });
+#if BOARD_HAS_POWER_OFF
   m->action("power off", [] { app::powerOffPrompt(); });
+#endif
   m->action("reset screen/sound settings", [] {
     confirm("Reset UI settings?", "mesh identity, contacts and channels are kept", [] {
       const uint8_t done = ui_settings.importDone;

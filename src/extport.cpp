@@ -15,6 +15,19 @@
 
 void markUiDirty();
 
+#if !BOARD_HAS_EXT_HEADER
+// No header on this board: nothing to find, nothing to drive.
+namespace ext {
+void begin() {}
+void tick() {}
+void alert() {}
+void applyPin() {}
+void telemetry(CayenneLPP&) {}
+void openPage() {}
+void report() { Serial.println("[ext] no header on this board"); }
+}  // namespace ext
+#else
+
 namespace ext {
 namespace {
 
@@ -468,3 +481,5 @@ void openPage() {
 }
 
 }  // namespace ext
+
+#endif  // BOARD_HAS_EXT_HEADER

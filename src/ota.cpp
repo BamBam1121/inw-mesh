@@ -12,13 +12,15 @@
 #include "logstore.h"
 #include "ui.h"
 #include "backlight.h"     // dimmer.idleFor(): only check for updates in a gap
+#include "board_pins.h"    // OTA_SUBDIR, OTA_BOARD
 
 extern LogStore logs;
 void inwProgress(const char* what, uint32_t done, uint32_t total);   // main.cpp
 
 namespace ota {
 
-static const char* SITE = "https://bambam1121.github.io/inw-mesh/firmware/";
+// Each board has its own folder; the pager's is the original, top-level one.
+static const char* SITE = "https://bambam1121.github.io/inw-mesh/firmware/" OTA_SUBDIR;
 
 // Public half of the release signing key. Releases signed with anything else
 // are refused.
@@ -101,6 +103,25 @@ Info check() {
     logs.add(LOG_WARN, "ota: bad signature on %s, ignored", info.version);
     return info;
   }
+#ifdef OTA_BOARD
+  // Boards after the pager also need "sig3", which names the board: a feed mix-up
+  // (the pager's firmware in this board's folder) can't pass it, and the pager's
+  // own ota.json has no sig3 at all, so it is never taken for this board's.
+  {
+    uint8_t sig3[64];
+    static const char PREFIX3[] = "squatch-ota-v3\n" OTA_BOARD "\n";
+    uint8_t msg3[sizeof(PREFIX3) - 1 + 32 + sizeof(tail)];
+    size_t m3 = 0;
+    memcpy(msg3, PREFIX3, sizeof(PREFIX3) - 1); m3 += sizeof(PREFIX3) - 1;
+    memcpy(msg3 + m3, s_sha, 32); m3 += 32;
+    memcpy(msg3 + m3, tail, tl); m3 += tl;
+    if (!fromHex(doc["sig3"] | "", sig3, 64) || !ed25519_verify(sig3, msg3, m3, RELEASE_KEY)) {
+      strlcpy(info.error, "update is not for this device", sizeof(info.error));
+      logs.add(LOG_WARN, "ota: %s is not signed for " OTA_BOARD ", ignored", info.version);
+      return info;
+    }
+  }
+#endif
   info.ok = true;
   info.newer = isNewer(info.version, FW_VERSION);
   return info;

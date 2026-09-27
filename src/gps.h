@@ -22,7 +22,7 @@ public:
         // A second's worth of NMEA (~500 bytes) must fit between two loop passes.
         _uart->setRxBufferSize(2048);
         _uart->begin(GPS_BAUD, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
-        pinMode(PIN_GPS_PPS, INPUT);
+        if (PIN_GPS_PPS >= 0) pinMode(PIN_GPS_PPS, INPUT);
         _started = true;
         return true;
     }

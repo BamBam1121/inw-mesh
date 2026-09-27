@@ -5,7 +5,11 @@ The signing key comes from the OTA_SIGNING_KEY environment variable (a PEM
 private key, kept as a repository secret). Without it no ota.json is written and
 pagers simply see no update, so forks and pull requests can't publish one.
 
-usage: python tools/sign_ota.py <firmware.bin> <out ota.json> <version> [notes]
+usage: python tools/sign_ota.py <firmware.bin> <out ota.json> <version> [notes] [board]
+
+board: for boards after the pager (e.g. t-deck). Adds "sig3", which also names
+the board; that firmware requires it, so one board's release can't be taken for
+another's. The pager's ota.json is written without it, exactly as before.
 """
 
 import hashlib
@@ -17,6 +21,7 @@ from cryptography.hazmat.primitives import serialization
 
 fw, out, version = sys.argv[1], sys.argv[2], sys.argv[3]
 notes = sys.argv[4] if len(sys.argv) > 4 else ""
+board = sys.argv[5] if len(sys.argv) > 5 else ""
 
 pem = os.environ.get("OTA_SIGNING_KEY", "").strip()
 if not pem:
@@ -34,12 +39,18 @@ sig = key.sign(digest)
 msg2 = b"squatch-ota-v2\n" + digest + version.encode() + b"\n" + str(len(data)).encode()
 sig2 = key.sign(msg2)
 
-json.dump({
+doc = {
     "version": version,
     "size": len(data),
     "sha256": digest.hex(),
     "sig": sig.hex(),
     "sig2": sig2.hex(),
     "notes": notes[:110],
-}, open(out, "w"), indent=1)
-print("sign_ota: ota.json for %s, %d bytes" % (version, len(data)))
+}
+if board:
+    msg3 = (b"squatch-ota-v3\n" + board.encode() + b"\n" + digest + version.encode() + b"\n" +
+            str(len(data)).encode())
+    doc["board"] = board
+    doc["sig3"] = key.sign(msg3).hex()
+json.dump(doc, open(out, "w"), indent=1)
+print("sign_ota: ota.json for %s%s, %d bytes" % (version, " (" + board + ")" if board else "", len(data)))

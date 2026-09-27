@@ -1278,7 +1278,7 @@ void setup() {
   rotary.begin(PIN_ROTARY_A, PIN_ROTARY_B, PIN_ROTARY_PRESS);
   // Every chip-select on the shared SPI bus idles high before anything talks on
   // it, or a floating radio/NFC select answers the SD card's traffic.
-  for (int cs : { PIN_LORA_CS, PIN_NFC_CS, PIN_SD_CS }) { pinMode(cs, OUTPUT); digitalWrite(cs, HIGH); }
+  for (int cs : { PIN_LORA_CS, PIN_NFC_CS, PIN_SD_CS }) if (cs >= 0) { pinMode(cs, OUTPUT); digitalWrite(cs, HIGH); }
 
   const bool railsOk = expander.begin(Wire);
   if (railsOk) {
@@ -1304,9 +1304,11 @@ void setup() {
   dimmer.begin(&backlight, ui_settings.brightness, 3, ui_settings.dimSecs * 1000UL, ui_settings.sleepSecs * 1000UL);
 
   bootStep("power rails", railsOk);
+#if BOARD_HAS_HAPTIC
   haptic.begin(Wire);
   haptic.setMode(ui_settings.vibeMode);
   bootStep("vibration", haptic.ok());
+#endif
   bootStep("keyboard", keyboard.begin(Wire));
   keyboard.setBacklight(ui_settings.kbBacklight);
   bootStep("battery gauge", battery.begin(Wire));
@@ -1330,7 +1332,11 @@ void setup() {
   RtcTime rt;
   if (rtcOk && rtc.read(rt) && rt.year >= 2025) rtc_clock.setQuiet(epochFrom(rt.year, rt.month, rt.day, rt.hour, rt.minute, rt.second));
   rtc_clock.onSet = writeHardwareRtc;
+#if BOARD_HAS_RTC
   bootStep("clock", rtcOk, app::timeValid() ? clockText(app::now(), true) : "not set");
+#else
+  (void)rtcOk;                    // no clock chip: GPS, Wi-Fi or the phone set the time
+#endif
 
   bool fsOk = SPIFFS.begin(false);
   if (!fsOk) {
@@ -1480,7 +1486,7 @@ void loop() {
   uint16_t laps[8] = {};
   auto lap = [&](uint8_t i) { const uint32_t now = millis(); laps[i] = now - lapAt; lapAt = now; };
   const int8_t detents = rotary.takeDetents();
-  const bool press = rotary.takePress();
+  bool press = rotary.takePress();
   bool backspace = false, anyKey = false;
   char chars[16];
   uint8_t nchars = 0;
@@ -1491,6 +1497,7 @@ void loop() {
     if (ev.index == KEY_IDX_BACKSPACE) backspace = true;
     else if (ev.ch && nchars < sizeof(chars)) chars[nchars++] = ev.ch;
   }
+#if BOARD_HAS_SIDE_BUTTON
   // The side (middle) button, like a phone's: a tap sleeps or wakes the screen,
   // a 2.5 s hold asks to power off, five fast taps arm an SOS. Screen-off happens
   // on RELEASE of a tap, so holding never blanks the screen under the prompt.
@@ -1522,6 +1529,14 @@ void loop() {
     if (!btnNoTap) btnTap = true;
     btnDownAt = 0;
   }
+#else
+  // No side button (T-Deck): holding the trackball down does what a tap of the
+  // pager's side button does - lock and screen off - and a click wakes it. A
+  // click that wakes the screen is used up waking it.
+  bool btnPress = false;
+  const bool btnTap = rotary.takeLongPress();
+  if (dimmer.asleep() && press) { btnPress = true; press = false; }
+#endif
 
   if (dimmer.asleep()) {
     // Screen off: only the side button wakes it. Keys and the wheel get pressed in

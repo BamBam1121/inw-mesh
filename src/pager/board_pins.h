@@ -2,6 +2,23 @@
 
 #pragma once
 
+#define BOARD_NAME     "T-Lora Pager"
+
+// ---- What this board has. Shared code checks these, never the board name. ----
+#define SCREEN_W               480
+#define SCREEN_H               222
+#define BOARD_HAS_SIDE_BUTTON  1    // GPIO0, the middle button on the side
+#define BOARD_HAS_POWER_OFF    1    // the charger's ship mode
+#define BOARD_HAS_HAPTIC       1
+#define BOARD_HAS_RTC          1    // PCF85063, kept by the battery
+#define BOARD_HAS_CHARGER_IC   1    // BQ25896 charger + BQ27220 fuel gauge
+#define BOARD_HAS_EXT_HEADER   1    // 12-pin header on top (extport.cpp)
+#define BOARD_HAS_KB_BACKLIGHT 1
+
+// Wi-Fi updates: the pager's feed is the original top-level firmware/ folder,
+// signed without a board name (OTA_BOARD unset), exactly as before other boards.
+#define OTA_SUBDIR             ""
+
 // ---- Shared SPI bus (LoRa + display + microSD all live here) ----------------
 #define PIN_SPI_SCK    35
 #define PIN_SPI_MOSI   34

@@ -15,7 +15,7 @@ namespace fx { bool active(); }       // fx.h: effects running keep the screen r
 
 // Layout constants shared by every screen.
 namespace L {
-  constexpr int W = 480, H = 222;
+  constexpr int W = SCREEN_W, H = SCREEN_H;   // the board's (board_pins.h): pager 480x222, T-Deck 320x240
   constexpr int STATUS_H = 18;          // status bar
   constexpr int HEAD_Y = 18, HEAD_H = 24;
   constexpr int BODY_Y = 42;            // first content pixel under a header
