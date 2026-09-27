@@ -5,8 +5,10 @@
 #define BOARD_NAME     "T-Lora Pager"
 
 // ---- What this board has. Shared code checks these, never the board name. ----
+#ifndef SCREEN_W   // the tdeck-preview build lays the UI out at the T-Deck's size, on a pager
 #define SCREEN_W               480
 #define SCREEN_H               222
+#endif
 #define BOARD_HAS_SIDE_BUTTON  1    // GPIO0, the middle button on the side
 #define BOARD_HAS_POWER_OFF    1    // the charger's ship mode
 #define BOARD_HAS_HAPTIC       1

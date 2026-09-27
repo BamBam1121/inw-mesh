@@ -587,7 +587,11 @@ static void usbCommands() {
     // Anyone with a USB cable could send "press" or "key" to get past the lock
     // screen, or "shot" to read what's on it. While locked (or dark, which locks)
     // only commands that don't reveal or unlock anything are accepted.
+#if INW_LAYOUT_PREVIEW
+    const bool locked = false;   // the tdeck-preview build: screenshots of every screen from a script
+#else
     const bool locked = dimmer.asleep() || (nav.top() && nav.top()->isLock());
+#endif
     if (locked && (!strcmp(line, "shot") || !strcmp(line, "home") || !strcmp(line, "press") || !strcmp(line, "extpage") ||
                    !strncmp(line, "key ", 4) || !strncmp(line, "wheel ", 6) || !strncmp(line, "theme ", 6))) {
       Serial.println("[usb] pager is locked: unlock it on the device first");
