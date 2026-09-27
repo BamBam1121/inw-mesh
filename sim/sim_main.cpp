@@ -331,8 +331,13 @@ int main(int argc, char** argv) {
   tap(160, 42 + 2 * 28 + 14); run(13000);              shot("regions_2_asked");
   tap(160, 42 + 28 + 14); run(400);                    shot("regions_3_picked");
   clearTo(base);
+  // Per channel, from its chat as in the app: its title shows the region; tapping
+  // the title opens Set Region Scope.
   regions::setForChannel(g_node->channels[2].channel.secret, "wa");
   app::openThreadForChannel(2); run(300);              shot("regions_4_channel_header");
+  tap(260, 18 + 12); run(300);                         shot("regions_5_channel_scope");
+  tap(160, 42 + 28 + 14); run(400);                    shot("regions_6_cleared");
+  clearTo(base);
   regions::setForChannel(g_node->channels[2].channel.secret, "");
   regions::setDefault("");
   clearTo(base);

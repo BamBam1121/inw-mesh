@@ -135,6 +135,14 @@ public:
       }
       case TouchEvent::Tap:
         if (e.y >= L::H - 28) { openEmojiPicker(this); return true; }
+        // A channel's title (its right half: the "<" is back): Set Region Scope, as
+        // the app's channel menu.
+        if (e.y >= L::HEAD_Y && e.y < L::HEAD_Y + L::HEAD_H && e.x >= L::W / 2 && _key.type == CONV_CHANNEL && g_node) {
+          ChannelDetails ch;
+          const int idx = g_node->findChannelBySecret(_key.id);
+          if (idx >= 0 && g_node->getChannel(idx, ch)) { openChannelRegionScope(ch.channel.secret); return true; }
+          return false;
+        }
         for (uint8_t k = 0; k < _hitN; k++)
           if (e.y >= _hitTop[k] && e.y < _hitBot[k]) { _sel = _hitIdx[k]; openMessageActions(this, _ids[_sel]); return true; }
         return false;
