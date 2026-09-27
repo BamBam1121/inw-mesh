@@ -128,7 +128,7 @@ jobs:
           fi
           ls -la "$F"
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: github.event_name != 'pull_request'
         with:
           path: site
