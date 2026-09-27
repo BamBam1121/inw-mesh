@@ -95,7 +95,9 @@
   if (document.getElementById("releases")) window.loadReleases("releases");
 
   function render(box, list) {
-    if (!list || !list.length) { box.innerHTML = '<div class="panel">No releases yet.</div>'; return; }
+    // The pager's releases. T-Deck betas are pre-releases tagged tdeck-v*.
+    list = (list || []).filter((rel) => !rel.prerelease && !/^tdeck-/.test(rel.tag_name || ""));
+    if (!list.length) { box.innerHTML = '<div class="panel">No releases yet.</div>'; return; }
     box.innerHTML = list.map((rel, i) => {
       const date = new Date(rel.published_at || rel.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
       const body = esc(rel.body || "").replace(/\r?\n/g, "<br>");

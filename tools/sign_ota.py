@@ -7,9 +7,9 @@ pagers simply see no update, so forks and pull requests can't publish one.
 
 usage: python tools/sign_ota.py <firmware.bin> <out ota.json> <version> [notes] [board]
 
-board: for boards after the pager (e.g. t-deck). Adds "sig3", which also names
-the board; that firmware requires it, so one board's release can't be taken for
-another's. The pager's ota.json is written without it, exactly as before.
+board: for boards after the pager (e.g. t-deck). Signs with "sig3" alone, which names
+the board; that firmware requires it, and without "sig"/"sig2" no pager can take it.
+The pager's ota.json is written exactly as before.
 """
 
 import hashlib
@@ -48,8 +48,12 @@ doc = {
     "notes": notes[:110],
 }
 if board:
+    # Another board's release carries ONLY sig3. Every pager firmware ever shipped
+    # needs "sig" (and newer ones "sig2") before it will install anything, so even
+    # if this file ended up in the pager's folder, no pager could take it.
     msg3 = (b"squatch-ota-v3\n" + board.encode() + b"\n" + digest + version.encode() + b"\n" +
             str(len(data)).encode())
+    del doc["sig"], doc["sig2"]
     doc["board"] = board
     doc["sig3"] = key.sign(msg3).hex()
 json.dump(doc, open(out, "w"), indent=1)

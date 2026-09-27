@@ -105,6 +105,27 @@ jobs:
             grep -q "\"version\": \"$STABLE\"" "$m" || { echo "failed to stamp $m"; exit 1; }
           done
           grep -h '"version"' "$F/../manifest-install.json" "$F/../manifest-update.json"
+
+          # T-Deck: its own folder, firmware/t-deck/, which only T-Decks read. Built
+          # by tdeck.yml into a "tdeck-v*" pre-release; the newest one is carried
+          # along here and signed for the T-Deck alone (sig3, no pager signatures),
+          # so no pager can install it even if it ended up in the wrong folder.
+          TDTAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName \
+                    --jq '[.[].tagName | select(startswith("tdeck-v"))][0] // empty' 2>/dev/null || true)
+          if [ -n "$TDTAG" ]; then
+            T="$F/t-deck"
+            mkdir -p "$T"
+            # A problem here must never stop the pager's site from publishing.
+            if gh release download "$TDTAG" --repo "$GITHUB_REPOSITORY" --dir "$T" --pattern firmware.bin --clobber; then
+              python tools/sign_ota.py "$T/firmware.bin" "$T/ota.json" "${TDTAG#tdeck-v}" "T-Deck ${TDTAG#tdeck-v}" t-deck
+              # Every T-Deck build is a beta for now: both channels get it.
+              cp "$T/firmware.bin" "$T/firmware-beta.bin"
+              if [ -f "$T/ota.json" ]; then cp "$T/ota.json" "$T/ota-beta.json"; fi
+              ls -la "$T"
+            else
+              echo "T-Deck: no firmware.bin in $TDTAG, left out"
+            fi
+          fi
           ls -la "$F"
 
       - uses: actions/upload-pages-artifact@v3
