@@ -61,7 +61,7 @@ Top header, sensors and IO9 (1.2.2)
   new messages, on while unread.
 
 Region scopes (1.2.2) - same as the MeshCore app's regions / flood scope
-- A region keeps a message's flood to the repeaters that carry it. No region = "flood", as always. Its key is made from
+- A region keeps messages to the repeaters that carry it, instead of a plain flood. Its key is made from
   the name, so it has to match the repeaters' exactly, capitals included (names are letters, digits and -,
   shown without #). A repeater drops a message for a region it doesn't carry: a wrong name means messages
   that reach almost no one.
@@ -71,7 +71,7 @@ Region scopes (1.2.2) - same as the MeshCore app's regions / flood scope
   same setting). A channel's region overrides the default; "clear scope" puts it back on the default.
 - A scoped channel's chat title shows "Region: name".
 - "discover regions" asks the repeaters in direct range which regions they carry and how many still pass
-  plain flood (no region). Choosing from that list is the safe way.
+  messages with no region. Choosing from that list is the safe way.
 - Messages sent from the MeshCore app over Bluetooth follow the app's own region settings; messages sent on
   the pager follow the pager's.
 - Messages stopped arriving after setting a region: clear it, then use "discover regions" to find one the
