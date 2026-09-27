@@ -743,6 +743,8 @@ static void displayMenu() {
   flag("touch mirrored up-down", 4);
   flag("trackball reversed", 8);
   flag("colours inverted", 16);
+  m->toggle("double tap to wake", [] { return ui_settings.tapWake; },
+            [] { ui_settings.tapWake = !ui_settings.tapWake; markUiDirty(); });
   m->action("touch test", [] { openTouchTest(); });
 #endif
   nav.push(m);

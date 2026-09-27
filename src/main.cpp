@@ -115,6 +115,9 @@ extern char g_screenTitle[32];   // ui.cpp: the last header drawn
 static uint32_t s_prefsDirtyAt = 0, s_uiDirtyAt = 0;
 static uint32_t s_kbFlashUntil = 0;
 static bool s_radioOk = false;
+#if BOARD_HAS_TOUCH
+static bool s_touchWake = false;   // touchscreen: a double tap on the dark screen (tapWake)
+#endif
 static char s_radioFault[64] = "radio not responding";
 
 void markPrefsDirty() { s_prefsDirtyAt = millis() | 1; }
@@ -1448,7 +1451,15 @@ void loop() {
     touchPanel.poll(down, tx, ty);
     TouchEvent te;
     while (gestures.feed(down, tx, ty, millis(), te)) {
-      if (dimmer.asleep()) continue;
+      if (dimmer.asleep()) {
+        // Double tap to wake, if it's on (Settings > Display): two taps close together.
+        static uint32_t lastTap = 0;
+        if (ui_settings.tapWake && te.type == TouchEvent::Tap) {
+          if (lastTap && millis() - lastTap < 450) { s_touchWake = true; lastTap = 0; }
+          else lastTap = millis();
+        }
+        continue;
+      }
       const bool onLock = nav.top() && nav.top()->isLock();
       if (!onLock || te.type == TouchEvent::Swipe || te.type == TouchEvent::Tap) dimmer.note();
       nav.touch(te);
@@ -1493,7 +1504,8 @@ void loop() {
   // click that wakes the screen is used up waking it.
   bool btnPress = false;
   const bool btnTap = rotary.takeLongPress();
-  if (dimmer.asleep() && press) { btnPress = true; press = false; }
+  if (dimmer.asleep() && (press || s_touchWake)) { btnPress = true; press = false; }
+  s_touchWake = false;
 #endif
 
   if (dimmer.asleep()) {

@@ -91,6 +91,10 @@ struct UiSettings {
   // upside down, 1 touch mirrored left-right, 2 touch mirrored up-down, 3 trackball
   // reversed, 4 colours inverted.
   uint8_t  orient        = 0;
+  // Touchscreen boards: two taps on the dark screen wake it. Off by default, as a
+  // pocket taps too; the trackball always wakes it. (In what 1.2.2-beta1 saved as
+  // padding, so it reads back off.)
+  bool     tapWake       = false;
 
   void load();
   void save();
