@@ -132,7 +132,9 @@ public:
       if (un) snprintf(sub, sizeof(sub), "%u unread message%s", un, un == 1 ? "" : "s");
       else snprintf(sub, sizeof(sub), "radio down");
       d.setTextColor(un ? t.amber : t.red, t.bg);
-      d.drawString(sub, 140, 192);
+      // A narrow screen has no room beside the clock, but a taller one has a row under it.
+      if (L::W < 400) d.drawString(sub, 8, 208);
+      else d.drawString(sub, 140, 192);
       d.setTextColor(t.dim, t.bg);
     }
     if (app::timeValid()) {
@@ -148,7 +150,7 @@ public:
       _quipAt = millis();
     }
     d.setTextColor(t.greenDim, t.bg);
-    d.drawString(_quip, 8, 206);
+    d.drawString(_quip, 8, L::W < 400 ? 224 : 206);
   }
   void tick() override {
     // Animate only while someone is looking at it: not dimmed, not off.

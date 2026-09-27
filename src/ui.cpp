@@ -100,11 +100,25 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t) {
   // node is named after its key, e.g. "a1b2c3d4"). Capped so the unread badge
   // still clears the clock.
   int x = 6;
-  const char* name = g_node ? g_node->prefs().node_name : "";
-  char keyName[10] = "";
-  if (g_node) mesh::Utils::toHex(keyName, g_node->self_id.pub_key, 4);
-  if (name[0] && strcmp(name, keyName) && strcmp(name, "NONAME")) x = drawUtf8(d, name, 6, 1, 140);
-  else x += d.drawString("SQUATCH", 6, 1);
+  // A narrow screen (the T-Deck's 320) can't fit the name, the badge, a centred
+  // clock and the icons: the clock takes the name's place, and the name stays on
+  // the home screen's footer.
+  constexpr bool NARROW = L::W < 400;
+  if (NARROW) {
+    if (app::timeValid()) {
+      d.setTextColor(t.txt, t.panel);
+      x += d.drawString(clockText(app::now()), 6, 1);
+      d.setTextColor(t.green, t.panel);
+    } else {
+      x += d.drawString("SQUATCH", 6, 1);
+    }
+  } else {
+    const char* name = g_node ? g_node->prefs().node_name : "";
+    char keyName[10] = "";
+    if (g_node) mesh::Utils::toHex(keyName, g_node->self_id.pub_key, 4);
+    if (name[0] && strcmp(name, keyName) && strcmp(name, "NONAME")) x = drawUtf8(d, name, 6, 1, 140);
+    else x += d.drawString("SQUATCH", 6, 1);
+  }
   x += 8;
   const uint16_t un = app::unread();
   if (un) {
@@ -115,7 +129,7 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t) {
     d.drawString(b, x + 4, 1);
     x += d.textWidth(b) + 14;
   }
-  if (app::timeValid()) {
+  if (!NARROW && app::timeValid()) {
     const char* c = clockText(app::now());
     d.setTextColor(t.txt, t.panel);
     d.drawString(c, (L::W - d.textWidth(c)) / 2, 1);
