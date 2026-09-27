@@ -561,12 +561,15 @@ public:
     const int n = wifi::scanDone() ? wifi::scanCount() : 0;
     switch (e.type) {
       case TouchEvent::Down: _dragAcc = 0; return false;
-      case TouchEvent::Drag:
+      case TouchEvent::Drag: {
+        const int was = _top;
+        const bool shown = !_finger;
         _finger = true;
         _dragAcc += e.dy;
         while (_dragAcc <= -L::ROW_H && _top < max(0, n - visible())) { _top++; _dragAcc += L::ROW_H; }
         while (_dragAcc >= L::ROW_H && _top > 0) { _top--; _dragAcc -= L::ROW_H; }
-        return true;
+        return _top != was || shown;           // redraw only when something moved
+      }
       case TouchEvent::Tap: {
         _finger = true;
         if (e.y < L::BODY_Y) {
@@ -1096,12 +1099,15 @@ public:
     const int maxTop = max(0, ROWS_ALL - ROWS);
     switch (e.type) {
       case TouchEvent::Down: _dragAcc = 0; return false;
-      case TouchEvent::Drag:
+      case TouchEvent::Drag: {
+        const int was = _top;
+        const bool shown = !_finger;
         _finger = true;
         _dragAcc += e.dy;
         while (_dragAcc <= -STEP && _top < maxTop) { _top++; _dragAcc += STEP; }
         while (_dragAcc >= STEP && _top > 0) { _top--; _dragAcc -= STEP; }
-        return true;
+        return _top != was || shown;           // redraw only when something moved
+      }
       case TouchEvent::Tap: {
         _finger = true;
         if (e.y < L::BODY_Y + 4) return false;

@@ -61,12 +61,14 @@ public:
     switch (e.type) {
       case TouchEvent::Down: _dragAcc = 0; return false;
       case TouchEvent::Drag: {
+        const int was = _scroll;
+        const bool shown = !_finger;
         _finger = true;
         const int maxScroll = max(0, _n - visible);
         _dragAcc += e.dy;
         while (_dragAcc <= -ROW_H && _scroll < maxScroll) { _scroll++; _dragAcc += ROW_H; }
         while (_dragAcc >= ROW_H && _scroll > 0) { _scroll--; _dragAcc -= ROW_H; }
-        return true;
+        return _scroll != was || shown;        // redraw only when something moved
       }
       case TouchEvent::Tap:
         _finger = true;
@@ -291,11 +293,11 @@ public:
     switch (e.type) {
       case TouchEvent::Down: _dragAcc = 0; return false;
       case TouchEvent::Drag: {
-        const int n = g_node ? g_node->cliCount : 0;
+        const int n = g_node ? g_node->cliCount : 0, was = _scroll;
         _dragAcc += e.dy;
         while (_dragAcc >= LINE_H && _scroll < max(0, n - lines())) { _scroll++; _dragAcc -= LINE_H; }
         while (_dragAcc <= -LINE_H && _scroll > 0) { _scroll--; _dragAcc += LINE_H; }
-        return true;
+        return _scroll != was;                 // redraw only when a line moved
       }
       case TouchEvent::Tap:
         if (e.y < L::H - 30) return false;

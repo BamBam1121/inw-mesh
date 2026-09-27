@@ -125,11 +125,13 @@ public:
   bool touch(const TouchEvent& e) override {
     switch (e.type) {
       case TouchEvent::Down: _dragAcc = 0; return false;
-      case TouchEvent::Drag:
+      case TouchEvent::Drag: {
+        bool moved = false;                   // redraw only when a message moved
         _dragAcc += e.dy;
-        while (_dragAcc >= 36) { rotate(-1); _dragAcc -= 36; }   // finger down: older messages come in
-        while (_dragAcc <= -36) { rotate(1); _dragAcc += 36; }
-        return true;
+        while (_dragAcc >= 36) { rotate(-1); _dragAcc -= 36; moved = true; }   // finger down: older messages come in
+        while (_dragAcc <= -36) { rotate(1); _dragAcc += 36; moved = true; }
+        return moved;
+      }
       case TouchEvent::Tap:
         if (e.y >= L::H - 28) { openEmojiPicker(this); return true; }
         for (uint8_t k = 0; k < _hitN; k++)
@@ -756,12 +758,14 @@ public:
     const int rowH = 44, visible = 4, n = _count + 1;
     switch (e.type) {
       case TouchEvent::Down: _dragAcc = 0; return false;
-      case TouchEvent::Drag:
+      case TouchEvent::Drag: {
+        const int was = _scroll, wasFocus = _focus;
         _dragAcc += e.dy;
         while (_dragAcc <= -rowH / 2 && _scroll < max(0, n - visible)) { _scroll++; _dragAcc += rowH / 2; }
         while (_dragAcc >= rowH / 2 && _scroll > 0) { _scroll--; _dragAcc -= rowH / 2; }
         _focus = constrain(_focus, _scroll, _scroll + visible - 1);   // or draw() scrolls back to it
-        return true;
+        return _scroll != was || _focus != wasFocus;                  // redraw only when something moved
+      }
       case TouchEvent::Tap: {
         if (e.y < L::BODY_Y) return false;
         const int i = _scroll + (e.y - L::BODY_Y) / rowH;

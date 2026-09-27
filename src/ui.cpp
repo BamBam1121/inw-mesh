@@ -906,13 +906,18 @@ bool MenuView::touch(const TouchEvent& e) {
   const int maxScroll = max(0, (int)_rows.size() - visible);
   switch (e.type) {
     case TouchEvent::Down: _dragAcc = 0; return false;
-    case TouchEvent::Drag:
+    case TouchEvent::Drag: {
+      const int was = _scroll;
+      const bool shown = _wheel;
       _wheel = false;                    // a finger took over: the highlight goes
       _dragAcc += e.dy;
       while (_dragAcc <= -L::ROW_H && _scroll < maxScroll) { _scroll++; _dragAcc += L::ROW_H; }
       while (_dragAcc >= L::ROW_H && _scroll > 0) { _scroll--; _dragAcc -= L::ROW_H; }
       _drawnFocus = _focus;              // don't snap back to the focus on the next draw
-      return true;
+      // Redraw only for a whole row moved (or the highlight going): a full frame
+      // for every few pixels of finger is time the next frame could have had.
+      return _scroll != was || shown;
+    }
     case TouchEvent::Tap: {
       if (e.y < L::BODY_Y) return false;
       const int i = _scroll + (e.y - L::BODY_Y) / L::ROW_H;
