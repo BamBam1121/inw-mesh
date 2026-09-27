@@ -18,6 +18,9 @@
 #include <Wire.h>
 #include "board_pins.h"
 
+class TouchPanel;
+extern TouchPanel touchPanel;   // main.cpp
+
 class TouchPanel {
 public:
   bool begin(TwoWire& w) {
@@ -30,11 +33,26 @@ public:
     if (!_addr) return false;
     uint8_t pid[4] = {0};
     if (!rd(0x8140, pid, 4) || pid[0] != '9') { _addr = 0; return false; }   // product id "911"
+    // The range it reports in, from its config: 240 x 320 on every T-Deck so far,
+    // which is what the mapping below assumes. Scaled if a unit says otherwise.
+    uint8_t res[4];
+    if (rd(0x8048, res, 4)) {
+      const uint16_t w = res[0] | (res[1] << 8), h = res[2] | (res[3] << 8);
+      if (w >= 100 && w <= 4096 && h >= 100 && h <= 4096) { _resX = w; _resY = h; }
+    }
     if (PIN_TOUCH_INT >= 0) pinMode(PIN_TOUCH_INT, INPUT);
     _ok = true;
     return true;
   }
   bool ok() const { return _ok; }
+  uint8_t address() const { return _addr; }
+  uint16_t rawX() const { return _lrx; }      // the last reading, before mapping
+  uint16_t rawY() const { return _lry; }
+  uint32_t touches() const { return _count; }
+  uint16_t resX() const { return _resX; }     // the range it reports in (its portrait frame)
+  uint16_t resY() const { return _resY; }
+  // Settings > Display: a panel that comes out mirrored, or a screen turned over.
+  void setMirror(bool mx, bool my) { _mx = mx; _my = my; }
 
   // The finger now: down, and where in screen pixels. Cheap to call every loop;
   // the chip is read at most every POLL_MS.
@@ -64,6 +82,7 @@ private:
     uint8_t p[4];
     if ((st & 0x0F) && rd(0x8150, p, 4)) {
       const uint16_t rx = p[0] | (p[1] << 8), ry = p[2] | (p[3] << 8);
+      _lrx = rx; _lry = ry;
       if (_phantom && rx == _prx && ry == _pry) { wr(0x814E, 0); return; }   // still the frozen frame
       _phantom = false;
       if (!_down) { _pressAt = now; _prx = rx; _pry = ry; _jitter = false; }
@@ -74,8 +93,11 @@ private:
         wr(0x814E, 0);
         return;
       }
-      _x = (int16_t)constrain((int)ry, 0, SCREEN_W - 1);
-      _y = (int16_t)constrain(SCREEN_H - 1 - (int)rx, 0, SCREEN_H - 1);
+      _x = (int16_t)constrain((int)ry * SCREEN_W / _resY, 0, SCREEN_W - 1);
+      _y = (int16_t)constrain(SCREEN_H - 1 - (int)rx * SCREEN_H / _resX, 0, SCREEN_H - 1);
+      if (_mx) _x = SCREEN_W - 1 - _x;
+      if (_my) _y = SCREEN_H - 1 - _y;
+      if (!_down) _count++;
       _down = true;
     } else {
       _down = false;                              // a real lift
@@ -103,8 +125,10 @@ private:
 
   TwoWire* _w = nullptr;
   uint8_t  _addr = 0, _fails = 0;
-  bool     _ok = false, _down = false, _phantom = false, _jitter = false;
+  bool     _ok = false, _down = false, _phantom = false, _jitter = false, _mx = false, _my = false;
+  uint32_t _count = 0;
   int16_t  _x = 0, _y = 0;
-  uint16_t _prx = 0, _pry = 0;
+  uint16_t _prx = 0, _pry = 0, _lrx = 0, _lry = 0;
+  uint16_t _resX = SCREEN_H, _resY = SCREEN_W;
   uint32_t _at = 0, _frameAt = 0, _pressAt = 0;
 };

@@ -87,6 +87,10 @@ struct UiSettings {
   // land in what older builds saved as struct padding, which reads back as 0.
   bool     hideHashBytes = false;     // chat: leave the hash size ("2B") off the hop count
   uint8_t  io9Mode       = 0;         // top header IO9: 0 untouched, 1 flash on messages, 2 on while unread
+  // Touchscreen boards, set by hand if a unit comes out different: bit 0 screen
+  // upside down, 1 touch mirrored left-right, 2 touch mirrored up-down, 3 trackball
+  // reversed, 4 colours inverted.
+  uint8_t  orient        = 0;
 
   void load();
   void save();

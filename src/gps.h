@@ -21,7 +21,11 @@ public:
         _uart = &uart;
         // A second's worth of NMEA (~500 bytes) must fit between two loop passes.
         _uart->setRxBufferSize(2048);
+#ifdef GPS_BAUD_ALT
+        _uart->begin(baud(), SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);   // the speed it last found
+#else
         _uart->begin(GPS_BAUD, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
+#endif
         if (PIN_GPS_PPS >= 0) pinMode(PIN_GPS_PPS, INPUT);
         _started = true;
         return true;
@@ -44,13 +48,23 @@ public:
             if (_len == 0) continue;                       // mid-sentence at startup
             if (c == '\r' || c == '\n') {
                 _line[_len] = '\0';
-                if (validChecksum()) parsed |= parse();
+                if (validChecksum()) { goodSentences++; parsed |= parse(); }
                 _len = 0;
                 continue;
             }
             if (_len < sizeof(_line) - 1) _line[_len++] = c;
             else _len = 0;                                 // overlong, resync
         }
+#ifdef GPS_BAUD_ALT
+        // A board whose GPS module has shipped at more than one speed: plenty of
+        // bytes but not one sentence that checks out means the wrong speed.
+        if (!goodSentences && bytesRead - _probeFrom > 1500) {
+            _alt = !_alt;
+            _uart->updateBaudRate(_alt ? GPS_BAUD_ALT : GPS_BAUD);
+            _probeFrom = bytesRead;
+            _len = 0;
+        }
+#endif
         return parsed;
     }
 
@@ -58,6 +72,10 @@ public:
     bool hasFix() const { return _fix.valid; }
     bool started() const { return _started; }
     uint32_t bytesRead = 0;
+    uint32_t goodSentences = 0;   // with a valid checksum, of any kind
+#ifdef GPS_BAUD_ALT
+    uint32_t baud() const { return _alt ? GPS_BAUD_ALT : GPS_BAUD; }
+#endif
 
     // True once the fix is fresh enough to trust. GPS keeps reporting the last
     // position after the antenna is covered, so age matters more than validity.
@@ -141,4 +159,8 @@ private:
     uint8_t  _len = 0;
     bool     _started = false;
     GpsFix   _fix;
+#ifdef GPS_BAUD_ALT
+    bool     _alt = false;
+    uint32_t _probeFrom = 0;
+#endif
 };

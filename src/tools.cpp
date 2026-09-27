@@ -7,6 +7,9 @@
 #include "fieldtools.h"
 #include "fx.h"
 #include "extport.h"
+#if BOARD_HAS_TOUCH
+#include "hwcheck.h"   // src/tdeck
+#endif
 #include "board_pins.h"
 #include <SPIFFS.h>
 #include <SD.h>
@@ -257,6 +260,10 @@ void app::openTools() {
   m->action("top header: sensors, IO9", [] { ext::openPage(); });
 #endif
   m->action("device info", [] { deviceInfoPage(); });
+#if BOARD_HAS_TOUCH
+  m->action("hardware check", [] { openHardwareCheck(); });
+  m->action("touch test", [] { openTouchTest(); });
+#endif
   m->action("log", [] { logsPage(); });
   m->action("test notification", [] { app::testNotify(); });
   m->action("screenshot in 5 s (to sd)", [] { g_shotAt = millis() + 5000; nav.toast("go to the screen - capturing in 5 s"); });

@@ -22,6 +22,7 @@ public:
   using Stream::read;
   size_t read(uint8_t*, size_t) { return 0; }
   void begin(unsigned long, uint32_t = 0, int8_t = -1, int8_t = -1) {}
+  void updateBaudRate(unsigned long) {}
   void end() {}
   operator bool() const { return true; }
   void setRxBufferSize(size_t) {}

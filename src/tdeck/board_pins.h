@@ -86,6 +86,7 @@
 #define PIN_GPS_TX     43
 #define PIN_GPS_PPS    (-1)
 #define GPS_BAUD       38400
+#define GPS_BAUD_ALT   9600    // some T-Deck Plus batches have a GPS module at 9600; gps.h tries both
 
 // ---- Speaker: MAX98357A class-D amp on I2S, no codec, no MCLK --------------------
 #define PIN_I2S_BCK    7

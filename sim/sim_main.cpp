@@ -12,6 +12,7 @@
 #include "ui.h"
 #include "statusbar.h"
 #include "touch.h"
+#include "bootscreen.h"
 
 View* makeHomeView();
 View* makeLockView();
@@ -151,6 +152,21 @@ int main(int argc, char** argv) {
   populate();
   nav.begin(&display, &theme);
   static const char* THEME_NAMES[] = {"squatch", "blocks", "hero", "aurora"};
+  // The boot screen, half way through starting, and the power-off teardown.
+  for (int t = 0; t < THEME_COUNT && t < 4; t++) {
+    ui_settings.themeId = t;
+    app::applyTheme();
+    Canvas& g = nav.canvas();
+    boot::drawLogo(g);
+    g.fillRect(boot::BAR_X + 1, boot::BAR_Y + 1, (boot::BAR_W - 2) * 7 / 12, 3, theme.green);
+    boot::drawMark(g, 0, 0, 900, true);
+    char n[48];
+    snprintf(n, sizeof(n), "%s_boot", THEME_NAMES[t]); savePPM(g, n);
+    if (t == 0) {
+      boot::drawGoodbye(g, 1200, -1); savePPM(g, "goodbye_saving");
+      boot::drawGoodbye(g, 1500, 280); savePPM(g, "goodbye_teardown");
+    }
+  }
   View* home = makeHomeView();       // the bottom of the stack, as on the pager: never popped
   nav.push(home);
   for (int t = 0; t < THEME_COUNT && t < 4; t++) {

@@ -15,6 +15,7 @@
 namespace tdeck_tb {
 void attach();
 int32_t take();
+void counts(uint32_t out[4]);   // pulses seen per line: up, down, left, right
 }
 
 class Rotary {
@@ -27,8 +28,12 @@ public:
 
   // Steps since the last call; down/right is positive.
   int8_t takeDetents() {
-    return (int8_t)constrain(tdeck_tb::take(), -100, 100);
+    const int32_t s = tdeck_tb::take();
+    return (int8_t)constrain(_rev ? -s : s, -100, 100);
   }
+
+  // A unit whose ball turns out backwards (or a screen turned upside down).
+  void setReversed(bool r) { _rev = r; }
 
   // A click, reported when the ball is let go - so that holding it can mean
   // something else (takeLongPress) without also selecting what's under it.
@@ -65,6 +70,6 @@ private:
     if (_pressed && !_heldLong && t - _pressChange >= LONG_MS) { _heldLong = true; _long = true; }
   }
 
-  bool     _pressed = false, _heldLong = false, _click = false, _long = false;
+  bool     _pressed = false, _heldLong = false, _click = false, _long = false, _rev = false;
   uint32_t _pressChange = 0;
 };

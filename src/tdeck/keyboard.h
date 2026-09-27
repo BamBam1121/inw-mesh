@@ -50,6 +50,7 @@ public:
         if (_w->requestFrom(ADDR, (uint8_t)1) != 1) return false;
         const uint8_t c = (uint8_t)_w->read();
         if (!c) return false;
+        _last = c;
         ev.pressed = true;
         ev.index = KEY_IDX_NONE;
         ev.ch = 0;
@@ -61,6 +62,7 @@ public:
         return true;
     }
 
+    uint8_t lastKey() const { return _last; }     // the hardware check shows it
     bool symbolHeld() const { return false; }
     bool capsOn() const { return false; }
     bool ok() const { return _ok; }
@@ -91,4 +93,5 @@ private:
     uint32_t _lastPoll = 0;
     uint8_t  _bl = 0;
     bool     _blSent = false;
+    uint8_t  _last = 0;
 };

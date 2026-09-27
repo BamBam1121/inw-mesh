@@ -29,7 +29,7 @@
 #if BOARD_HAS_TOUCH
 #include "touch.h"
 #include "touch_gt911.h"   // src/tdeck: the board's touchscreen
-static TouchPanel touchPanel;
+TouchPanel touchPanel;
 static Gestures   gestures;
 #endif
 #include "gps.h"
@@ -48,6 +48,7 @@ static Gestures   gestures;
 #include "netwifi.h"
 #include "fx.h"
 #include "regional.h"
+#include "bootscreen.h"
 #include "extport.h"
 #if INW_DEV
 #include <CayenneLPP.h>
@@ -183,7 +184,23 @@ uint16_t app::unread() {
   return cached;
 }
 
+#if BOARD_HAS_TOUCH
+// Settings > Display on a touchscreen board: the screen the right way up, and touch
+// and the trackball agreeing with it. Turning the screen over reverses both.
+static void applyOrientation() {
+  const bool flip = ui_settings.orient & 1;
+  display.setRotation(TFT_ROTATION ^ (flip ? 2 : 0));
+  touchPanel.setMirror(flip != (bool)(ui_settings.orient & 2), flip != (bool)(ui_settings.orient & 4));
+  rotary.setReversed(flip != (bool)(ui_settings.orient & 8));
+  display.invertDisplay(ui_settings.orient & 16);   // relative to the panel's own setting
+  nav.invalidate();
+}
+#endif
+
 void app::applyDisplay() {
+#if BOARD_HAS_TOUCH
+  applyOrientation();
+#endif
   if (power::saver()) {             // dimmer, and asleep sooner; the saved settings are untouched
     dimmer.setFull(min<uint8_t>(ui_settings.brightness, 4));
     dimmer.setTimes(min<uint16_t>(ui_settings.dimSecs, 10) * 1000UL, min<uint16_t>(ui_settings.sleepSecs, 30) * 1000UL);
@@ -233,7 +250,7 @@ void app::rebootDiscard() {
 // turns the pager on, so turning it off is ours: hold the side button, confirm
 // with the wheel. PWR held a second, or plugging in, turns it back on.
 static void powerOffShow();                   // the goodbye animation, further down
-static void goodbyeFrame(Canvas& g, uint32_t ms, int32_t brk);
+static void goodbyeFrame(Canvas& g, uint32_t ms, int32_t brk) { boot::drawGoodbye(g, ms, brk); }
 
 bool app::powerOff(const char* why) {
   if (battery.pluggedIn()) return false;      // the charger can't cut the battery with USB in
@@ -957,7 +974,13 @@ static void usbCommands() {
       continue;
     }
     if (!strcmp(line, "status")) {
+      // board= lets the web installer refuse to put one board's firmware on another.
+      // The pager has always left it out, so no board means a pager.
+#ifdef OTA_BOARD
+      Serial.printf("[status] fw=%s radio=%s radio_ok=%d contacts=%d board=" OTA_BOARD "\n",
+#else
       Serial.printf("[status] fw=%s radio=%s radio_ok=%d contacts=%d\n",
+#endif
                     FW_VERSION, radio_chip, s_radioOk ? 1 : 0,
                     g_node ? g_node->getNumContacts() : -1);
       continue;
@@ -1009,7 +1032,7 @@ static void usbCommands() {
 // The INW mark and wordmark, with a thin progress bar underneath. Steps that fail
 // are listed below the bar; everything else only goes to the serial log.
 constexpr int BOOT_STEPS = 12;
-static int s_bootStep = 0, s_bootErrY = 196;
+static int s_bootStep = 0, s_bootErrY = boot::ERR_Y0;
 
 // The panel shares its SPI bus with the SD card and the radio, and the boot
 // animation draws from its own task while setup() is busy restoring from SD or
@@ -1022,55 +1045,23 @@ struct BootBusLock {
   ~BootBusLock() { inw_spi.endTransaction(); }
 };
 
-// A small mesh: five nodes, each linked to its neighbours. While booting, a
-// packet hops round the outer ring so a slow step never looks like a freeze.
-static const int16_t LOGO_NX[] = {88, 128, 156, 112, 70}, LOGO_NY[] = {58, 44, 90, 126, 108};
-static const uint8_t LOGO_LINKS[][2] = {{0,1},{1,2},{2,3},{3,4},{4,0},{0,2},{1,3}};
-constexpr int LOGO_X = 54, LOGO_Y = 28, LOGO_W = 124, LOGO_H = 118;   // covers every ring
-constexpr uint32_t HOP_MS = 420;
-
-// ox/oy shift the drawing into a sprite; animate=false is the still mark.
-static void drawLogoMark(lgfx::LovyanGFX& g, int ox, int oy, uint32_t ms, bool animate) {
-  const int hop = (ms / HOP_MS) % 5;                    // links 0..4 are the outer ring
-  const float f = (ms % HOP_MS) / (float)HOP_MS;
-  for (int i = 0; i < 7; i++) {
-    auto& l = LOGO_LINKS[i];
-    g.drawLine(LOGO_NX[l[0]] + ox, LOGO_NY[l[0]] + oy, LOGO_NX[l[1]] + ox, LOGO_NY[l[1]] + oy,
-               animate && i == hop ? theme.green : theme.greenDim);
-  }
-  for (int i = 0; i < 5; i++) {
-    const bool big = i == 2;
-    // the node the packet just reached flares for the first part of the next hop
-    const bool lit = animate && i == LOGO_LINKS[(hop + 4) % 5][1] && f < 0.45f;
-    g.fillCircle(LOGO_NX[i] + ox, LOGO_NY[i] + oy, big ? 9 : 6, lit ? theme.txt : theme.green);
-    g.drawCircle(LOGO_NX[i] + ox, LOGO_NY[i] + oy, (big ? 13 : 9) + (lit ? 1 : 0), lit ? theme.green : theme.greenDim);
-  }
-  if (animate) {
-    auto& l = LOGO_LINKS[hop];
-    const int px = LOGO_NX[l[0]] + (LOGO_NX[l[1]] - LOGO_NX[l[0]]) * f + ox;
-    const int py = LOGO_NY[l[0]] + (LOGO_NY[l[1]] - LOGO_NY[l[0]]) * f + oy;
-    g.fillCircle(px, py, 3, theme.txt);
-  }
-}
-
-
 static volatile bool s_animRun = false;
 static SemaphoreHandle_t s_animDone = nullptr;
 
 static void bootAnimTask(void*) {
   Canvas spr;
   spr.setColorDepth(16);
-  if (spr.createSprite(LOGO_W, LOGO_H)) {
+  if (spr.createSprite(boot::MARK_W, boot::MARK_H)) {
     const uint32_t t0 = millis();
     while (s_animRun) {
       spr.fillScreen(theme.bg);
-      drawLogoMark(spr, -LOGO_X, -LOGO_Y, millis() - t0, true);
-      { BootBusLock lock; spr.pushSprite(&display, LOGO_X, LOGO_Y); }
+      boot::drawMark(spr, -boot::MARK_X, -boot::MARK_Y, millis() - t0, true);
+      { BootBusLock lock; spr.pushSprite(&display, boot::MARK_X, boot::MARK_Y); }
       vTaskDelay(pdMS_TO_TICKS(40));
     }
     spr.fillScreen(theme.bg);                            // leave the still mark behind
-    drawLogoMark(spr, -LOGO_X, -LOGO_Y, 0, false);
-    { BootBusLock lock; spr.pushSprite(&display, LOGO_X, LOGO_Y); }
+    boot::drawMark(spr, -boot::MARK_X, -boot::MARK_Y, 0, false);
+    { BootBusLock lock; spr.pushSprite(&display, boot::MARK_X, boot::MARK_Y); }
     spr.deleteSprite();
   }
   xSemaphoreGive(s_animDone);
@@ -1095,116 +1086,7 @@ static void bootAnimStop() {                             // before anything else
   xSemaphoreTake(s_animDone, pdMS_TO_TICKS(2000));
 }
 
-static void drawBootLogo() {
-  display.fillScreen(theme.bg);
-  drawLogoMark(display, 0, 0, 0, false);
-  display.setFont(&fonts::FreeSansBold24pt7b);
-  display.setTextSize(1);                         // "SQUATCH" at size 2 would run off the screen
-  display.setTextColor(theme.greenDim);
-  display.drawString("SQUATCH", 199, 49);         // offset copy underneath reads as glow
-  display.setTextColor(theme.green);
-  display.drawString("SQUATCH", 196, 46);
-  display.setFont(&fonts::FreeSans12pt7b);
-  display.setTextColor(theme.txt);
-  display.drawString("M E S H", 198, 106);
-  display.setFont(&fonts::Font2);
-  display.setTextColor(theme.dim);
-  display.drawString("inland northwest  //  " FW_VERSION, 198, 146);
-  display.drawRect(90, 184, 300, 5, theme.line);
-}
-
-// ---- power-off animation ---------------------------------------------------------
-// Boot plays forward: the mesh comes up and a packet hops round it. Power off plays
-// it back. While storage flushes the boot screen returns with the packet still
-// hopping; then the mesh drops link by link (each snapping with a spark, nodes
-// going hollow as they lose their last link, the centre flickering out last), the
-// wordmark tears, the boot bar drains, and the theme's power-down
-// (fx.cpp) takes it to dark.
-static const uint8_t KILL_ORDER[7] = {4, 0, 3, 6, 1, 5, 2};   // outer ring first, centre's links last
-constexpr int32_t KILL_STEP = 95, SPARK_MS = 130, TEAR_END = 820, BREAK_MS = 980;
-
-static void goodbyeWordmark(lgfx::LovyanGFX& g, int dx, int32_t tint) {
-  g.setFont(&fonts::FreeSansBold24pt7b);
-  g.setTextSize(1);
-  if (tint < 0) {
-    g.setTextColor(theme.greenDim);
-    g.drawString("SQUATCH", 199 + dx, 49);          // offset copy underneath reads as glow
-    g.setTextColor(theme.green);
-  } else {
-    g.setTextColor((uint16_t)tint);
-  }
-  g.drawString("SQUATCH", 196 + dx, 46);
-  g.setFont(&fonts::FreeSans12pt7b);
-  g.setTextColor(tint < 0 ? theme.txt : (uint16_t)tint);
-  g.drawString("M E S H", 198 + dx, 106);
-}
-
-// brk < 0: still saving (the boot logo, animated). brk >= 0: ms into the teardown.
-static void goodbyeFrame(Canvas& g, uint32_t ms, int32_t brk) {
-  g.fillScreen(theme.bg);
-  g.setTextDatum(textdatum_t::top_left);
-  if (brk < 0) {
-    drawLogoMark(g, 0, 0, ms, true);
-  } else {
-    int32_t linkDead[7], nodeDead[5] = {0, 0, 0, 0, 0};
-    for (int p = 0; p < 7; p++) linkDead[KILL_ORDER[p]] = p * KILL_STEP;
-    for (int i = 0; i < 7; i++)
-      for (int e = 0; e < 2; e++) nodeDead[LOGO_LINKS[i][e]] = max(nodeDead[LOGO_LINKS[i][e]], linkDead[i]);
-    for (int i = 0; i < 7; i++) {
-      const int x0 = LOGO_NX[LOGO_LINKS[i][0]], y0 = LOGO_NY[LOGO_LINKS[i][0]];
-      const int x1 = LOGO_NX[LOGO_LINKS[i][1]], y1 = LOGO_NY[LOGO_LINKS[i][1]];
-      const int32_t since = brk - linkDead[i];
-      if (since < 0) g.drawLine(x0, y0, x1, y1, theme.greenDim);
-      else if (since < 45) g.drawLine(x0, y0, x1, y1, theme.txt);      // flashes white as it snaps
-      if (since >= 0 && since < SPARK_MS) {
-        const int mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
-        g.fillCircle(mx, my, max(1, (int)(4 - since * 4 / SPARK_MS)), since < 60 ? theme.txt : theme.green);
-        const int d = 3 + since / 11;                                 // two fragments flying apart
-        g.drawLine(mx - d, my - 1, mx - d - 4, my - 3, theme.green);
-        g.drawLine(mx + d, my + 1, mx + d + 4, my + 3, theme.green);
-      }
-    }
-    for (int i = 0; i < 5; i++) {
-      const bool big = i == 2;
-      const int32_t since = brk - nodeDead[i];
-      bool up = since < 0;
-      if (big && since >= 0 && since < 260) up = (since / 65) % 2 == 1;  // the centre flickers out
-      const int x = LOGO_NX[i], y = LOGO_NY[i];
-      if (up) {
-        g.fillCircle(x, y, big ? 9 : 6, theme.green);
-        g.drawCircle(x, y, big ? 13 : 9, theme.greenDim);
-      } else {
-        g.drawCircle(x, y, big ? 9 : 6, theme.greenDim);            // hollow: offline
-      }
-    }
-  }
-
-  goodbyeWordmark(g, 0, -1);
-  if (brk >= 0 && brk < TEAR_END && (brk / 70) % 2 == 0) {
-    // A tear: one slice of the wordmark jumps sideways, split red and green.
-    const uint32_t h = (uint32_t)(brk / 70 + 1) * 2654435761u;
-    const int gy = 44 + (int)((h >> 8) % 78), gh = 4 + (int)((h >> 16) % 12);
-    const int dx = (int)((h >> 4) % 19) - 9;
-    g.setClipRect(186, gy, 294, gh);
-    g.fillRect(186, gy, 294, gh, theme.bg);
-    goodbyeWordmark(g, dx - 3, theme.red);
-    goodbyeWordmark(g, dx + 2, theme.green);
-    g.clearClipRect();
-  }
-
-  g.setFont(&fonts::Font2);
-  g.setTextColor(theme.dim);
-  if (brk < 0) {
-    char cap[16];
-    snprintf(cap, sizeof(cap), "saving%.*s", (int)((ms / 300) % 4), "...");
-    g.drawString(cap, 198, 146);
-  } else {
-    g.drawString("going dark", 198, 146);
-  }
-  const float left = brk < 0 ? 1.0f : max(0.0f, 1.0f - brk / 800.0f);   // the boot bar, draining
-  g.drawRect(90, 184, 300, 5, theme.line);
-  if (left > 0) g.fillRect(91, 185, (int)(298 * left), 3, theme.green);
-}
+static void drawBootLogo() { boot::drawLogo(display); }
 
 static void powerOffShow() {
   Canvas& g = nav.canvas();
@@ -1222,9 +1104,9 @@ static void powerOffShow() {
   const uint32_t tb = millis();
   for (;;) {
     const int32_t b = (int32_t)(millis() - tb);
-    goodbyeFrame(g, millis() - t0, min(b, BREAK_MS));
+    goodbyeFrame(g, millis() - t0, min(b, boot::BREAK_MS));
     g.pushSprite(nav.display(), 0, 0);
-    if (b >= BREAK_MS) break;
+    if (b >= boot::BREAK_MS) break;
   }
   fx::powerDown(g);               // the theme's last word
 }
@@ -1251,8 +1133,8 @@ static void bootStep(const char* what, bool ok, const char* detail = nullptr) {
   // anyone watching from a PC. Keep them and print the lot once at the end.
   if (s_bootStep <= BOOT_STEPS) { s_stepName[s_bootStep - 1] = what; s_stepMs[s_bootStep - 1] = took; }
   BootBusLock lock;
-  display.fillRect(91, 185, 298 * s_bootStep / BOOT_STEPS, 3, theme.green);
-  if (ok || s_bootErrY > 210) return;
+  display.fillRect(boot::BAR_X + 1, boot::BAR_Y + 1, (boot::BAR_W - 2) * s_bootStep / BOOT_STEPS, 3, theme.green);
+  if (ok || s_bootErrY > boot::ERR_Y0 + 14) return;
   display.setFont(&fonts::Font2);
   display.setTextColor(theme.amber, theme.bg);
   char line[64];
@@ -1264,9 +1146,9 @@ static void bootStep(const char* what, bool ok, const char* detail = nullptr) {
 static void bootNote(const char* msg) {      // a long step the user should know about
   BootBusLock lock;
   display.setFont(&fonts::Font2);
-  display.fillRect(0, 194, L::W, 28, theme.bg);
+  display.fillRect(0, boot::ERR_Y0 - 2, L::W, 28, theme.bg);
   display.setTextColor(theme.amber, theme.bg);
-  display.drawString(msg, (L::W - display.textWidth(msg)) / 2, 198);
+  display.drawString(msg, (L::W - display.textWidth(msg)) / 2, boot::ERR_Y0 + 2);
 }
 
 void setup() {
@@ -1298,7 +1180,11 @@ void setup() {
   }
 
   display.init();
+#if BOARD_HAS_TOUCH
+  display.setRotation(TFT_ROTATION ^ ((ui_settings.orient & 1) ? 2 : 0));   // Settings > Display: upside down
+#else
   display.setRotation(TFT_ROTATION);
+#endif
   app::applyTheme();
   if (digitalRead(PIN_BUTTON) == LOW) {        // BOOT held: hardware self test
     backlight.begin(PIN_TFT_BL);
@@ -1322,6 +1208,7 @@ void setup() {
   bootStep("keyboard", keyboard.begin(Wire));
 #if BOARD_HAS_TOUCH
   bootStep("touch", touchPanel.begin(Wire));
+  applyOrientation();
 #endif
   keyboard.setBacklight(ui_settings.kbBacklight);
   bootStep("battery gauge", battery.begin(Wire));
@@ -1357,7 +1244,7 @@ void setup() {
     bootNote("first start: preparing storage, this takes a few minutes");
     fsOk = SPIFFS.begin(true);
     BootBusLock lock;
-    display.fillRect(0, 194, L::W, 28, theme.bg);
+    display.fillRect(0, boot::ERR_Y0 - 2, L::W, 28, theme.bg);
   }
   bootStep("storage", fsOk);
   const bool sdOk = sdMount();
@@ -1431,7 +1318,7 @@ void setup() {
   if (!ui_settings.setupDone) startSetup();
 
   // Hold the logo a moment (longer if something failed); any key skips it.
-  const uint32_t until = millis() + (s_bootErrY > 196 ? 5000 : 1200);
+  const uint32_t until = millis() + (s_bootErrY > boot::ERR_Y0 ? 5000 : 1200);
   while ((int32_t)(millis() - until) < 0) {
     jingle.tick();
     if (rotary.takeDetents() || rotary.takePress()) break;

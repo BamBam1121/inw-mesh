@@ -6,6 +6,9 @@
 #include "history.h"
 #include "dataio.h"
 #include "haptic.h"
+#if BOARD_HAS_TOUCH
+#include "hwcheck.h"   // src/tdeck
+#endif
 #include "gps.h"
 #include "backlight.h"
 #include "netwifi.h"
@@ -505,6 +508,21 @@ static void displayMenu() {
 #endif
   m->toggle("wake screen on message", [] { return ui_settings.wakeOnMessage; },
             [] { ui_settings.wakeOnMessage = !ui_settings.wakeOnMessage; markUiDirty(); });
+#if BOARD_HAS_TOUCH
+  // For a unit that comes out different from the ones this was made from: put it
+  // right here instead of needing another build. The touch test shows the result.
+  m->header("screen + touch");
+  auto flag = [m](const char* label, uint8_t b) {
+    m->toggle(label, [b] { return (ui_settings.orient & b) != 0; },
+              [b] { ui_settings.orient ^= b; app::applyDisplay(); markUiDirty(); });
+  };
+  flag("screen upside down", 1);
+  flag("touch mirrored left-right", 2);
+  flag("touch mirrored up-down", 4);
+  flag("trackball reversed", 8);
+  flag("colours inverted", 16);
+  m->action("touch test", [] { openTouchTest(); });
+#endif
   nav.push(m);
 }
 
