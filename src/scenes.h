@@ -25,10 +25,14 @@ inline uint32_t hash(int32_t x) {
   return h;
 }
 
+// The pager's 480 px sky, scaled to the screen: the same stars at 480, the same
+// density on a narrower one (the T-Deck's 320).
+inline int starCount(int count) { return count * SCREEN_W / 480; }
 inline void stars(lgfx::LovyanGFX& d, uint16_t c, float phase, int count, int maxY) {
+  count = starCount(count);
   for (int i = 0; i < count; i++) {
     const uint32_t h = hash(i + 7);
-    const int x = h % 480, y = 20 + (h >> 9) % (maxY - 20);
+    const int x = h % SCREEN_W, y = 20 + (h >> 9) % (maxY - 20);
     const bool on = ((int)(phase * 0.2f) + i) % 7 != 0;          // an occasional twinkle
     if (on) d.drawPixel(x, y, (i % 5 == 0) ? mix(c, 0xFFFF, 0.6f) : c);
   }

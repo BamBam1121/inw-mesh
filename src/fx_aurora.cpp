@@ -89,9 +89,9 @@ void drawRays(const Strip& s, const Theme& t) {
 
 // The scene's stars (scenes::stars), dy px lower, streaked into lines as we rush past.
 void starField(const Strip& s, const Theme& t, float phase, int dy, int streak) {
-  for (int i = 0; i < 70; i++) {
+  for (int i = 0; i < scenes::starCount(70); i++) {
     const uint32_t h = scenes::hash(i + 7);
-    const int x = h % 480, y = 20 + (h >> 9) % (150 - 20) + dy;
+    const int x = h % SCREEN_W, y = 20 + (h >> 9) % (150 - 20) + dy;
     if (!touches(s, y - streak, y + 1) || ((int)(phase * 0.2f) + i) % 7 == 0) continue;
     const uint16_t col = (i % 5 == 0) ? scenes::mix(t.dim, 0xFFFF, 0.6f) : t.dim;
     if (streak <= 0) s.g.drawPixel(x, y, col);
@@ -431,7 +431,7 @@ void touchdown(Canvas& from, Canvas& to, uint16_t ms) {
       if (!landed && tm >= 340) {                        // light kicked up off the ridge
         landed = true;
         for (int i = 0; i < 6; i++)
-          spawnMote(motes, 60 + hashf(i * 7) * 360, 150 + hashf(i * 3) * 16, (hashf(i * 5) - 0.5f) * 30, -40 - hashf(i) * 30,
+          spawnMote(motes, 60 + hashf(i * 7) * (SCREEN_W - 120), 150 + hashf(i * 3) * 16, (hashf(i * 5) - 0.5f) * 30, -40 - hashf(i) * 30,
                     0.5f, i % 2 ? c.green : c.greenDim, 3 + (uint8_t)(hashf(i * 9) * 2));
       }
       stepMotes(motes, dt, -20);
