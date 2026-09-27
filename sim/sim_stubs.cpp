@@ -80,6 +80,18 @@ Battery battery;
 Rtc rtc;
 LogStore logs;
 
+// The T-Deck's hardware check reads these (src/tdeck/hwcheck.cpp).
+#include "touch_gt911.h"
+#include "rotary.h"
+TouchPanel touchPanel;
+namespace tdeck_tb {
+uint32_t simCounts[4] = {0, 0, 0, 0};
+void counts(uint32_t out[4]) { for (int i = 0; i < 4; i++) out[i] = simCounts[i]; }
+}
+const char* radio_chip = "SX1262";
+bool sdMounted() { return true; }
+uint64_t sdFreeBytes() { return 29500ULL << 20; }
+
 // ---- the mesh node ------------------------------------------------------------------------
 static InwNode s_node;
 InwNode* g_node = &s_node;

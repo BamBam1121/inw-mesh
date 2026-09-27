@@ -29,19 +29,28 @@ static const uint8_t RELEASE_KEY[32] = {
   0x47, 0xb2, 0xec, 0xe6, 0xa6, 0x00, 0x56, 0xa2, 0xb7, 0x8f, 0x97, 0x29, 0xef, 0xb4, 0x9b, 0x12,
 };
 
-static uint8_t s_sha[32], s_sig[64];     // from the last good check
+static uint8_t s_sha[32];                // from the last good check
+#ifndef OTA_BOARD
+static uint8_t s_sig[64];
+#endif
 
 bool supported() {
   const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
   return next && next != esp_ota_get_running_partition();
 }
 
-// "1.2.10" > "1.2.9"
+// "1.2.10" > "1.2.9", and a release comes after its betas:
+// "1.2.2" > "1.2.2-beta2" > "1.2.2-beta1". Pager versions have no suffix.
+static void parseVersion(const char* s, int v[4]) {
+  sscanf(s, "%d.%d.%d", &v[0], &v[1], &v[2]);
+  const char* b = strstr(s, "-beta");
+  v[3] = b ? atoi(b + 5) : 1000000;
+}
 static bool isNewer(const char* remote, const char* local) {
-  int r[3] = {0}, l[3] = {0};
-  sscanf(remote, "%d.%d.%d", &r[0], &r[1], &r[2]);
-  sscanf(local, "%d.%d.%d", &l[0], &l[1], &l[2]);
-  for (int i = 0; i < 3; i++) if (r[i] != l[i]) return r[i] > l[i];
+  int r[4] = {0}, l[4] = {0};
+  parseVersion(remote, r);
+  parseVersion(local, l);
+  for (int i = 0; i < 4; i++) if (r[i] != l[i]) return r[i] > l[i];
   return false;
 }
 
@@ -67,6 +76,10 @@ Info check() {
   if (!http.begin(tls, url)) { strlcpy(info.error, "couldn't reach the update site", sizeof(info.error)); return info; }
   const int code = http.GET();
   if (code != 200) {
+#ifdef OTA_BOARD
+    if (code == 404) strlcpy(info.error, "no updates for this device yet", sizeof(info.error));
+    else
+#endif
     snprintf(info.error, sizeof(info.error), "update site said %d", code);
     http.end();
     return info;
@@ -78,6 +91,31 @@ Info check() {
   strlcpy(info.version, doc["version"] | "", sizeof(info.version));
   strlcpy(info.notes, doc["notes"] | "", sizeof(info.notes));
   info.size = doc["size"] | 0;
+#ifdef OTA_BOARD
+  // Boards after the pager are signed with "sig3" alone, which binds the board as
+  // well as the hash, version and size. Their ota.json has neither of the pager's
+  // signatures, so no pager - however old its firmware - can take one for its own;
+  // and the pager's ota.json has no sig3, so this board never takes the pager's.
+  uint8_t sig3[64];
+  if (!info.version[0] || !info.size || !fromHex(doc["sha256"] | "", s_sha, 32) || !fromHex(doc["sig3"] | "", sig3, 64)) {
+    strlcpy(info.error, doc["sig2"].is<const char*>() ? "update is not for this device" : "update info incomplete",
+            sizeof(info.error));
+    return info;
+  }
+  char tail[48];
+  const int tl = snprintf(tail, sizeof(tail), "%s\n%lu", info.version, (unsigned long)info.size);
+  static const char PREFIX3[] = "squatch-ota-v3\n" OTA_BOARD "\n";
+  uint8_t msg3[sizeof(PREFIX3) - 1 + 32 + sizeof(tail)];
+  size_t m3 = 0;
+  memcpy(msg3, PREFIX3, sizeof(PREFIX3) - 1); m3 += sizeof(PREFIX3) - 1;
+  memcpy(msg3 + m3, s_sha, 32); m3 += 32;
+  if (tl > 0 && tl < (int)sizeof(tail)) { memcpy(msg3 + m3, tail, tl); m3 += tl; }
+  if (tl <= 0 || tl >= (int)sizeof(tail) || !ed25519_verify(sig3, msg3, m3, RELEASE_KEY)) {
+    strlcpy(info.error, "update is not for this device", sizeof(info.error));
+    logs.add(LOG_WARN, "ota: %s is not signed for " OTA_BOARD ", ignored", info.version);
+    return info;
+  }
+#else
   if (!info.version[0] || !info.size || !fromHex(doc["sha256"] | "", s_sha, 32) || !fromHex(doc["sig"] | "", s_sig, 64)) {
     strlcpy(info.error, "update info incomplete", sizeof(info.error));
     return info;
@@ -102,24 +140,6 @@ Info check() {
     strlcpy(info.error, "update signature is not valid", sizeof(info.error));
     logs.add(LOG_WARN, "ota: bad signature on %s, ignored", info.version);
     return info;
-  }
-#ifdef OTA_BOARD
-  // Boards after the pager also need "sig3", which names the board: a feed mix-up
-  // (the pager's firmware in this board's folder) can't pass it, and the pager's
-  // own ota.json has no sig3 at all, so it is never taken for this board's.
-  {
-    uint8_t sig3[64];
-    static const char PREFIX3[] = "squatch-ota-v3\n" OTA_BOARD "\n";
-    uint8_t msg3[sizeof(PREFIX3) - 1 + 32 + sizeof(tail)];
-    size_t m3 = 0;
-    memcpy(msg3, PREFIX3, sizeof(PREFIX3) - 1); m3 += sizeof(PREFIX3) - 1;
-    memcpy(msg3 + m3, s_sha, 32); m3 += 32;
-    memcpy(msg3 + m3, tail, tl); m3 += tl;
-    if (!fromHex(doc["sig3"] | "", sig3, 64) || !ed25519_verify(sig3, msg3, m3, RELEASE_KEY)) {
-      strlcpy(info.error, "update is not for this device", sizeof(info.error));
-      logs.add(LOG_WARN, "ota: %s is not signed for " OTA_BOARD ", ignored", info.version);
-      return info;
-    }
   }
 #endif
   info.ok = true;

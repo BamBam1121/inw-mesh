@@ -1,0 +1,73 @@
+name: t-deck
+
+# The T-Deck's own firmware, separate from the pager's.
+#   A "tdeck-v*" tag (e.g. tdeck-v1.2.2-beta2) on a commit builds the T-Deck
+#   firmware there and attaches it to a GitHub PRE-release, so it never counts as
+#   the pager's latest release. Then build.yml runs on main to publish the site,
+#   and signs the newest tdeck-v* build into firmware/t-deck/ - the only folder a
+#   T-Deck checks for Wi-Fi updates, with a signature that names the board, so
+#   pagers can't install it and T-Decks can't install the pager's.
+# The tag must match the T-Deck's FW_VERSION in platformio.ini, or it stops.
+on:
+  push:
+    tags: ['tdeck-v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio/libdeps
+          key: pio-tdeck-${{ hashFiles('platformio.ini') }}
+
+      - name: Build
+        run: |
+          pip install platformio
+          pio run -e t-deck
+
+      # The web installer's files and one full image, as tools/package_tdeck.py
+      # makes them for squatchmesh.com/tdeck-beta.
+      - name: Package
+        run: |
+          set -e
+          python tools/package_tdeck.py out
+          VER=$(python -c "import json; print(json.load(open('out/manifest-install.json'))['version'])")
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "tdeck-v$VER" ]]; then
+            echo "tag $GITHUB_REF_NAME doesn't match the T-Deck's FW_VERSION $VER"; exit 1
+          fi
+          mkdir -p release
+          cp out/firmware/*.bin out/squatch-mesh-tdeck-*-full.bin release/
+          ls -la release
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/tdeck-v') && github.repository == 'BamBam1121/inw-mesh'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${GITHUB_REF_NAME#tdeck-v}"
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --prerelease \
+            --title "T-Deck $V (beta)" \
+            --notes "Squatch Mesh for the LilyGo T-Deck and T-Deck Plus. Beta. Install from https://squatchmesh.com/tdeck-beta, or write squatch-mesh-tdeck-$V-full.bin at 0x0. Not for the T-Lora Pager." \
+            release/*
+
+      # Pages only deploys from main: have a main run pick this build up.
+      - name: Publish to the site
+        if: startsWith(github.ref, 'refs/tags/tdeck-v') && github.repository == 'BamBam1121/inw-mesh'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref main

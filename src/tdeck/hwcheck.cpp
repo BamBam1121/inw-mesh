@@ -150,6 +150,9 @@ public:
 
     g.setFont(&fonts::Font2);
     const int cy = L::BODY_Y + (L::H - L::BODY_Y) / 2;
+    // The words sit on a card of their own, so the trail can't run through them.
+    g.fillRoundRect(8, cy - 28, L::W - 16, 66, 8, t.bg);   // the rings are above and below it
+    g.drawRoundRect(8, cy - 28, L::W - 16, 66, 8, t.line);
     char b[64];
     const char* line1;
     uint16_t c1 = t.txt;

@@ -13,6 +13,13 @@
 #include "statusbar.h"
 #include "touch.h"
 #include "bootscreen.h"
+#if BOARD_HAS_TOUCH
+#include "hwcheck.h"
+#include "touch_gt911.h"
+#include "rotary.h"
+#include "keyboard.h"
+extern Keyboard keyboard;
+#endif
 
 View* makeHomeView();
 View* makeLockView();
@@ -228,6 +235,29 @@ int main(int argc, char** argv) {
   swipe(4, 120, 150, 120);             shot("touch_6_edge_swipe_back");
   tap(20, 30);                         shot("touch_7_header_back");
   tap(160, 62 + 3 + 34 + 17);          shot("touch_8_tapped_second_row");
+  clearTo(base);
+
+  // Tools > hardware check, part way through being tried: touch and keys done,
+  // the ball rolled every way but right, not clicked yet.
+  openHardwareCheck(); run(300);       shot("check_0_fresh");
+  touchPanel.count = 14;
+  keyboard.last = 'h';
+  tdeck_tb::simCounts[0] = 4; tdeck_tb::simCounts[1] = 6; tdeck_tb::simCounts[2] = 3;
+  tap(160, 120);                       shot("check_1_part_way");
+  tdeck_tb::simCounts[3] = 2;
+  nav.top()->press(); run(300);        shot("check_2_all_green");
+  clearTo(base);
+
+  // Tools > touch test: two rings tapped, then all four, then a unit whose
+  // touch comes out mirrored left-right (the taps land on the far side).
+  openTouchTest(); run(300);           shot("touchtest_0");
+  drag(70, 110, 250, 170);
+  tap(24, 42 + 24); tap(296, 42 + 24); shot("touchtest_1_two_rings");
+  tap(296, 216); tap(24, 216);         shot("touchtest_2_lines_up");
+  nav.top()->press(); run(100);
+  tap(296, 42 + 24); tap(24, 42 + 24); tap(24, 216); tap(296, 216);
+  shot("touchtest_3_mirrored_fixed");
+  ui_settings.orient = 0;
   clearTo(base);
 #endif
   return 0;

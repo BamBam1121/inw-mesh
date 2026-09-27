@@ -22,7 +22,7 @@ FIRMWARE = ["ui.cpp", "home.cpp", "quips.cpp", "regional.cpp", "settings.cpp", "
             "fx_aurora.cpp", "bootscreen.cpp"]
 SIM = ["sim_stubs.cpp", "sim_main.cpp"]
 # The T-Deck's own screens (src/tdeck); the pager build doesn't have them.
-BOARD_UI = [] if "--pager" in sys.argv else ["dashboard.cpp"]
+BOARD_UI = [] if "--pager" in sys.argv else ["dashboard.cpp", "hwcheck.cpp"]
 
 FLAGS = ["-std=gnu++14", "-O1", "-w", "-DARDUINO=10819", "-DLGFX_USE_V1", "-DINW_SIM=1",
          '-DFW_VERSION="1.2.1"', "-DMAX_CONTACTS=2000", "-DMAX_GROUP_CHANNELS=40"]
@@ -53,6 +53,9 @@ def main():
         sync(f)
     for f in BOARD_UI:
         sync(os.path.join(ROOT, "src", "tdeck", f))
+        h = os.path.join(ROOT, "src", "tdeck", f.replace(".cpp", ".h"))
+        if os.path.exists(h):
+            sync(h)
     objs = []
     lg = os.path.join(OBJ, "lgfx_v1.o")
     if not os.path.exists(lg):
