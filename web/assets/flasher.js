@@ -35,6 +35,9 @@ const FULL_NAME = CFG.fullName || "LilyGo T-Lora Pager";
 const BOARD_NAMES = { "t-lora-pager": "T-Lora Pager", "t-deck": "T-Deck" };
 const UPDATE_MANIFEST = CFG.update || "https://bambam1121.github.io/inw-mesh/manifest-update.json";
 const INSTALL_MANIFEST = CFG.install || "https://bambam1121.github.io/inw-mesh/manifest-install.json";
+// Built-in PSRAM the chip must report (eFuses) before anything is written: "8MB"
+// on the T-Deck's page. The pager's page sets nothing.
+const NEED_PSRAM = CFG.needPsram || "";
 // How to put the chip into its USB loader by hand, per board.
 const LOADER_HOW = BOARD === "t-deck"
   ? "turn the T-Deck off, hold the trackball down while you switch it back on, then let go"
@@ -54,6 +57,20 @@ if (panel) {
   const logBox = panel.querySelector(".fl-log");
   const logPre = panel.querySelector(".fl-log pre");
   const again = panel.querySelector(".fl-again");
+  /* After a refusal (wrong board by its firmware, or by its chip), the person can
+     still say "it really is one" - the way back for a device that got the wrong
+     firmware, and for a unit whose chip isn't the one we expect. Made here so the
+     pages don't each need it. */
+  const anywayBtn = document.createElement("button");
+  anywayBtn.type = "button";
+  anywayBtn.className = "btn small fl-anyway";
+  anywayBtn.hidden = true;
+  again.insertAdjacentElement("afterend", anywayBtn);
+  let anyway = false;           // true for one run after "install anyway"
+  const offerAnyway = () => {
+    anywayBtn.textContent = "It's a " + DEVICE + ": install anyway";
+    anywayBtn.hidden = false;
+  };
 
   let busy = false;
   let port = null;            // kept between attempts so a retry doesn't re-prompt
@@ -162,7 +179,9 @@ if (panel) {
 
   // Opens the port, sends a line, and collects whatever comes back. Used before the
   // flash (to identify the pager and make it save) and after it (to see it boot).
-  async function converse(send, mark, ms) {
+  // every: send the line again this often until the answer comes (for a device
+  // that the open itself restarted, which misses the first one while it starts).
+  async function converse(send, mark, ms, every) {
     let text = "";
     try {
       await port.open({ baudRate: 115200, bufferSize: 4096 });
@@ -170,20 +189,32 @@ if (panel) {
       log("[flasher] couldn't open the port to ask it: " + ((e && e.message) || e));
       return text;                       // busy, or already in the ROM loader
     }
-    let reader = null;
+    let reader = null, pending = null;
     try {
-      if (send) {
+      let sentAt = 0;
+      const sendLine = async () => {
         const w = port.writable.getWriter();
-        await w.write(new TextEncoder().encode(send));
-        w.releaseLock();
-      }
+        try { await Promise.race([w.write(new TextEncoder().encode(send)), sleep(1000)]); }
+        finally { try { w.releaseLock(); } catch (e) {} }
+        sentAt = Date.now();
+      };
+      if (send) await sendLine();
       const dec = new TextDecoder();
       reader = port.readable.getReader();
+      // ONE outstanding read, reused across timeouts, as in listenForBoot. A fresh
+      // read per timeout left the old one pending; whatever arrived next went to
+      // it and was lost, so an answer slower than the timeout was never seen. A
+      // pager's missed answer once made this page install T-Deck firmware on it.
+      const next = (t) => {
+        if (!pending) pending = reader.read().then((r) => { pending = null; return r; });
+        return Promise.race([pending, sleep(t).then(() => ({ timeout: true }))]);
+      };
       const deadline = Date.now() + ms;
       while (Date.now() < deadline) {
-        const chunk = await Promise.race([reader.read(), sleep(1200).then(() => ({ timeout: true }))]);
-        if (!chunk || chunk.done) break;
+        if (send && every && Date.now() - sentAt > every) await sendLine();
+        const chunk = await next(500);
         if (chunk.timeout) continue;
+        if (!chunk || chunk.done) break;
         text += dec.decode(chunk.value, { stream: true });
         if (mark && text.indexOf(mark) >= 0) break;
       }
@@ -280,8 +311,8 @@ if (panel) {
 
   // What is on this pager? Squatch Mesh answers "status"; anything else stays quiet,
   // which is itself the answer - a pager on other firmware needs a first install.
-  async function identify() {
-    const text = await converse("\nstatus\n", "[status]", 6000);
+  async function identify(ms) {
+    const text = await converse("\nstatus\n", "[status]", ms || 6000, 2500);
     if (text.trim()) log(text.trim());
     const m = text.match(/\[status\]\s+fw=(\S+)\s+radio=(\S+)\s+radio_ok=(\d)\s+contacts=(-?\d+)/);
     if (!m) return { squatch: false, raw: text };
@@ -318,12 +349,42 @@ if (panel) {
     return { version: manifest.version || "", parts };
   }
 
+  /* Restart the chip into whatever firmware it has. esptool-js 0.6.1's
+     after("hard_reset") only RELEASES the reset line (RTS low) without ever
+     pulling it, so the chip never restarts: it sits silent in the flasher
+     stub until something else toggles the USB lines - which is why the
+     pager only ever booted once this page closed the port. This is the
+     command-line esptool's hard reset: pull EN low via RTS, wait, release,
+     with DTR (the boot-mode pin) left high-level-off throughout. */
+  async function restart(transport) {
+    await transport.setDTR(false);
+    await transport.setRTS(true);
+    await sleep(200);
+    await transport.setRTS(false);
+    await sleep(200);
+  }
+
   async function writeIt(parts, baud, compress) {
     const transport = new Transport(port, false);
     const loader = new ESPLoader({ transport, baudrate: baud, romBaudrate: 115200, terminal, debugLogging: false });
     try {
       const chip = await loader.main();
       log("[flasher] " + chip + " @ " + baud + (compress ? " compressed" : " uncompressed"));
+      /* What the chip itself is, whatever firmware it has (or none): its
+         eFuses. A page can require built-in PSRAM (the T-Deck's chip has 8 MB;
+         the pager's has none). A T-Lora Pager that didn't answer "status" was
+         once taken for a T-Deck on other firmware and given T-Deck firmware. */
+      if (NEED_PSRAM && !anyway) {
+        let feats = "";
+        try { feats = String(await loader.chip.getChipFeatures(loader)); } catch (e) { feats = "unreadable"; }
+        if (feats.indexOf("Embedded PSRAM " + NEED_PSRAM) < 0) {
+          log("[flasher] chip: " + feats + " - no built-in " + NEED_PSRAM + " PSRAM, so not a " + DEVICE + ". Nothing written.");
+          await restart(transport);        // back to the firmware it had
+          const e = new Error("wrong hardware");
+          e.wrongHardware = feats;
+          throw e;
+        }
+      }
       const total = parts.reduce((n, p) => n + p.data.length, 0);
       await loader.writeFlash({
         fileArray: parts.map((p) => ({ data: p.data, address: p.address })),
@@ -341,19 +402,8 @@ if (panel) {
         },
       });
       pct(100);
-      /* Restart it into the new firmware ourselves. esptool-js 0.6.1's
-         after("hard_reset") only RELEASES the reset line (RTS low) without ever
-         pulling it, so the chip never restarts: it sits silent in the flasher
-         stub until something else toggles the USB lines - which is why the
-         pager only ever booted once this page closed the port. This is the
-         command-line esptool's hard reset: pull EN low via RTS, wait, release,
-         with DTR (the boot-mode pin) left high-level-off throughout. */
       log("Restarting the pager into the new firmware...");
-      await transport.setDTR(false);
-      await transport.setRTS(true);
-      await sleep(200);
-      await transport.setRTS(false);
-      await sleep(200);
+      await restart(transport);
       return chip;
     } finally {
       try { await transport.disconnect(); } catch (e) {}
@@ -367,6 +417,7 @@ if (panel) {
     busy = true;
     lastKind = kind;
     again.hidden = true;
+    anywayBtn.hidden = true;
     if (startBtn) { startBtn.disabled = true; startBtn.classList.add("working"); startBtn.textContent = "WORKING…"; }
     logPre.textContent = "";
     pct(0);
@@ -382,17 +433,28 @@ if (panel) {
       // 1. what is on it
       show("Checking the pager…", "busy");
       say("Asking what firmware it is running.");
-      const found = kind === "install" ? { squatch: false } : await identify();
+      let found = kind === "install" ? { squatch: false } : await identify();
+      // Silence isn't proof of other firmware: opening the port restarts some
+      // devices, and a Squatch pager that is still starting says nothing. On
+      // another board's page, where taking silence at its word puts the wrong
+      // firmware on, ask again for longer before deciding.
+      if (kind === "auto" && !found.squatch && BOARD !== "t-lora-pager") {
+        say("No answer yet. Giving it time to finish starting, then asking again.");
+        log("[flasher] no answer to status; asking again");
+        if (usb.gone === port) await refindPort(8000);
+        found = await identify(20000);
+      }
       // Squatch Mesh for another board: its firmware would start on this one's
       // pins and do nothing useful. Stop before anything is written.
-      if (found.squatch && found.board !== BOARD) {
+      if (found.squatch && found.board !== BOARD && !anyway) {
         const other = BOARD_NAMES[found.board] || found.board;
         log("[flasher] this is a " + other + " (board=" + found.board + "), not a " + (BOARD_NAMES[BOARD] || BOARD) + " - stopped");
         show("That's a " + other + ", not a " + DEVICE, "bad");
         say("It's running Squatch Mesh for the " + other + ". Nothing was written. Use the " + other +
-            " installer for it, or plug in the " + DEVICE + " and press try again.");
+            " installer for it, or plug in the " + DEVICE + " and press try again. If it really is a " + DEVICE +
+            " that was given the " + other + " firmware by mistake, press install anyway to put it right.");
         again.hidden = false;
-        port = null;
+        offerAnyway();
         return;
       }
       let wanted = kind;
@@ -441,6 +503,7 @@ if (panel) {
           lastErr = null;
           break;
         } catch (e) {
+          if (e && e.wrongHardware) throw e;    // not a retry matter: nothing was written
           lastErr = e;
           log("[flasher] attempt at " + attempt.baud + " failed: " + ((e && e.message) || e));
           if (openFailure(e)) { openFails++; await letGo(); await refindPort(3000); }
@@ -458,7 +521,16 @@ if (panel) {
       finish(wanted, version, boot, found);
     } catch (e) {
       const msg = (e && e.message) || String(e);
-      if (/No port selected|cancelled|The port is already open/i.test(msg) && !port) {
+      if (e && e.wrongHardware) {
+        show("This doesn't look like a " + DEVICE, "bad");
+        say("Nothing was written, and it's back on the firmware it had. Every " + DEVICE + " has " + NEED_PSRAM +
+            " of memory (PSRAM) built into its chip; this one's chip has none" +
+            " (a T-Lora Pager's doesn't). If you're sure it's a " + DEVICE + ", press install anyway.");
+        logBox.open = true;
+        again.hidden = false;
+        offerAnyway();
+        report("wrong-hardware", { kind: lastKind, features: e.wrongHardware, log: logPre.textContent.split("\n").slice(-20).join("\n") });
+      } else if (/No port selected|cancelled|The port is already open/i.test(msg) && !port) {
         show("Nothing was written", "bad");
         say("No pager was picked, so nothing happened. Press start when you're ready.");
       } else if (e && e.portWouldNotOpen) {
@@ -495,6 +567,7 @@ if (panel) {
       }
     } finally {
       busy = false;
+      anyway = false;               // "install anyway" covers one run, never the next
       if (startBtn) { startBtn.disabled = false; startBtn.classList.remove("working"); startBtn.textContent = "START"; }
     }
   }
@@ -570,7 +643,13 @@ if (panel) {
     } catch (e) { /* never let reporting break the install */ }
   }
 
-  again.addEventListener("click", () => run(lastKind === "auto" ? "auto" : lastKind));
+  again.addEventListener("click", () => {
+    // Refused as the wrong device: "try again" is most likely with another one
+    // plugged in, so let the browser ask which.
+    if (!anywayBtn.hidden) port = null;
+    run(lastKind === "auto" ? "auto" : lastKind);
+  });
+  anywayBtn.addEventListener("click", () => { if (busy) return; anyway = true; run(lastKind === "auto" ? "auto" : lastKind); });
 
   document.querySelectorAll("[data-flash]").forEach((b) => {
     if (!SUPPORTED) {
