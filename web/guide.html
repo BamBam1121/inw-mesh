@@ -85,7 +85,7 @@
           <tr><td><span class="kbd">left</span></td><td><b>Reset.</b> Restarts the pager. Nothing is lost.</td></tr>
           <tr><td><span class="kbd">middle</span> tap</td><td>screen off, or on again. The radio keeps listening, so messages still arrive and light it up.</td></tr>
           <tr><td><span class="kbd">middle</span> hold</td><td>after a couple of seconds, <b>Power off?</b> Press <span class="kbd">Enter</span> (or the wheel) to turn it off; any other key cancels. Also in <b>Settings &rarr; power off</b>.</td></tr>
-          <tr><td><span class="kbd">middle</span> &times;5</td><td>five fast taps start an <b>SOS</b> countdown (set it up under Tools &rarr; field). Any key cancels it.</td></tr>
+          <tr><td><span class="kbd">middle</span> &times;5</td><td>five fast taps start a 20-second <b>SOS</b> countdown (set it up under Tools &rarr; field). Any key cancels it.</td></tr>
           <tr><td><span class="kbd">right</span> hold 1s</td><td><b>Turns it on</b> after a power off. Plugging in USB does too. It only turns the pager on; it can't do anything else, because it is wired to the charger, not the processor.</td></tr>
         </table>
         <p class="sub" style="font-size:14px;margin:12px 0 0">Powered off really is off: it uses almost nothing,
@@ -147,6 +147,17 @@
         <code>910.5250244 MHz</code>, <code>62.5 kHz</code>, <code>SF7</code>, <code>CR 4/5</code>. Any
         MeshCore radio settings work, so set whatever your local mesh uses. Everyone on a mesh has to
         agree on these or you will hear nothing.</p>
+      </div>
+
+      <h2 id="regions">Region scopes</h2>
+      <div class="panel reveal">
+        <p class="sub" style="font-size:14px;margin:0">A region keeps your messages to the repeaters that
+        serve it, instead of flooding the whole mesh. Set one for everything under <b>Settings &rarr; Radio
+        &amp; Mesh &rarr; region scope</b>, or for one channel under <b>Settings &rarr; Channels</b> (a channel
+        can also stay on the whole mesh). <b>ask repeaters nearby</b> lists the regions the repeaters in range
+        actually carry: pick from there. A repeater drops messages for a region it doesn't have, and names must
+        match exactly, capitals included, so a guessed name can mean messages that go nowhere. With no region
+        set, nothing changes. The MeshCore phone app sets the same device region.</p>
       </div>
 
       <h2 id="privacy">Privacy</h2>

@@ -22,7 +22,8 @@ Buttons and power (the guide's "Buttons & power" section has the same)
 - It can't power off with USB plugged in (the charger keeps it running); unplug first.
 - Powered off hears nothing: messages sent meanwhile are missed. To save battery but keep receiving,
   tap the middle button to turn just the screen off.
-- Five fast taps on the middle button start the SOS countdown (if SOS is set up under Tools > field).
+- Five fast taps on the middle button start the SOS countdown, 20 seconds from 1.2.2 (if SOS is set up
+  under Tools > field). Any key cancels it.
 - Download mode for flashing: hold middle (BOOT), tap left (reset), let go of middle.
 
 Sound, battery and screen (1.2.1)
@@ -35,6 +36,19 @@ Sound, battery and screen (1.2.1)
   to full once sets it straight.
 - Every theme has its own animation when you move between screens, unlock and lock. They're meant to be
   there; there's no setting to turn them off.
+
+Region scopes (1.2.2) - what the MeshCore app calls regions or flood scope
+- A region keeps messages to the repeaters that serve it, instead of the whole mesh. Its key is made from
+  the name ("#spokane"), so it has to match the repeaters' exactly, capitals included. A repeater drops a
+  message for a region it doesn't carry: a wrong name means messages that reach almost no one.
+- For everything: Settings > Radio & Mesh > region scope. It also covers flooded direct messages and
+  adverts. The MeshCore phone app sets the same one.
+- For one channel: Settings > Channels > the channel > region scope: like the rest, the whole mesh (no
+  region), or another region. A scoped channel's chat header shows it ("#spokane").
+- "ask repeaters nearby" asks the repeaters in direct range which regions they carry and lists them,
+  with how many still pass whole-mesh messages. Choosing from that list is the safe way.
+- Messages stopped arriving after setting a region: set it back to the whole mesh, then use "ask
+  repeaters nearby" to find one they carry. Private regions (names starting with $) aren't supported yet.
 
 Things to check before handing off a problem
 - Which firmware version, and whether it was installed from squatchmesh.com/install or updated over Wi-Fi.
