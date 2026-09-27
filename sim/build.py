@@ -17,7 +17,7 @@ GXX = os.path.expanduser(r"~\.platformio\packages\toolchain-gccmingw32\bin\g++.e
 LGFX = os.path.join(ROOT, ".pio", "libdeps", "t-lora-pager", "LovyanGFX", "src")
 
 # The firmware files the simulator runs. Everything else is stubbed in sim/.
-FIRMWARE = ["ui.cpp", "home.cpp", "quips.cpp", "regional.cpp", "settings.cpp", "history.cpp",
+FIRMWARE = ["ui.cpp", "home.cpp", "quips.cpp", "regional.cpp", "settings.cpp", "history.cpp", "regions.cpp",
             "chats.cpp", "notify.cpp", "fx.cpp", "fx_squatch.cpp", "fx_blocks.cpp", "fx_hero.cpp",
             "fx_aurora.cpp", "bootscreen.cpp"]
 SIM = ["sim_stubs.cpp", "sim_main.cpp"]

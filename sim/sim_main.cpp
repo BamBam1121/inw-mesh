@@ -13,6 +13,7 @@
 #include "statusbar.h"
 #include "touch.h"
 #include "bootscreen.h"
+#include "regions.h"
 #if BOARD_HAS_TOUCH
 #include "hwcheck.h"
 #include "touch_gt911.h"
@@ -312,6 +313,22 @@ int main(int argc, char** argv) {
   tap(160, 42 + 14); run(300);
   for (const char* k = "hunter2"; *k; k++) nav.top()->key(*k);
   run(1200);                                           shot("prompt_password");
+  clearTo(base);
+
+  // Region scopes: Settings > Radio & Mesh > region scope, ask the repeaters,
+  // pick one; then a channel of its own, and its chat header.
+  app::openSettings(); run(300);
+  tap(8 + 149 + 6 + 70, 46 + 26); run(300);           // the Radio & Mesh tile
+  drag(160, 220, 160, 80);                             // five rows down
+  run(300);                                            shot("regions_0_radio_menu");
+  tap(160, 42 + 4 * 28 + 14); run(300);                shot("regions_1_scope_menu");
+  tap(160, 42 + 2 * 28 + 14); run(13000);              shot("regions_2_asked");
+  tap(160, 42 + 28 + 14); run(400);                    shot("regions_3_picked");
+  clearTo(base);
+  regions::setForChannel(g_node->channels[2].channel.secret, "wa");
+  app::openThreadForChannel(2); run(300);              shot("regions_4_channel_header");
+  regions::setForChannel(g_node->channels[2].channel.secret, "");
+  regions::setDefault("");
   clearTo(base);
 #endif
   return 0;

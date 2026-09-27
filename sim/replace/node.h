@@ -93,6 +93,8 @@ struct NodePrefs {
   float airtime_factor = 1.0f, rx_delay_base = 0.0f;
   uint8_t multi_acks = 0, rx_boosted_gain = 1, autoadd_config = 0, autoadd_max_hops = 0;
   uint32_t ble_pin = 123456;
+  char default_scope_name[31] = "";
+  uint8_t default_scope_key[16] = {0};
   bool repeat = false;
   bool isRepeatEn() const { return repeat; }
   void setRepeatEn(bool en) { repeat = en; }
@@ -109,6 +111,7 @@ public:
 enum class NodeEvent : uint8_t {
   DirectMsg, ChannelMsg, RoomMsg, NewContact, Delivered, Failed,
   LoginOk, LoginFail, Status, Telemetry, Trace, Discover, CliReply, ContactsChanged,
+  Regions,
 };
 
 struct RemoteStatus {
@@ -169,6 +172,18 @@ public:
   // Remote admin, status, trace: nothing answers in the simulator.
   bool requestStatus(const uint8_t*) { return true; }
   bool requestTelemetry(const uint8_t*) { return true; }
+  // Three nearby repeaters, answering at once: their regions ("*" = they still
+  // pass the whole mesh).
+  bool requestRegions(const uint8_t*) {
+    static const char* LISTS[] = {"*,spokane,wa,", "spokane,cda,", "*,spokane,wa,idaho,"};
+    strlcpy(regionsReply.names, LISTS[_regionAsks++ % 3], sizeof(regionsReply.names));
+    regionsGen++;
+    return true;
+  }
+  int _regionAsks = 0;
+  struct RegionsReply { uint8_t pub[32]; char names[180]; };
+  RegionsReply regionsReply = {};
+  uint32_t regionsGen = 0;
   bool sendCli(const uint8_t*, const char*) { return true; }
   bool trace(const uint8_t*) { return true; }
   bool discover() { return true; }
