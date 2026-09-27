@@ -499,8 +499,10 @@ static void displayMenu() {
             [](int d) { ui_settings.kbBacklight = constrain((int)ui_settings.kbBacklight + d * 25, 0, 255); app::applyDisplay(); markUiDirty(); });
   m->toggle("lock face after screen off", [] { return ui_settings.lockOnSleep; },
             [] { ui_settings.lockOnSleep = !ui_settings.lockOnSleep; markUiDirty(); });
+#if !BOARD_HAS_TOUCH   // a touchscreen unlocks with a swipe up
   m->toggle("unlock with wheel press only", [] { return ui_settings.wheelUnlock; },
             [] { ui_settings.wheelUnlock = !ui_settings.wheelUnlock; markUiDirty(); });
+#endif
   m->toggle("wake screen on message", [] { return ui_settings.wakeOnMessage; },
             [] { ui_settings.wakeOnMessage = !ui_settings.wakeOnMessage; markUiDirty(); });
   nav.push(m);
@@ -784,10 +786,18 @@ static void aboutPage() {
     out.push_back("ideas from    Wadamesh (layouts, map, tools)");
     out.push_back("");
     out.push_back("# keys");
+#if BOARD_HAS_TOUCH
+    out.push_back("tap  open / select      drag  scroll");
+    out.push_back("swipe in from the left, or tap <   back");
+    out.push_back("trackball  move + click   hold it  lock");
+    out.push_back("home: m c p t s   jump to an app   l  lock");
+    out.push_back("map: drag pan, wasd pan, n next node, c me");
+#else
     out.push_back("turn / press  move / select     backspace  back");
     out.push_back("home: m c p t s   jump to an app   l  lock");
     out.push_back("orange (hold) numbers + symbols   caps  shift lock");
     out.push_back("map: turn zoom, wasd pan, n next node, c me");
+#endif
   }, 60000));
 }
 

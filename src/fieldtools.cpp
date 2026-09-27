@@ -384,7 +384,9 @@ static void sosMenu() {
       nav.invalidate();
     });
     v.info("repeats", []() -> String { return String("every 5 min until stopped"); });
+#if BOARD_HAS_SIDE_BUTTON
     v.info("shortcut", []() -> String { return String("press the side button 5 times fast"); });
+#endif
   };
   m->rebuild(*m);
   nav.push(m);

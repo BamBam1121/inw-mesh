@@ -26,6 +26,12 @@
 #include "backlight.h"
 #include "rotary.h"
 #include "keyboard.h"
+#if BOARD_HAS_TOUCH
+#include "touch.h"
+#include "touch_gt911.h"   // src/tdeck: the board's touchscreen
+static TouchPanel touchPanel;
+static Gestures   gestures;
+#endif
 #include "gps.h"
 #include "battery.h"
 #include "rtc.h"
@@ -1314,6 +1320,9 @@ void setup() {
   bootStep("vibration", haptic.ok());
 #endif
   bootStep("keyboard", keyboard.begin(Wire));
+#if BOARD_HAS_TOUCH
+  bootStep("touch", touchPanel.begin(Wire));
+#endif
   keyboard.setBacklight(ui_settings.kbBacklight);
   bootStep("battery gauge", battery.begin(Wire));
   battRestore();
@@ -1501,6 +1510,22 @@ void loop() {
     if (ev.index == KEY_IDX_BACKSPACE) backspace = true;
     else if (ev.ch && nchars < sizeof(chars)) chars[nchars++] = ev.ch;
   }
+#if BOARD_HAS_TOUCH
+  // The touchscreen, this board's main input. With the screen off, touches are read
+  // and dropped - a pocket touches everything - and only the trackball wakes it.
+  // On the lock screen only a tap or a swipe counts as someone using it.
+  {
+    bool down; int16_t tx, ty;
+    touchPanel.poll(down, tx, ty);
+    TouchEvent te;
+    while (gestures.feed(down, tx, ty, millis(), te)) {
+      if (dimmer.asleep()) continue;
+      const bool onLock = nav.top() && nav.top()->isLock();
+      if (!onLock || te.type == TouchEvent::Swipe || te.type == TouchEvent::Tap) dimmer.note();
+      nav.touch(te);
+    }
+  }
+#endif
 #if BOARD_HAS_SIDE_BUTTON
   // The side (middle) button, like a phone's: a tap sleeps or wakes the screen,
   // a 2.5 s hold asks to power off, five fast taps arm an SOS. Screen-off happens

@@ -168,11 +168,18 @@ public:
   void press() override { nav.pop(); }
   void key(char) override { if (ui_settings.wheelUnlock) hint(); else nav.pop(); }
   bool backspace() override { if (ui_settings.wheelUnlock) hint(); else nav.pop(); return true; }
+  // Touchscreen: a swipe up unlocks, like a phone. A tap alone doesn't, so a touch
+  // in a pocket can't open it; it says how instead.
+  bool touch(const TouchEvent& e) override {
+    if (e.type == TouchEvent::Swipe && e.dir == 'U') { nav.dismissToast(); nav.pop(); return true; }
+    if (e.type == TouchEvent::Tap) { hint(); return true; }
+    return false;
+  }
 private:
   void hint() {
     if (millis() - _hintAt < 3000) return;
     _hintAt = millis();
-    nav.toast("press the wheel to unlock");
+    nav.toast(BOARD_HAS_TOUCH ? "swipe up to unlock" : "press the wheel to unlock");
   }
   uint32_t _hintAt = 0;
   float _phase = 0, _scroll = 0;
@@ -180,5 +187,10 @@ private:
   char _quip[96] = "";
 };
 
+#ifndef BOARD_HOME_DASHBOARD
+#define BOARD_HOME_DASHBOARD 0
+#endif
+#if !BOARD_HOME_DASHBOARD   // a touchscreen board has its own home (e.g. src/tdeck/dashboard.cpp)
 View* makeHomeView() { return new HomeView(); }
+#endif
 View* makeLockView() { return new LockView(); }

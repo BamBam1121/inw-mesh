@@ -11,6 +11,7 @@
 #include "settings.h"
 #include "ui.h"
 #include "statusbar.h"
+#include "touch.h"
 
 View* makeHomeView();
 View* makeLockView();
@@ -120,6 +121,26 @@ static void clearTo(View* base) {
   while (nav.top() && nav.top() != base) nav.pop();
 }
 
+// ---- a finger, for touchscreen boards -------------------------------------------------------
+static Gestures s_finger;
+static void feedTouch(bool down, int x, int y) {
+  TouchEvent e;
+  while (s_finger.feed(down, x, y, millis(), e)) nav.touch(e);
+}
+static void tap(int x, int y) { feedTouch(true, x, y); run(60); feedTouch(false, x, y); run(500); }
+static void swipe(int x0, int y0, int x1, int y1, int steps = 8) {
+  feedTouch(true, x0, y0);
+  for (int k = 1; k <= steps; k++) { sim::advance(16); feedTouch(true, x0 + (x1 - x0) * k / steps, y0 + (y1 - y0) * k / steps); }
+  feedTouch(false, x1, y1);
+  run(500);
+}
+static void drag(int x0, int y0, int x1, int y1) {   // slow: a scroll, not a flick
+  feedTouch(true, x0, y0);
+  for (int k = 1; k <= 20; k++) { sim::advance(40); feedTouch(true, x0 + (x1 - x0) * k / 20, y0 + (y1 - y0) * k / 20); }
+  feedTouch(false, x1, y1);
+  run(500);
+}
+
 int main(int argc, char** argv) {
   if (argc > 1) s_out = argv[1];
   mkdir(s_out);
@@ -140,6 +161,13 @@ int main(int argc, char** argv) {
     char n[64];
     const char* tn = THEME_NAMES[t];
     run(600);
+#if BOARD_HOME_DASHBOARD
+    snprintf(n, sizeof(n), "%s_home", tn); shot(n);
+    home->rotate(1); run(200);           // the trackball's highlight appears
+    home->rotate(4); run(200);
+    snprintf(n, sizeof(n), "%s_home_trackball", tn); shot(n);
+    run(16000);                          // left alone, the highlight goes
+#else
     snprintf(n, sizeof(n), "%s_home_messages", tn); shot(n);
     static const char* TILE[] = {"contacts", "map", "tools", "settings"};
     for (int i = 0; i < 4; i++) {
@@ -148,6 +176,7 @@ int main(int argc, char** argv) {
     }
     for (int i = 0; i < 4; i++) home->rotate(-1);
     run(900);
+#endif
 
     View* lock = makeLockView();
     nav.push(lock);
@@ -164,5 +193,26 @@ int main(int argc, char** argv) {
     snprintf(n, sizeof(n), "%s_thread_trailhead", tn); shot(n);
     clearTo(home);
   }
+
+#if BOARD_HAS_TOUCH
+  // A finger's tour, in the first theme: every step is a picture to check.
+  ui_settings.themeId = 0;
+  app::applyTheme();
+  populateHistory();
+  home = nullptr;
+  clearTo(nullptr == home ? nav.top() : home);
+  View* base = nav.top();
+  nav.push(makeLockView()); run(600);
+  shot("touch_0_locked");
+  tap(160, 120);                       shot("touch_1_tap_says_swipe");
+  swipe(160, 200, 160, 80);            shot("touch_2_swiped_up");
+  tap(8 + 28, 200);                    shot("touch_3_tapped_chats");
+  tap(160, 42 + 22);                   shot("touch_4_tapped_first_chat");
+  drag(160, 90, 160, 190);             shot("touch_5_dragged_older");
+  swipe(4, 120, 150, 120);             shot("touch_6_edge_swipe_back");
+  tap(20, 30);                         shot("touch_7_header_back");
+  tap(160, 62 + 3 + 34 + 17);          shot("touch_8_tapped_second_row");
+  clearTo(base);
+#endif
   return 0;
 }

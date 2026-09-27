@@ -16,6 +16,7 @@
 #define BOARD_HAS_CHARGER_IC   1    // BQ25896 charger + BQ27220 fuel gauge
 #define BOARD_HAS_EXT_HEADER   1    // 12-pin header on top (extport.cpp)
 #define BOARD_HAS_KB_BACKLIGHT 1
+#define BOARD_HAS_TOUCH        0
 
 // Wi-Fi updates: the pager's feed is the original top-level firmware/ folder,
 // signed without a board name (OTA_BOARD unset), exactly as before other boards.

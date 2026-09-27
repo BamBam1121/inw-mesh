@@ -214,6 +214,15 @@ static bool liveLine(int which, char* out, size_t cap) {
   return false;
 }
 
+// Lines about the pager's own hardware (its wheel, being a pager) read wrong on
+// another board, which skips them.
+static bool fitsBoard(const char* q) {
+#if BOARD_HAS_TOUCH
+  for (const char* w : {"pager", "wheel", "PCNT", "orange", "rotary"}) if (strcasestr(q, w)) return false;
+#endif
+  return true;
+}
+
 const char* quipNext() {
   static const int TOTAL = N_GENERAL + N_MORE + N_THEMED + N_LIVE;
   static uint16_t deck[TOTAL];
@@ -226,13 +235,14 @@ const char* quipNext() {
       pos = 0;
     }
     int k = deck[pos++];
-    if (k < N_GENERAL) return GENERAL[k];
+    if (k < N_GENERAL) { if (fitsBoard(GENERAL[k])) return GENERAL[k]; continue; }
     k -= N_GENERAL;
-    if (k < N_MORE) return MORE[k];
+    if (k < N_MORE) { if (fitsBoard(MORE[k])) return MORE[k]; continue; }
     k -= N_MORE;
     if (k < N_THEMED) {
       const uint8_t s = nav.theme().style;
-      return THEMED[s < 4 ? s : 0][k];
+      if (fitsBoard(THEMED[s < 4 ? s : 0][k])) return THEMED[s < 4 ? s : 0][k];
+      continue;
     }
     if (liveLine(k - N_THEMED, line, sizeof(line))) return line;
   }

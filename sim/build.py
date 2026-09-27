@@ -21,6 +21,8 @@ FIRMWARE = ["ui.cpp", "home.cpp", "quips.cpp", "regional.cpp", "settings.cpp", "
             "chats.cpp", "notify.cpp", "fx.cpp", "fx_squatch.cpp", "fx_blocks.cpp", "fx_hero.cpp",
             "fx_aurora.cpp"]
 SIM = ["sim_stubs.cpp", "sim_main.cpp"]
+# The T-Deck's own screens (src/tdeck); the pager build doesn't have them.
+BOARD_UI = [] if "--pager" in sys.argv else ["dashboard.cpp"]
 
 FLAGS = ["-std=gnu++14", "-O1", "-w", "-DARDUINO=10819", "-DLGFX_USE_V1", "-DINW_SIM=1",
          '-DFW_VERSION="1.2.1"', "-DMAX_CONTACTS=2000", "-DMAX_GROUP_CHANNELS=40"]
@@ -49,6 +51,8 @@ def main():
             sync(f)
     for f in glob.glob(os.path.join(ROOT, "sim", "replace", "*")):
         sync(f)
+    for f in BOARD_UI:
+        sync(os.path.join(ROOT, "src", "tdeck", f))
     objs = []
     lg = os.path.join(OBJ, "lgfx_v1.o")
     if not os.path.exists(lg):
@@ -65,7 +69,7 @@ def main():
     newest_h = max(os.path.getmtime(h) for h in heads)
     def stale(src, o):
         return not os.path.exists(o) or os.path.getmtime(o) < max(os.path.getmtime(src), newest_h)
-    for src in [os.path.join(SRC, f) for f in FIRMWARE] + [os.path.join(ROOT, "sim", f) for f in SIM]:
+    for src in [os.path.join(SRC, f) for f in FIRMWARE + BOARD_UI] + [os.path.join(ROOT, "sim", f) for f in SIM]:
         o = os.path.join(OBJ, os.path.basename(src).replace(".cpp", ".o"))
         if stale(src, o):
             print("cc", os.path.basename(src)); run([GXX] + FLAGS + INC + ["-c", src, "-o", o])

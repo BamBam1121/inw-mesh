@@ -5,6 +5,7 @@
 #include "history.h"
 #include "notify.h"
 #include "fx.h"
+#include "chats.h"
 
 ConvKey g_openConv;                 // the thread on screen, for notification muting
 
@@ -118,6 +119,25 @@ public:
     openEmojiPicker(this);
   }
 
+  // Touch: tap a message for its actions, tap the compose bar for emoji and
+  // quick replies, drag to go back through the conversation.
+  bool touch(const TouchEvent& e) override {
+    switch (e.type) {
+      case TouchEvent::Down: _dragAcc = 0; return false;
+      case TouchEvent::Drag:
+        _dragAcc += e.dy;
+        while (_dragAcc >= 36) { rotate(-1); _dragAcc -= 36; }   // finger down: older messages come in
+        while (_dragAcc <= -36) { rotate(1); _dragAcc += 36; }
+        return true;
+      case TouchEvent::Tap:
+        if (e.y >= L::H - 28) { openEmojiPicker(this); return true; }
+        for (uint8_t k = 0; k < _hitN; k++)
+          if (e.y >= _hitTop[k] && e.y < _hitBot[k]) { _sel = _hitIdx[k]; openMessageActions(this, _ids[_sel]); return true; }
+        return false;
+      default: return false;
+    }
+  }
+
   int maxLen() const {
     // MeshCore text payload is 160 bytes; channel posts also carry "<name>: ".
     if (_key.type == CONV_CHANNEL && g_node) return max(40, 150 - (int)strlen(g_node->name()));
@@ -195,11 +215,14 @@ public:
     const int anchor = _sel >= 0 ? _sel : _n - 1;
     int y = bottom - 2;
     _posN = 0;
+    _hitN = 0;
     // If a selection is scrolled up, keep a little of the next message visible.
     for (int i = anchor; i >= 0 && y > top; i--) {
       HistMsg* m = history.find(_ids[i]);
       if (!m) continue;
+      const int below = y;
       y -= ui_settings.compactChat ? drawCompact(g, *m, y, i == _sel) : drawBubble(g, *m, y, i == _sel);
+      if (_hitN < HIT_MAX) { _hitTop[_hitN] = max(y, top); _hitBot[_hitN] = below; _hitIdx[_hitN++] = i; }   // for touch
       y -= 4;
       // Red line above the first message that was unread when the thread opened.
       if (_newAfter != NO_DIVIDER && _ids[i] > _newAfter && (i == 0 || _ids[i - 1] <= _newAfter)) {
@@ -422,7 +445,8 @@ private:
       convName(_key, nm, sizeof(nm));
       snprintf(ph, sizeof(ph), "message %s", nm);
       drawUtf8(g, ph, x + 12, y + 4, w - 180);
-      const char* hint = _sel >= 0 ? "press: actions" : "press: emoji + replies";
+      const char* hint = BOARD_HAS_TOUCH ? (_sel >= 0 ? "tap: actions" : "tap: emoji + replies")
+                                         : (_sel >= 0 ? "press: actions" : "press: emoji + replies");
       g.drawString(hint, x + w - 12 - g.textWidth(hint), y + 4);
       if (_sel < 0 && _caret) g.fillRect(x + 10, y + 5, 2, 14, t.green);
       return;
@@ -448,6 +472,11 @@ private:
   uint32_t _gen = 0, _blinkAt = 0;
   bool _caret = true;
   String _compose;
+  // Where each message was drawn, for touch; and the drag not yet a whole step.
+  static constexpr uint8_t HIT_MAX = 24;
+  int16_t _hitTop[HIT_MAX], _hitBot[HIT_MAX], _hitIdx[HIT_MAX];
+  uint8_t _hitN = 0;
+  int _dragAcc = 0;
 };
 
 
@@ -510,12 +539,40 @@ public:
     nav.pop();
     tv->setCompose(c);
   }
+  // Touch: tap an emoji to insert it, drag to scroll, tap the header's right side
+  // for quick replies.
+  bool touch(const TouchEvent& e) override {
+    const int n = _order.size();
+    const int rows = (n + COLS - 1) / COLS;
+    if (e.type == TouchEvent::Down) { _dragAcc = 0; return false; }
+    if (e.type == TouchEvent::Drag) {
+      _dragAcc += e.dy;
+      while (_dragAcc <= -CELL && _top < max(0, rows - ROWS)) { _top++; _dragAcc += CELL; }
+      while (_dragAcc >= CELL && _top > 0) { _top--; _dragAcc -= CELL; }
+      _f = constrain(_f, _top * COLS, min(n - 1, (_top + ROWS) * COLS - 1));   // keep the focus on screen, or draw() scrolls back to it
+      return true;
+    }
+    if (e.type != TouchEvent::Tap) return false;
+    if (e.y < L::BODY_Y) {
+      if (e.x > L::W / 2) { nav.pop(); openQuickReplies(_tv); return true; }
+      return false;
+    }
+    const int x0 = (L::W - COLS * CELL) / 2;
+    const int c = (e.x - x0) / CELL, r = _top + (e.y - L::BODY_Y - 4) / CELL;
+    if (e.x < x0 || c >= COLS || r < 0) return false;
+    const int i = r * COLS + c;
+    if (i >= n) return false;
+    _f = i;
+    press();
+    return true;
+  }
   void draw(Canvas& g) override;
 private:
-  static constexpr int COLS = 11, CELL = 42, ROWS = 4;
+  static constexpr int CELL = 42, ROWS = 4;
+  static constexpr int COLS = (L::W - 8) / CELL;   // 11 on the pager's 480, 7 on a 320-wide screen
   ThreadView* _tv;
   std::vector<int> _order;
-  int _f = 0, _top = 0;
+  int _f = 0, _top = 0, _dragAcc = 0;
 };
 
 static void openQuickReplies(ThreadView* tv) {
@@ -626,7 +683,7 @@ static void openEmojiPicker(ThreadView* t) { nav.push(new EmojiPickerView(t)); }
 
 void EmojiPickerView::draw(Canvas& g) {
   const Theme& t = nav.theme();
-  drawHeader(g, "Emoji", "press insert  q quick replies  wasd move");
+  drawHeader(g, "Emoji", BOARD_HAS_TOUCH ? "tap to insert   quick replies >" : "press insert  q quick replies  wasd move");
   const int row = _f / COLS;
   if (row < _top) _top = row;
   if (row >= _top + ROWS) _top = row - ROWS + 1;
@@ -644,15 +701,25 @@ void EmojiPickerView::draw(Canvas& g) {
 }
 
 // ---- chat list ----------------------------------------------------------------------------------
-struct ChatEntry {
-  ConvKey key;
-  char name[32];
-  uint8_t kind;
-  uint32_t lastTs, lastId;
-  uint16_t unread;
-  bool mention;
-  char preview[72];
-};
+// One row of the Messages list (ChatEntry is in chats.h, shared with home screens).
+static void fillEntry(ChatEntry& e, const ConvKey& k, int chanIdx, const char* name, uint8_t kind) {
+  e.key = k;
+  strlcpy(e.name, name, sizeof(e.name));
+  e.kind = kind;
+  HistMsg* m = history.last(k);
+  e.lastTs = m ? m->ts : 0;
+  e.lastId = m ? m->id : 0;
+  e.unread = history.unread(k);
+  e.mention = history.hasMention(k);
+  if (m) {
+    const bool out = m->flags & HF_OUT;
+    if (out) snprintf(e.preview, sizeof(e.preview), "you: %s", m->text);
+    else if (k.type == CONV_CHANNEL || (m->flags & HF_ROOM)) snprintf(e.preview, sizeof(e.preview), "%s: %s", m->sender, m->text);
+    else strlcpy(e.preview, m->text, sizeof(e.preview));
+  } else {
+    strlcpy(e.preview, chanIdx >= 0 ? "no messages yet" : "", sizeof(e.preview));
+  }
+}
 
 class ChatListView : public View {
 public:
@@ -678,6 +745,28 @@ public:
     if (!_filter.length()) return false;
     _filter.remove(_filter.length() - 1); _focus = 0; rebuild(); dirty = true;
     return true;
+  }
+  // Touch: tap a conversation to open it, drag to scroll.
+  bool touch(const TouchEvent& e) override {
+    const int rowH = 44, visible = 4, n = _count + 1;
+    switch (e.type) {
+      case TouchEvent::Down: _dragAcc = 0; return false;
+      case TouchEvent::Drag:
+        _dragAcc += e.dy;
+        while (_dragAcc <= -rowH / 2 && _scroll < max(0, n - visible)) { _scroll++; _dragAcc += rowH / 2; }
+        while (_dragAcc >= rowH / 2 && _scroll > 0) { _scroll--; _dragAcc -= rowH / 2; }
+        _focus = constrain(_focus, _scroll, _scroll + visible - 1);   // or draw() scrolls back to it
+        return true;
+      case TouchEvent::Tap: {
+        if (e.y < L::BODY_Y) return false;
+        const int i = _scroll + (e.y - L::BODY_Y) / rowH;
+        if (i >= n) return false;
+        _focus = i;
+        press();
+        return true;
+      }
+      default: return false;
+    }
   }
   void press() override {
     if (_focus == _count) { newChatMenu(); return; }
@@ -748,23 +837,7 @@ private:
   void add(const ConvKey& k, int chanIdx, const char* name, uint8_t kind) {
     if (_count >= MAX) return;
     if (_filter.length() && !strcasestr(name, _filter.c_str())) return;
-    ChatEntry& e = _e[_count++];
-    e.key = k;
-    strlcpy(e.name, name, sizeof(e.name));
-    e.kind = kind;
-    HistMsg* m = history.last(k);
-    e.lastTs = m ? m->ts : 0;
-    e.lastId = m ? m->id : 0;
-    e.unread = history.unread(k);
-    e.mention = history.hasMention(k);
-    if (m) {
-      const bool out = m->flags & HF_OUT;
-      if (out) snprintf(e.preview, sizeof(e.preview), "you: %s", m->text);
-      else if (k.type == CONV_CHANNEL || (m->flags & HF_ROOM)) snprintf(e.preview, sizeof(e.preview), "%s: %s", m->sender, m->text);
-      else strlcpy(e.preview, m->text, sizeof(e.preview));
-    } else {
-      strlcpy(e.preview, chanIdx >= 0 ? "no messages yet" : "", sizeof(e.preview));
-    }
+    fillEntry(_e[_count++], k, chanIdx, name, kind);
   }
 
   void rebuild() {
@@ -801,7 +874,7 @@ private:
 
   static constexpr int MAX = 104;
   ChatEntry _e[MAX];
-  int _count = 0, _focus = 0, _scroll = 0;
+  int _count = 0, _focus = 0, _scroll = 0, _dragAcc = 0;
   uint32_t _hgen = 0, _cgen = 0, _built = 0;
   String _filter;
 };
@@ -878,6 +951,38 @@ void joinChannelFlow() {
 }
 
 void app::openChats() { nav.push(new ChatListView()); }
+
+void openThread(const ConvKey& k) { nav.push(new ThreadView(k)); }
+
+uint8_t recentChats(ChatEntry* out, uint8_t max) {
+  if (!g_node || !max) return 0;
+  uint8_t n = 0;
+  auto consider = [&](const ConvKey& k, int chanIdx, const char* name, uint8_t kind) {
+    HistMsg* m = history.last(k);
+    if (!m) return;                         // only conversations with something in them
+    ChatEntry e;
+    fillEntry(e, k, chanIdx, name, kind);
+    // insertion into the newest-first list, keeping at most `max`
+    int j;
+    if (n < max) j = n++;
+    else { if (out[max - 1].lastId >= e.lastId) return; j = max - 1; }
+    while (j > 0 && out[j - 1].lastId < e.lastId) { out[j] = out[j - 1]; j--; }
+    out[j] = e;
+  };
+  for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
+    ChannelDetails ch;
+    if (g_node->getChannel(i, ch) && ch.name[0]) consider(ConvKey::channel(ch.channel.secret), i, ch.name, 10);
+  }
+  ConvKey keys[64];
+  const uint16_t k = history.conversations(keys, 64);
+  for (uint16_t i = 0; i < k; i++) {
+    if (keys[i].type != CONV_CONTACT) continue;
+    char nm[32]; uint8_t kind;
+    convName(keys[i], nm, sizeof(nm), &kind);
+    consider(keys[i], -1, nm, kind);
+  }
+  return n;
+}
 
 void app::openThreadForContact(const uint8_t* pub) {
   nav.push(new ThreadView(ConvKey::contact(pub)));

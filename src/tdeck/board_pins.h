@@ -19,6 +19,9 @@
 #define BOARD_HAS_CHARGER_IC   0    // no charge controller or fuel gauge on I2C: battery is an ADC reading
 #define BOARD_HAS_EXT_HEADER   0    // no 12-pin header
 #define BOARD_HAS_KB_BACKLIGHT 1    // set through the keyboard's own controller
+#define BOARD_HAS_TOUCH        1    // GT911 capacitive touch: the main input on this board
+#define BOARD_ROW_H            28   // menu rows sized for a finger (5 mm), not a wheel
+#define BOARD_HOME_DASHBOARD   1    // home is src/tdeck/dashboard.cpp, not the wheel carousel
 
 // Wi-Fi updates come from firmware/t-deck/ and must carry a signature naming
 // "t-deck" (ota.cpp): pager firmware can never be installed on a T-Deck this way.

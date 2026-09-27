@@ -8,6 +8,10 @@
 #include <vector>
 #include "display_config.h"
 #include "theme.h"
+#include "touch.h"
+#ifndef BOARD_ROW_H
+#define BOARD_ROW_H 20
+#endif
 
 using Canvas = lgfx::LGFX_Sprite;
 
@@ -19,7 +23,7 @@ namespace L {
   constexpr int STATUS_H = 18;          // status bar
   constexpr int HEAD_Y = 18, HEAD_H = 24;
   constexpr int BODY_Y = 42;            // first content pixel under a header
-  constexpr int ROW_H = 20;
+  constexpr int ROW_H = BOARD_ROW_H;   // 20 on the pager; taller on a touchscreen, for fingers
 }
 
 class View {
@@ -40,6 +44,10 @@ public:
   virtual bool isHome() { return false; }
   virtual bool isLock() { return false; }
   virtual bool wantsAllKeys() { return false; }  // don't treat letters as shortcuts
+  // Touch (boards with a touchscreen only). True if the view used the event.
+  virtual bool touch(const TouchEvent& e) { return false; }
+  // Has the usual header, whose "<" can be tapped to go back.
+  virtual bool headerBack() { return !isHome() && !isLock(); }
   bool dirty = true;
 };
 
@@ -55,6 +63,7 @@ public:
   void replaceTop(View* v);
 
   void toast(const char* msg, uint16_t ms = 2500);
+  void dismissToast() { if (_toastUntil) { _toastUntil = 0; _toastAt = 0; invalidate(); } }
   // Puts a notice on screen right away, before a slow blocking job starts.
   // Shown at once (no slide-in): the caller is about to block.
   void busy(const char* msg) { toast(msg, 60000); _toastAt = 0; draw(); }
@@ -65,6 +74,9 @@ public:
   void rotate(int d)  { if (top()) top()->rotate(d); }
   void press()        { if (top()) top()->press(); }
   void key(char c)    { if (top()) top()->key(c); }
+  // Touch: going back (the header's "<", or a swipe in from the left edge) is
+  // handled here for every screen; the rest goes to the screen on top.
+  bool touch(const TouchEvent& e);
   void backspace();
   void tick();
   void draw();
@@ -158,6 +170,7 @@ public:
   bool backspace() override;
   void key(char c) override;
   void tick() override;
+  bool touch(const TouchEvent& e) override;
   String title() const { return _title; }
   void setTitle(const String& t) { _title = t; dirty = true; }
   // Rebuild hook: called on resume so rows reflect state changed by children.
@@ -174,6 +187,7 @@ protected:
   int _drawnFocus = -1;                   // the view follows the focus only when it moves
   bool _editing = false;
   uint32_t _lastRefresh = 0;
+  int _dragAcc = 0;                       // touch: pixels dragged, not yet a whole row
 };
 
 // ---- text prompt ------------------------------------------------------------------
@@ -188,6 +202,7 @@ public:
   void press() override { commit(); }
   void rotate(int) override;
   void tick() override;
+  bool touch(const TouchEvent& e) override;
   bool wantsAllKeys() override { return true; }
 private:
   void commit();
@@ -208,6 +223,8 @@ public:
   void rotate(int d) override { _sel = !_sel; dirty = true; }
   void press() override;
   void key(char c) override { if (c == 'y') { _sel = true; press(); } else if (c == 'n') { _sel = false; press(); } }
+  bool touch(const TouchEvent& e) override;
+  bool headerBack() override { return false; }   // no header: a dialog
 private:
   String _q, _detail;
   std::function<void()> _yes;
@@ -222,6 +239,7 @@ public:
   void draw(Canvas& g) override;
   void rotate(int d) override;
   void tick() override;
+  bool touch(const TouchEvent& e) override;
   std::function<void()> onPress;
   void press() override { if (onPress) onPress(); }
 private:
@@ -229,7 +247,7 @@ private:
   std::function<void(std::vector<String>&)> _fill;
   std::vector<String> _lines;
   uint32_t _refresh, _last = 0;
-  int _scroll = 0;
+  int _scroll = 0, _dragAcc = 0;
   bool _stickBottom = false;
 public:
   void stickToBottom() { _stickBottom = true; }

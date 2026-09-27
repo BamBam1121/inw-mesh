@@ -519,6 +519,20 @@ void Nav::replaceTop(View* v) {
   push(v);
 }
 
+bool Nav::touch(const TouchEvent& e) {
+  View* v = top();
+  if (!v) return false;
+  if (_depth > 1 && !v->isLock() && !v->isHome()) {
+    const bool headerTap = e.type == TouchEvent::Tap && v->headerBack() && e.x < 64 &&
+                           e.y >= L::HEAD_Y && e.y < L::HEAD_Y + L::HEAD_H;
+    const bool edgeSwipe = e.type == TouchEvent::Swipe && e.dir == 'R' && e.x0 < 24;
+    if (headerTap || edgeSwipe) { pop(); return true; }
+  }
+  const bool used = v->touch(e);
+  if (used) v->dirty = true;
+  return used;
+}
+
 void Nav::backspace() {
   View* v = top();
   if (!v) return;
@@ -800,23 +814,24 @@ void MenuView::draw(Canvas& g) {
     const uint16_t bg = on ? t.focus : t.bg;
     if (r.kind == RowKind::Header) {
       g.setTextColor(t.greenDim, t.bg);
-      g.drawString(r.label, 10, y + 3);
-      g.drawFastHLine(14 + g.textWidth(r.label), y + 11, L::W - 30 - g.textWidth(r.label), t.line);
+      g.drawString(r.label, 10, y + (L::ROW_H - 14) / 2);
+      g.drawFastHLine(14 + g.textWidth(r.label), y + L::ROW_H / 2 + 1, L::W - 30 - g.textWidth(r.label), t.line);
       continue;
     }
     if (on) { g.fillRect(0, y, L::W, L::ROW_H, bg); g.fillRect(0, y, 3, L::ROW_H, t.green); }
     g.setTextColor(r.kind == RowKind::Info ? t.dim : (on ? t.green : t.txt), bg);
-    drawUtf8(g, r.label.c_str(), 12, y + 2, L::W - 170);
+    const int ty = y + (L::ROW_H - 16) / 2;   // text, centred in the row
+    drawUtf8(g, r.label.c_str(), 12, ty, L::W - 170);
     const int rx = L::W - 12;
     switch (r.kind) {
       case RowKind::Toggle:
-        drawToggle(g, rx - 30, y + 3, r.toggled && r.toggled());
+        drawToggle(g, rx - 30, y + (L::ROW_H - 14) / 2, r.toggled && r.toggled());
         break;
       case RowKind::Submenu: {
         String v = r.value ? r.value() : String();
         g.setTextColor(t.dim, bg);
-        g.drawString(">", rx - 6, y + 2);
-        if (v.length()) drawUtf8(g, v.c_str(), rx - 14 - widthUtf8(g, v.c_str()), y + 2);
+        g.drawString(">", rx - 6, ty);
+        if (v.length()) drawUtf8(g, v.c_str(), rx - 14 - widthUtf8(g, v.c_str()), ty);
         break;
       }
       case RowKind::Value: case RowKind::Adjust: case RowKind::Info: {
@@ -825,12 +840,12 @@ void MenuView::draw(Canvas& g) {
         if (on && _editing) {
           g.fillRoundRect(rx - vw - 10, y + 1, vw + 14, L::ROW_H - 2, 4, t.green);
           g.setTextColor(t.bg, t.green);
-          g.drawString(v, rx - vw - 3, y + 2);
+          g.drawString(v, rx - vw - 3, ty);
           g.setTextColor(t.green, bg);
-          g.drawString("<", rx - vw - 22, y + 2);
+          g.drawString("<", rx - vw - 22, ty);
         } else {
           g.setTextColor(r.kind == RowKind::Info ? t.txt : t.dim, bg);
-          g.drawString(v, rx - vw, y + 2);
+          g.drawString(v, rx - vw, ty);
         }
         break;
       }
@@ -838,6 +853,36 @@ void MenuView::draw(Canvas& g) {
     }
   }
   drawScrollbar(g, _rows.size(), _scroll, visible, L::BODY_Y, L::H - L::BODY_Y);
+}
+
+// Touch: tap a row to use it (a value's left or right half steps it down or up),
+// drag to scroll. The focus follows the finger, so the wheel and the trackball
+// carry on from wherever the last tap was.
+bool MenuView::touch(const TouchEvent& e) {
+  if (_rows.empty()) return false;
+  const int visible = (L::H - L::BODY_Y) / L::ROW_H;
+  const int maxScroll = max(0, (int)_rows.size() - visible);
+  switch (e.type) {
+    case TouchEvent::Down: _dragAcc = 0; return false;
+    case TouchEvent::Drag:
+      _dragAcc += e.dy;
+      while (_dragAcc <= -L::ROW_H && _scroll < maxScroll) { _scroll++; _dragAcc += L::ROW_H; }
+      while (_dragAcc >= L::ROW_H && _scroll > 0) { _scroll--; _dragAcc -= L::ROW_H; }
+      _drawnFocus = _focus;              // don't snap back to the focus on the next draw
+      return true;
+    case TouchEvent::Tap: {
+      if (e.y < L::BODY_Y) return false;
+      const int i = _scroll + (e.y - L::BODY_Y) / L::ROW_H;
+      if (i >= (int)_rows.size() || !focusable(i)) return false;
+      _focus = _drawnFocus = i;
+      _editing = false;
+      MenuRow& r = _rows[i];
+      if (r.kind == RowKind::Adjust) { if (r.onAdjust && e.x > L::W / 2) r.onAdjust(e.x > L::W * 3 / 4 ? 1 : -1); return true; }
+      if (r.onPress) { auto fn = r.onPress; fn(); }   // copy: fn may rebuild _rows
+      return true;
+    }
+    default: return false;
+  }
 }
 
 // ---- PromptView -------------------------------------------------------------------------
@@ -880,9 +925,20 @@ void PromptView::draw(Canvas& g) {
     g.drawEllipse(ex, ey, 11, 6, ec);
     g.fillCircle(ex, ey, 3, ec);
     if (!_show) { g.drawLine(ex - 11, ey + 7, ex + 11, ey - 7, ec); g.drawLine(ex - 11, ey + 8, ex + 11, ey - 6, t.panel); }
-    g.drawString(_show ? "turn the wheel to hide" : "turn the wheel to show", 12, fy + fh + 6);
+    g.drawString(BOARD_HAS_TOUCH ? (_show ? "tap the eye to hide" : "tap the eye to show")
+                                 : (_show ? "turn the wheel to hide" : "turn the wheel to show"), 12, fy + fh + 6);
   }
-  g.drawString("enter saves  -  backspace on empty cancels  -  hold orange for 123", 12, L::H - 20);
+  g.drawString(BOARD_HAS_TOUCH ? "enter saves  -  backspace on empty cancels  -  alt for 123"
+                               : "enter saves  -  backspace on empty cancels  -  hold orange for 123", 12, L::H - 20);
+}
+
+// Touch: the eye shows or hides a secret.
+bool PromptView::touch(const TouchEvent& e) {
+  if (e.type != TouchEvent::Tap || !_secret) return false;
+  const int fy = L::BODY_Y + 32, fh = 36;
+  if (e.x < L::W - 70 || e.y < fy - 6 || e.y > fy + fh + 6) return false;
+  _show = !_show;
+  return true;
 }
 
 void PromptView::rotate(int) {
@@ -943,6 +999,16 @@ void ConfirmView::draw(Canvas& g) {
   drawPill(g, x + w / 2 + 10, by, bw, 26, _sel ? t.green : t.line, _sel ? t.bg : t.green, "Yes");
 }
 
+// Touch: the No and Yes buttons, where draw() puts them.
+bool ConfirmView::touch(const TouchEvent& e) {
+  if (e.type != TouchEvent::Tap) return false;
+  const int x = 30, y = 36, w = L::W - 60, h = 150, by = y + h - 40, bw = 110;
+  if (e.y < by - 8 || e.y > by + 26 + 8) return false;
+  if (e.x >= x + w / 2 - bw - 10 && e.x < x + w / 2 - 10) { _sel = false; press(); return true; }
+  if (e.x >= x + w / 2 + 10 && e.x < x + w / 2 + 10 + bw) { _sel = true; press(); return true; }
+  return false;
+}
+
 void ConfirmView::press() {
   auto fn = _yes;
   const bool yes = _sel;
@@ -967,6 +1033,18 @@ void TextPageView::rotate(int d) {
   const int visible = (L::H - L::BODY_Y - 4) / 18;
   _scroll = constrain(_scroll + d, 0, max(0, (int)_lines.size() - visible));
   dirty = true;
+}
+
+bool TextPageView::touch(const TouchEvent& e) {
+  const int visible = (L::H - L::BODY_Y - 4) / 18;
+  if (e.type == TouchEvent::Down) { _dragAcc = 0; return false; }
+  if (e.type == TouchEvent::Tap && onPress) { onPress(); return true; }
+  if (e.type != TouchEvent::Drag) return false;
+  _dragAcc += e.dy;
+  const int maxScroll = max(0, (int)_lines.size() - visible);
+  while (_dragAcc <= -18 && _scroll < maxScroll) { _scroll++; _dragAcc += 18; }
+  while (_dragAcc >= 18 && _scroll > 0) { _scroll--; _dragAcc -= 18; }
+  return true;
 }
 
 void TextPageView::draw(Canvas& g) {
