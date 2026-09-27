@@ -244,7 +244,7 @@ void begin() {
   int k = 0;
   for (int i = 0; i < s_nch; i++) {
     s_ch[i].name[NAME_LEN] = 0;
-    if (s_ch[i].name[0] && s_ch[i].name[0] != '*') s_ch[k++] = s_ch[i];   // "*" was a beta's "whole mesh"
+    if (s_ch[i].name[0] && s_ch[i].name[0] != '*') s_ch[k++] = s_ch[i];   // "*" was a beta's "no region"
   }
   s_nch = k;
   File g = SPIFFS.open(LIST_PATH, FILE_READ);

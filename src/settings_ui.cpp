@@ -217,7 +217,7 @@ static void radioMenu() {
     v.header("mesh");
     v.submenu("default region scope", [] { scopeMenu(nullptr); }, []() -> String {
       const char* d = regions::defaultName();
-      return *d ? String(d) : String("none");
+      return *d ? String(d) : String("flood");
     });
     v.toggle("client repeat (forward packets)", [] { return P().isRepeatEn(); }, [] {
       P().setRepeatEn(!P().isRepeatEn()); markPrefsDirty();
@@ -238,7 +238,7 @@ static void radioMenu() {
 
 // ---- channels ------------------------------------------------------------------------------------
 // ---- region scope ----------------------------------------------------------------------------------
-// Where messages flood: across the whole mesh, or only through the repeaters that
+// Where messages flood: everywhere (plain flood), or only through the repeaters that
 // serve a region (regions.h). A repeater passes a region's messages on only if it
 // has that exact region (spelling and capitals), so the safe way to choose is from
 // what the repeaters in range say they serve: RegionScanView asks them.
@@ -276,7 +276,7 @@ private:
     }
     if (_scan.answered) {
       const int w = _scan.wholeMesh, a = _scan.answered;
-      info("no region (unscoped)", [w, a] { return String(w) + " of " + String(a) + " pass it"; });
+      info("flood", [w, a] { return String(w) + " of " + String(a) + " pass it"; });
     }
     if (_scan.done() && !_scan.answered)
       info(_scan.silent ? "no answer" : "no repeaters in range", [] { return String("try closer to one"); });
@@ -300,7 +300,7 @@ private:
 // The app's Set Region Scope (secret: that channel) and Default Region Scope
 // (nullptr): pick from the regions added, clear it, discover what the repeaters
 // in range carry, or add one by name. A channel with no region follows the
-// default; the default with none is the whole mesh.
+// default; the default with none is plain flood.
 static void regionListMenu();
 static void scopeMenu(const uint8_t* secret) {
   struct Who { bool channel; uint8_t s[16]; } who{secret != nullptr, {0}};
@@ -314,14 +314,14 @@ static void scopeMenu(const uint8_t* secret) {
       if (who.channel) regions::setForChannel(who.s, name); else regions::setDefault(name);
       if (*name) nav.toast((String("region scope: ") + name).c_str());
       else if (who.channel) nav.toast(*regions::defaultName() ? (String("scope cleared: default ") + regions::defaultName()).c_str()
-                                                             : "scope cleared: no region");
-      else nav.toast("no default region: the whole mesh");
+                                                             : "scope cleared: flood");
+      else nav.toast("no default region: flood");
     };
     auto setAndClose = [set](const char* name) { nav.pop(); set(name); };
     v.header("only repeaters that carry it pass it on");
     const char* d = regions::defaultName();
-    const String none = who.channel ? (*d ? String("clear scope (default ") + d + ")" : String("clear scope (no region)"))
-                                    : String("none: the whole mesh");
+    const String none = who.channel ? (*d ? String("clear scope (default ") + d + ")" : String("clear scope (flood)"))
+                                    : String("flood");
     v.toggle(none, [current] { return current().length() == 0; }, [setAndClose] { setAndClose(""); });
     char names[regions::LIST_MAX][regions::NAME_LEN + 1];
     const int n = regions::list(names, regions::LIST_MAX);
@@ -386,7 +386,7 @@ static void channelMenu(int idx) {
   m->value("region scope", [secret]() -> String {
     const char* own = regions::forChannel(secret);
     if (*own) return String(own);
-    return *regions::defaultName() ? String("default ") + regions::defaultName() : String("none");
+    return *regions::defaultName() ? String("default ") + regions::defaultName() : String("flood");
   }, [secret] { scopeMenu(secret); });
   m->info("key", [secret]() -> String { char h[40]; mesh::Utils::toHex(h, secret, 16); return String(h); });
   m->info("messages", [secret]() -> String { return String(history.count(ConvKey::channel(secret))); });

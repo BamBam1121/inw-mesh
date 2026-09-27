@@ -669,7 +669,7 @@ static void openMessageActions(ThreadView* tv, uint32_t id) {
     m->value("region scope", [secret]() -> String {
       const char* own = regions::forChannel(secret);
       if (*own) return String(own);
-      return *regions::defaultName() ? String("default ") + regions::defaultName() : String("none");
+      return *regions::defaultName() ? String("default ") + regions::defaultName() : String("flood");
     }, [secret] { openChannelRegionScope(secret); });
   }
   m->header("details");

@@ -1,5 +1,5 @@
 // Region scopes: a message floods only through the repeaters that carry a region
-// (MeshCore's "flood scope"), instead of across the whole mesh. Made to work as
+// (MeshCore's "flood scope") instead of flooding everywhere. Made to work as
 // the MeshCore app does it:
 //   - a list of regions you've added (typed in, or picked from what the repeaters
 //     in range report - the app's "Discover Regions");
@@ -30,7 +30,7 @@ int  list(char names[][NAME_LEN + 1], int max);
 void add(const char* name);              // no-op if already there
 void remove(const char* name);
 
-// The device default, "" for none (the whole mesh).
+// The device default, "" for none (plain flood).
 const char* defaultName();
 void setDefault(const char* name);       // "" clears it
 
@@ -38,7 +38,7 @@ void setDefault(const char* name);       // "" clears it
 // key's first 6 bytes are read, so a ConvKey's id will do.
 const char* forChannel(const uint8_t* secret16);
 void setForChannel(const uint8_t* secret16, const char* name);   // "" clears it
-// The region a channel's messages actually go out in ("" = the whole mesh).
+// The region a channel's messages actually go out in ("" = plain flood).
 const char* effective(const uint8_t* secret16);
 
 void begin();                            // after the store is mounted

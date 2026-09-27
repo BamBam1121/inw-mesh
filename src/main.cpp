@@ -1018,11 +1018,11 @@ static void usbCommands() {
         if (!found) Serial.println("[regions] no such repeater in direct range (try: regions ask <name>)");
         else Serial.printf("[regions] asking %s: %s\n", best.name, g_node->requestRegions(best.id.pub_key) ? "sent" : "failed");
       } else {
-        Serial.printf("[regions] default: %s\n", *regions::defaultName() ? regions::defaultName() : "(none, whole mesh)");
+        Serial.printf("[regions] default: %s\n", *regions::defaultName() ? regions::defaultName() : "(none: flood)");
         for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
           ChannelDetails ch;
           if (g_node->getChannel(i, ch) && ch.name[0])
-            Serial.printf("[regions]   %-20s %s\n", ch.name, (*regions::effective(ch.channel.secret) ? regions::effective(ch.channel.secret) : "(whole mesh)"));
+            Serial.printf("[regions]   %-20s %s\n", ch.name, (*regions::effective(ch.channel.secret) ? regions::effective(ch.channel.secret) : "(flood)"));
         }
       }
       continue;
@@ -1633,7 +1633,7 @@ void loop() {
 #if INW_DEV
   // USB "regions scan": each answer prints as it comes (onNodeEvent), the tally at the end.
   if (s_usbScan.running() && s_usbScan.tick() && s_usbScan.done()) {
-    Serial.printf("[regions] done: %d answered, %d pass the whole mesh, %d silent, %d added to contacts\n",
+    Serial.printf("[regions] done: %d answered, %d pass flood, %d silent, %d added to contacts\n",
                   s_usbScan.answered, s_usbScan.wholeMesh, s_usbScan.silent, s_usbScan.added);
     for (int i = 0; i < s_usbScan.count(); i++)
       Serial.printf("[regions]   %-20s %d\n", s_usbScan.name(i), s_usbScan.servedBy(i));
