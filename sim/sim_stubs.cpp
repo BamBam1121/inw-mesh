@@ -99,6 +99,8 @@ InwNode::InwNode() { memset(contacts, 0, sizeof(contacts)); memset(channels, 0, 
 bool bleEnabled() { return true; }
 bool bleConnected() { return sim::phoneLinked; }
 uint32_t blePin() { return 123456; }
+void bleSetEnabled(bool) {}
+SimSensors sensors;
 
 // ---- app:: --------------------------------------------------------------------------------
 uint32_t sim::epoch = 1790527260;   // Sep 27 2026, 9:41 am Pacific
@@ -151,11 +153,13 @@ const char* fmtDistance(double km) {
   else snprintf(b, sizeof(b), "%.1f km", km);
   return b;
 }
-void openMap(double, double, const char*) {}
+#ifdef SIM_PAGER   // the T-Deck simulator compiles the real screens (build.py SCREENS)
 void openTools() {}
+void openMap(double, double, const char*) {}
 void openSettings() {}
 void openContacts() {}
 void openContactDetail(const uint8_t*) {}
+#endif
 }  // namespace app
 
 void markUiDirty() {}
@@ -169,7 +173,47 @@ bool holding() { return false; }
 namespace wifi {
 bool enabled() { return true; }
 bool connected() { return sim::wifiOn; }
+void setEnabled(bool) {}
+const char* statusText() { return "Trailhead 192.168.1.40 -61 dBm"; }
+const char* shortStatus() { return sim::wifiOn ? "Trailhead" : "off"; }
+uint8_t savedCount() { return 1; }
+const char* savedSsid(uint8_t) { return "Trailhead"; }
+const char* savedState(uint8_t) { return "connected"; }
+void save(const char*, const char*) {}
+void forget(uint8_t) {}
+void startScan() {}
+bool scanDone() { return true; }
+static const char* SSIDS[] = {"Trailhead", "Mulvey-5G-2.4", "Spokane Library", "CampusNet"};
+int scanCount() { return 4; }
+const char* scanSsid(int i) { return SSIDS[i & 3]; }
+bool scanOpen(int i) { return i == 2; }
+bool scanEnterprise(int i) { return i == 3; }
+int scanRssi(int i) { return -48 - 9 * i; }
+void requestTile(uint8_t, int32_t, int32_t) {}
+bool pollTile(TileDone&) { return false; }
+uint16_t tilesFetched() { return 0; }
+uint16_t tilesFailed() { return 0; }
+int lastHttpCode() { return 0; }
 }
+// Settings, map and contact screens (settings_ui.cpp, mapview.cpp, contacts.cpp).
+namespace power { void setSaver(bool) {} }
+#include "ota.h"
+namespace ota {
+bool supported() { return true; }
+Info check() { Info i; strlcpy(i.error, "simulator", sizeof(i.error)); return i; }
+const char* install(const Info&) { return "simulator"; }
+}
+#include "dataio.h"
+#include "fieldtools.h"
+bool sdMount() { return true; }
+const char* sdBackupNow(bool) { return "simulator"; }
+const char* exportJson() { return "simulator"; }
+const char* importJsonNow() { return "simulator"; }
+const char* recoverMissingContacts() { return "simulator"; }
+namespace field { const TrailPt* trail(size_t& n) { n = 0; return nullptr; } }
+void gpsPower(bool) {}
+namespace field { void openMenu() {} }
+uint32_t g_shotAt = 0;
 bool sim::wifiOn = true;
 // The background flash writer (tools/patch_meshcore.py): nothing to write in a simulation.
 bool inwQueueAppend(const char*, const uint8_t*, size_t) { return true; }

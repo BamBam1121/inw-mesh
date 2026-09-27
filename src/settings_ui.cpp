@@ -369,8 +369,36 @@ class WifiScanView : public View {
 public:
   WifiScanView() { wifi::startScan(); }
   void tick() override { if (millis() - _last > 500) { _last = millis(); dirty = true; } }
-  void rotate(int d) override { const int n = wifi::scanCount(); if (n) { _f = ((_f + d) % n + n) % n; dirty = true; } }
-  void key(char c) override { if (c == 'r') { wifi::startScan(); _f = 0; } else if (c == '\n') press(); }
+  void rotate(int d) override { const int n = wifi::scanCount(); if (n) { _f = ((_f + d) % n + n) % n; _finger = false; dirty = true; } }
+  void key(char c) override { if (c == 'r') { wifi::startScan(); _f = 0; _top = 0; } else if (c == '\n') press(); }
+  // A finger: tap a network to join it, drag to scroll, tap the header's right
+  // side to scan again.
+  bool touch(const TouchEvent& e) override {
+    const int n = wifi::scanDone() ? wifi::scanCount() : 0;
+    switch (e.type) {
+      case TouchEvent::Down: _dragAcc = 0; return false;
+      case TouchEvent::Drag:
+        _finger = true;
+        _dragAcc += e.dy;
+        while (_dragAcc <= -L::ROW_H && _top < max(0, n - visible())) { _top++; _dragAcc += L::ROW_H; }
+        while (_dragAcc >= L::ROW_H && _top > 0) { _top--; _dragAcc -= L::ROW_H; }
+        return true;
+      case TouchEvent::Tap: {
+        _finger = true;
+        if (e.y < L::BODY_Y) {
+          if (e.x < L::W / 2 || !wifi::scanDone()) return false;
+          key('r');
+          return true;
+        }
+        const int i = _top + (e.y - L::BODY_Y) / L::ROW_H;
+        if (i >= n) return false;
+        _f = i;
+        press();
+        return true;
+      }
+      default: return false;
+    }
+  }
   void press() override {
     if (!wifi::scanDone() || !wifi::scanCount()) return;
     const String ss = wifi::scanSsid(_f);
@@ -385,31 +413,38 @@ public:
   }
   void draw(Canvas& g) override {
     const Theme& t = nav.theme();
-    drawHeader(g, "Wi-Fi networks", wifi::scanDone() ? "2.4 GHz only   r = rescan" : "scanning...");
+    const bool touch = BOARD_HAS_TOUCH;
+    drawHeader(g, "Wi-Fi networks", wifi::scanDone() ? (touch ? "2.4 GHz  tap: rescan" : "2.4 GHz only   r = rescan") : "scanning...");
     const int n = wifi::scanCount();
     if (!wifi::scanDone()) { g.setTextColor(t.dim, t.bg); g.drawString("looking for networks...", 14, L::BODY_Y + 10); return; }
-    if (!n) { g.setTextColor(t.dim, t.bg); g.drawString("nothing found. r to rescan", 14, L::BODY_Y + 10); return; }
-    const int visible = 8;
-    if (_f < _top) _top = _f;
-    if (_f >= _top + visible) _top = _f - visible + 1;
+    if (!n) { g.setTextColor(t.dim, t.bg); g.drawString(touch ? "nothing found. tap the header to rescan" : "nothing found. r to rescan", 14, L::BODY_Y + 10); return; }
+    const int visible = this->visible();
+    if (!_finger) {
+      if (_f < _top) _top = _f;
+      if (_f >= _top + visible) _top = _f - visible + 1;
+    }
+    const int ty = (L::ROW_H - 16) / 2;      // text centred in the row
     for (int i = _top; i < n && i < _top + visible; i++) {
       const int y = L::BODY_Y + (i - _top) * L::ROW_H;
-      const bool on = i == _f;
+      const bool on = i == _f && !_finger;
       const uint16_t bg = on ? t.focus : t.bg;
       if (on) { g.fillRect(0, y, L::W, L::ROW_H, bg); g.fillRect(0, y, 3, L::ROW_H, t.green); }
       char nm[40];
       sanitize(wifi::scanSsid(i), nm, sizeof(nm));
-      g.setTextColor(on ? t.green : t.white, bg);
-      g.drawString(nm[0] ? nm : "(hidden)", 12, y + 2);
       char r[24];
       snprintf(r, sizeof(r), "%s %d dBm", wifi::scanOpen(i) ? "open" : wifi::scanEnterprise(i) ? "login" : "", wifi::scanRssi(i));
+      g.setTextColor(on ? t.green : t.white, bg);
+      drawUtf8(g, nm[0] ? nm : "(hidden)", 12, y + ty, L::W - 34 - g.textWidth(r));
       g.setTextColor(t.dim, bg);
-      g.drawString(r, L::W - 12 - g.textWidth(r), y + 2);
+      g.drawString(r, L::W - 12 - g.textWidth(r), y + ty);
     }
     drawScrollbar(g, n, _top, visible, L::BODY_Y, L::H - L::BODY_Y);
   }
 private:
-  int _f = 0, _top = 0;
+  // Eight rows on the pager; as many as fit where rows are taller (the T-Deck).
+  static int visible() { return min(8, (L::H - L::BODY_Y) / L::ROW_H); }
+  int _f = 0, _top = 0, _dragAcc = 0;
+  bool _finger = BOARD_HAS_TOUCH;
   uint32_t _last = 0;
 };
 
@@ -857,7 +892,7 @@ static constexpr int TILE_N = sizeof(TILES) / sizeof(TILES[0]);
 
 class SettingsGrid : public View {
 public:
-  void rotate(int d) override { _f = ((_f + d) % TILE_N + TILE_N) % TILE_N; dirty = true; }
+  void rotate(int d) override { _f = ((_f + d) % TILE_N + TILE_N) % TILE_N; _finger = false; dirty = true; }
   void press() override {
     // Without a running node only the device-side sections make sense.
     static const bool NEEDS_NODE[TILE_N] = {1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,0,0,0};
@@ -868,7 +903,32 @@ public:
     const char lc = tolower(c);
     for (int k = 1; k <= TILE_N; k++) {
       const int i = (_f + k) % TILE_N;
-      if (tolower(TILES[i].label[0]) == lc) { _f = i; dirty = true; return; }
+      if (tolower(TILES[i].label[0]) == lc) { _f = i; _finger = false; dirty = true; return; }
+    }
+  }
+  // A finger: tap a tile to open it, drag to scroll. The highlight is the wheel's
+  // (or trackball's) and stays hidden while a finger is doing the work.
+  bool touch(const TouchEvent& e) override {
+    const int maxTop = max(0, ROWS_ALL - ROWS);
+    switch (e.type) {
+      case TouchEvent::Down: _dragAcc = 0; return false;
+      case TouchEvent::Drag:
+        _finger = true;
+        _dragAcc += e.dy;
+        while (_dragAcc <= -STEP && _top < maxTop) { _top++; _dragAcc += STEP; }
+        while (_dragAcc >= STEP && _top > 0) { _top--; _dragAcc -= STEP; }
+        return true;
+      case TouchEvent::Tap: {
+        _finger = true;
+        if (e.y < L::BODY_Y + 4) return false;
+        const int r = _top + (e.y - L::BODY_Y - 4) / STEP, c = (e.x - 8) / (TW + GAP);
+        const int i = r * COLS + c;
+        if (c < 0 || c >= COLS || r >= _top + ROWS || i >= TILE_N) return false;
+        _f = i;
+        press();
+        return true;
+      }
+      default: return false;
     }
   }
   void tick() override { if (millis() - _last > 2000) { _last = millis(); dirty = true; } }
@@ -876,35 +936,45 @@ public:
     const Theme& t = nav.theme();
     char pos[12];
     snprintf(pos, sizeof(pos), "%d/%d", _f + 1, TILE_N);
-    drawHeader(g, "Settings", pos);
-    const int cols = 2, tw = 230, th = 52, gap = 6, rows = 3;
-    const int row = _f / cols;
-    if (row < _top) _top = row;
-    if (row >= _top + rows) _top = row - rows + 1;
-    for (int r = _top; r < _top + rows; r++) {
-      for (int c = 0; c < cols; c++) {
-        const int i = r * cols + c;
+    drawHeader(g, "Settings", _finger ? nullptr : pos);
+    const int row = _f / COLS;
+    if (!_finger) {                               // keep the highlight in view
+      if (row < _top) _top = row;
+      if (row >= _top + ROWS) _top = row - ROWS + 1;
+    }
+    // Narrow screens (the T-Deck): the icon and text move in to fit the tile.
+    const int ix = NARROW ? 21 : 26, ir = NARROW ? 13 : 15, tx = NARROW ? 40 : 50;
+    for (int r = _top; r < _top + ROWS; r++) {
+      for (int c = 0; c < COLS; c++) {
+        const int i = r * COLS + c;
         if (i >= TILE_N) break;
-        const int x = 8 + c * (tw + gap), y = L::BODY_Y + 4 + (r - _top) * (th + gap);
-        const bool on = i == _f;
-        g.fillRoundRect(x, y, tw, th, 8, on ? t.focus : t.panel);
-        g.drawRoundRect(x, y, tw, th, 8, on ? t.green : t.line);
-        g.fillCircle(x + 26, y + th / 2, 15, on ? t.green : t.greenDim);
+        const int x = 8 + c * (TW + GAP), y = L::BODY_Y + 4 + (r - _top) * STEP;
+        const bool on = i == _f && !_finger;
+        g.fillRoundRect(x, y, TW, TH, 8, on ? t.focus : t.panel);
+        g.drawRoundRect(x, y, TW, TH, 8, on ? t.green : t.line);
+        g.fillCircle(x + ix, y + TH / 2, ir, on ? t.green : t.greenDim);
         g.setTextColor(t.bg, on ? t.green : t.greenDim);
-        g.drawString(TILES[i].icon, x + 26 - g.textWidth(TILES[i].icon) / 2, y + th / 2 - 8);
+        g.drawString(TILES[i].icon, x + ix - g.textWidth(TILES[i].icon) / 2, y + TH / 2 - 8);
         g.setTextColor(on ? t.green : t.white, on ? t.focus : t.panel);
-        g.drawString(TILES[i].label, x + 50, y + 9);
+        if (NARROW) drawUtf8(g, TILES[i].label, x + tx, y + 9, TW - tx - 4);
+        else g.drawString(TILES[i].label, x + tx, y + 9);
         String s = TILES[i].sub();
         if (s.length()) {
           g.setTextColor(t.dim, on ? t.focus : t.panel);
-          g.drawString(s, x + 50, y + 28);
+          if (NARROW) drawUtf8(g, s.c_str(), x + tx, y + 28, TW - tx - 4);
+          else g.drawString(s, x + tx, y + 28);
         }
       }
     }
-    drawScrollbar(g, (TILE_N + 1) / 2, _top, rows, L::BODY_Y, L::H - L::BODY_Y);
+    drawScrollbar(g, ROWS_ALL, _top, ROWS, L::BODY_Y, L::H - L::BODY_Y);
   }
 private:
-  int _f = 0, _top = 0;
+  static constexpr bool NARROW = L::W < 400;
+  static constexpr int COLS = 2, ROWS = 3, GAP = 6, TH = 52, STEP = TH + GAP;
+  static constexpr int TW = NARROW ? (L::W - 16 - GAP) / 2 : 230;
+  static constexpr int ROWS_ALL = (TILE_N + COLS - 1) / COLS;
+  int _f = 0, _top = 0, _dragAcc = 0;
+  bool _finger = BOARD_HAS_TOUCH;           // a touchscreen board opens with no highlight
   uint32_t _last = 0;
 };
 

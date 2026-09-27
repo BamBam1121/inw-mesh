@@ -46,12 +46,46 @@ public:
   void rotate(int d) override {
     const int n = _n + 2;                  // two control rows first
     _focus = constrain(_focus + d, 0, n - 1);   // stop at the ends; a wheel flick used to wrap past them
+    _finger = false;
     dirty = true;
   }
   void key(char c) override {
     if (c == '\n') { press(); return; }
     if ((uint8_t)c < 0x20 || _filter.length() >= 16) return;
-    _filter += c; _focus = 2; rebuild(); dirty = true;
+    _filter += c; _focus = 2; _scroll = 0; rebuild(); dirty = true;
+  }
+  // A finger: tap "show" or "sort" to change it, tap someone to open them, drag
+  // to scroll. The highlight belongs to the wheel or trackball.
+  bool touch(const TouchEvent& e) override {
+    const int visible = (L::H - TOP) / ROW_H;
+    switch (e.type) {
+      case TouchEvent::Down: _dragAcc = 0; return false;
+      case TouchEvent::Drag: {
+        _finger = true;
+        const int maxScroll = max(0, _n - visible);
+        _dragAcc += e.dy;
+        while (_dragAcc <= -ROW_H && _scroll < maxScroll) { _scroll++; _dragAcc += ROW_H; }
+        while (_dragAcc >= ROW_H && _scroll > 0) { _scroll--; _dragAcc -= ROW_H; }
+        return true;
+      }
+      case TouchEvent::Tap:
+        _finger = true;
+        if (e.y >= L::BODY_Y && e.y < TOP) {
+          if (e.x >= _pillEnd) return false;
+          _focus = e.x < _pillSplit ? 0 : 1;
+          press();
+          return true;
+        }
+        if (e.y >= TOP) {
+          const int i = _scroll + (e.y - TOP) / ROW_H;
+          if (i >= _n) return false;
+          _focus = i + 2;
+          press();
+          return true;
+        }
+        return false;
+      default: return false;
+    }
   }
   bool backspace() override {
     if (!_filter.length()) return false;
@@ -68,8 +102,10 @@ public:
   void draw(Canvas& g) override {
     const Theme& t = nav.theme();
     char right[48];
+    const int total = g_node ? g_node->getNumContacts() : 0;
     if (_filter.length()) snprintf(right, sizeof(right), "/%s  %d", _filter.c_str(), _n);
-    else snprintf(right, sizeof(right), "%d of %d  type to search", _n, g_node ? g_node->getNumContacts() : 0);
+    else if (NARROW) snprintf(right, sizeof(right), "%d/%d  type to find", _n, total);
+    else snprintf(right, sizeof(right), "%d of %d  type to search", _n, total);
     drawHeader(g, "Contacts", right);
     static const char* FN[] = {"All", "Chats", "Repeaters", "Rooms", "Favourites", "Nearby"};
     static const char* SN[] = {"Recent", "Name", "Distance"};
@@ -78,19 +114,27 @@ public:
     snprintf(a, sizeof(a), "show: %s", FN[_type]);
     snprintf(b, sizeof(b), "sort: %s", SN[_sort]);
     const int aw = g.textWidth(a) + 20, bw = g.textWidth(b) + 20;
-    drawPill(g, 8, cy, aw, 20, _focus == 0 ? t.green : t.line, _focus == 0 ? t.bg : t.txt, a);
-    drawPill(g, 16 + aw, cy, bw, 20, _focus == 1 ? t.green : t.line, _focus == 1 ? t.bg : t.txt, b);
+    const bool f0 = _focus == 0 && !_finger, f1 = _focus == 1 && !_finger;
+    drawPill(g, 8, cy, aw, 20, f0 ? t.green : t.line, f0 ? t.bg : t.txt, a);
+    drawPill(g, 16 + aw, cy, bw, 20, f1 ? t.green : t.line, f1 ? t.bg : t.txt, b);
+    _pillSplit = 12 + aw;
+    _pillEnd = 16 + aw + bw + 8;
 
-    const int top = L::BODY_Y + 28, rowH = 30;
+    const int top = TOP, rowH = ROW_H;
     const int visible = (L::H - top) / rowH;
-    const int sel = _focus - 2;
-    if (sel >= 0) {
-      if (sel < _scroll) _scroll = sel;
-      if (sel >= _scroll + visible) _scroll = sel - visible + 1;
-    } else _scroll = 0;
+    const int sel = _finger ? -1 : _focus - 2;
+    if (!_finger) {
+      if (sel >= 0) {
+        if (sel < _scroll) _scroll = sel;
+        if (sel >= _scroll + visible) _scroll = sel - visible + 1;
+      } else _scroll = 0;
+    }
+    _scroll = constrain(_scroll, 0, max(0, _n - visible));
     if (!_n) {
       g.setTextColor(t.dim, t.bg);
-      g.drawString(g_node && g_node->getNumContacts() ? "no matches" : "no contacts yet - they appear as adverts arrive", 14, top + 8);
+      if (g_node && total) g.drawString("no matches", 14, top + 8);
+      else if (NARROW) { g.drawString("no contacts yet", 14, top + 8); g.drawString("they appear as adverts arrive", 14, top + 26); }
+      else g.drawString("no contacts yet - they appear as adverts arrive", 14, top + 8);
     }
     for (int i = _scroll; i < _n && i < _scroll + visible; i++) {
       const CRow& r = _rows[i];
@@ -98,9 +142,28 @@ public:
       const bool on = i == sel;
       const uint16_t bg = on ? t.focus : t.bg;
       if (on) { g.fillRect(0, y, L::W, rowH, bg); g.fillRect(0, y, 3, rowH, t.green); }
-      drawAvatar(g, 22, y + rowH / 2, 12, r.name, r.type);
       char nm[40];
       sanitize(r.name, nm, sizeof(nm) - 4);
+      if (NARROW) {
+        // Two lines: the name and how long ago; under it, how far away in hops and miles.
+        drawAvatar(g, 20, y + rowH / 2, 12, r.name, r.type);
+        const char* ago = timeAgo(r.lastmod);
+        const int agoW = g.textWidth(ago);
+        int nameW = L::W - 40 - agoW - 16;
+        if (r.flags & 1) nameW -= 12;
+        richFit(g, nm, nameW);
+        g.setTextColor(on ? t.green : t.white, bg);
+        const int nx = drawRich(g, nm, 40, y + 1);     // where the name ends
+        if (r.flags & 1) { g.setTextColor(t.amber, bg); g.drawString("*", nx + 4, y + 1); }
+        g.setTextColor(t.dim, bg);
+        g.drawString(ago, L::W - 10 - agoW, y + 1);
+        String sub = pathText(r.pathLen);
+        if (r.distKm >= 0) sub += String("   ") + app::fmtDistance(r.distKm);
+        g.drawString(sub, 40, y + 17);
+        if (i + 1 < _n && i + 1 < _scroll + visible) g.drawFastHLine(40, y + rowH - 1, L::W - 50, t.panel);
+        continue;
+      }
+      drawAvatar(g, 22, y + rowH / 2, 12, r.name, r.type);
       richFit(g, nm, 190);
       g.setTextColor(on ? t.green : t.white, bg);
       drawRich(g, nm, 42, y + 7);
@@ -169,8 +232,12 @@ private:
     if (_focus > _n + 1) _focus = _n + 1;
   }
 
+  // Narrow screens (the T-Deck) get two-line rows; the pager's layout is unchanged.
+  static constexpr bool NARROW = L::W < 400;
+  static constexpr int TOP = L::BODY_Y + 28, ROW_H = NARROW ? 34 : 30;
   CRow* _rows = nullptr;
-  int _n = 0, _focus = 2, _scroll = 0;
+  int _n = 0, _focus = 2, _scroll = 0, _dragAcc = 0, _pillSplit = 0, _pillEnd = 0;
+  bool _finger = BOARD_HAS_TOUCH;          // a touchscreen board opens with no highlight
   uint8_t _type = ALL, _sort = RECENT;
   uint32_t _gen = 0, _built = 0;
   String _filter;

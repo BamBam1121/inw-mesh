@@ -177,6 +177,34 @@ public:
     else key('c');
   }
 
+  // A finger: drag to move the map, the buttons on the right to zoom and find
+  // yourself, tap a node to pick it and its label to open it. The "<" at the top
+  // left goes back (Nav's header rule: the map has no header of its own).
+  bool touch(const TouchEvent& e) override {
+    switch (e.type) {
+      case TouchEvent::Drag: {
+        if (buttonAt(e.x0, e.y0) >= 0) return false;   // a press that began on a button isn't a pan
+        const double px = lon2x(_lon, _z) - e.dx, py = lat2y(_lat, _z) - e.dy;
+        const double world = (double)(1 << _z) * TILE;
+        _lon = x2lon(fmod(fmod(px, world) + world, world), _z);
+        _lat = constrain(y2lat(py, _z), -85.0, 85.0);
+        return true;
+      }
+      case TouchEvent::Tap: {
+        switch (buttonAt(e.x, e.y)) {
+          case 0: rotate(1); return true;
+          case 1: rotate(-1); return true;
+          case 2: key('c'); return true;
+          default: break;
+        }
+        if (_focus >= 0 && e.x >= _pillX && e.y >= L::H - 26) { press(); return true; }
+        _focus = nodeAt(e.x, e.y);        // nothing there: let go of the one picked
+        return true;
+      }
+      default: return false;
+    }
+  }
+
   void tick() override {
     // Finished downloads are written HERE, on the loop task: the SD card shares
     // the SPI bus with the panel and radio, so no other task may touch it.
@@ -276,10 +304,25 @@ public:
     // Chrome: zoom chip, scale bar, focus panel.
     char z[40];
     if (wifi::connected() && ui_settings.tileFetch && !_layer)
-      snprintf(z, sizeof(z), "z%d  wifi %u tiles", _z, wifi::tilesFetched());
+      snprintf(z, sizeof(z), TOUCH ? "z%d  wifi %u" : "z%d  wifi %u tiles", _z, wifi::tilesFetched());
     else
-      snprintf(z, sizeof(z), "z%d%s%s", _z, _layer ? " topo" : "", any ? "" : "  no tiles here");
-    drawPill(g, 6, MAP_Y + 4, g.textWidth(z) + 16, 18, t.panel, t.txt, z);
+      snprintf(z, sizeof(z), "z%d%s%s", _z, _layer ? " topo" : "", any ? "" : TOUCH ? "  no tiles" : "  no tiles here");
+    int zx = 6;
+    if (TOUCH) {
+      // Back, where Nav looks for a tap on a header's "<".
+      drawPill(g, 6, MAP_Y + 4, 30, 18, t.panel, t.green, "<");
+      zx = 68;
+      for (int b = 0; b < 3; b++) {
+        const int bx = L::W - BTN - 6, by = BTN_Y + b * (BTN + 6);
+        g.fillRoundRect(bx, by, BTN, BTN, 8, t.panel);
+        g.drawRoundRect(bx, by, BTN, BTN, 8, t.line);
+        const int mx = bx + BTN / 2, my = by + BTN / 2;
+        if (b < 2) g.fillRect(mx - 8, my - 1, 17, 3, t.txt);             // minus, and the plus's bar
+        if (b == 0) g.fillRect(mx - 1, my - 8, 3, 17, t.txt);
+        if (b == 2) { g.drawCircle(mx, my, 7, t.txt); g.fillCircle(mx, my, 3, t.blue); }   // me
+      }
+    }
+    drawPill(g, zx, MAP_Y + 4, g.textWidth(z) + 16, 18, t.panel, t.txt, z);
     const double mpp = 156543.03392 * cos(_lat * M_PI / 180.0) / (1 << _z);
     static const double STEPS_M[] = {20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000};
     static const double STEPS_MI[] = {0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100};
@@ -306,10 +349,11 @@ public:
       char info[96];
       if (n.dist >= 0) snprintf(info, sizeof(info), "%s  %s", n.name, app::fmtDistance(n.dist));
       else snprintf(info, sizeof(info), "%s", n.name);
-      const int w = min(L::W - 20, widthUtf8(g, info) + 20);
-      drawPill(g, L::W - w - 6, L::H - 24, w, 20, t.panel, t.green, info);
+      const int w = min(TOUCH ? L::W / 2 : L::W - 20, widthUtf8(g, info) + 20);
+      _pillX = L::W - w - 6;
+      drawPill(g, _pillX, L::H - 24, w, 20, t.panel, t.green, info);
     } else {
-      const char* hint = "turn zoom  wasd pan  n next node  c me";
+      const char* hint = TOUCH ? "drag to move  tap a node" : "turn zoom  wasd pan  n next node  c me";
       g.setTextColor(t.txt, t.bg);
       g.fillRect(L::W - g.textWidth(hint) - 12, L::H - 22, g.textWidth(hint) + 12, 20, t.bg);
       g.drawString(hint, L::W - g.textWidth(hint) - 6, L::H - 20);
@@ -346,6 +390,31 @@ private:
     });
   }
 
+  // The touch buttons down the right edge: 0 zoom in, 1 zoom out, 2 me; -1 none.
+  static constexpr bool TOUCH = BOARD_HAS_TOUCH;
+  static constexpr int BTN = 36, BTN_Y = MAP_Y + 30;
+  int buttonAt(int x, int y) const {
+    if (!TOUCH || x < L::W - BTN - 12) return -1;
+    for (int b = 0; b < 3; b++) {
+      const int by = BTN_Y + b * (BTN + 6);
+      if (y >= by - 3 && y < by + BTN + 3) return b;
+    }
+    return -1;
+  }
+
+  // The node drawn nearest (x, y), within a fingertip; -1 if none.
+  int nodeAt(int x, int y) const {
+    const double left = lon2x(_lon, _z) - L::W / 2.0, top = lat2y(_lat, _z) - MAP_H / 2.0;
+    int best = -1, bestD = 18 * 18;
+    for (int i = 0; i < (int)_nodes.size(); i++) {
+      const int nx = (int)lround(lon2x(_nodes[i].lon, _z) - left) - x;
+      const int ny = (int)lround(lat2y(_nodes[i].lat, _z) - top) + MAP_Y - y;
+      const int d = nx * nx + ny * ny;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+
   void jump(int d) {
     if (_nodes.empty()) { nav.toast("no contacts have shared a position"); return; }
     const int n = _nodes.size();
@@ -359,7 +428,7 @@ private:
   TileCache* _cache;
   std::vector<MapNode> _nodes;
   double _lat = 0, _lon = 0;
-  int _z = 12, _focus = -1;
+  int _z = 12, _focus = -1, _pillX = L::W;
   uint8_t _layer = 0;
   uint32_t _gen = 0, _collected = 0, _last = 0;
 };

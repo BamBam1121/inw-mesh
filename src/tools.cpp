@@ -54,6 +54,24 @@ public:
     if (n) { _focus = ((_focus + d) % n + n) % n; dirty = true; }
   }
   void key(char c) override { if (c == 'r') scan(); else if (c == '\n') press(); }
+  // A finger: tap an answer to open it; tap the scope, or the header's right side,
+  // to listen again.
+  bool touch(const TouchEvent& e) override {
+    if (e.type != TouchEvent::Tap) return false;
+    const int n = g_node ? g_node->discoveredCount : 0;
+    if (e.y < L::BODY_Y) {
+      if (e.x < L::W / 2) return false;
+      scan();
+      return true;
+    }
+    if (e.x < LX - 8) { scan(); return true; }
+    if (e.y < L::BODY_Y + 18) return false;
+    const int i = firstRow(n) + (e.y - L::BODY_Y - 18) / 22;
+    if (i < 0 || i >= n) return false;
+    _focus = i;
+    press();
+    return true;
+  }
   void press() override {
     if (!g_node || _focus >= g_node->discoveredCount) { scan(); return; }
     const DiscoverHit& h = g_node->discovered[_focus];
@@ -65,7 +83,7 @@ public:
     const uint32_t age = millis() - _started;
     const bool live = age < LISTEN_MS;
     char right[32];
-    snprintf(right, sizeof(right), live ? "listening %lus" : "done  r = rescan",
+    snprintf(right, sizeof(right), live ? "listening %lus" : BOARD_HAS_TOUCH ? "done  tap: again" : "done  r = rescan",
              (unsigned long)((LISTEN_MS - min(age, LISTEN_MS)) / 1000 + 1));
     drawHeader(g, "Discover nearby", right);
     const int n = g_node ? g_node->discoveredCount : 0;
@@ -80,18 +98,19 @@ public:
     }
 
     // The list on the right.
-    const int lx = RX + RR + 16;
+    const int lx = LX;
     if (!n) {
       g.setTextColor(t.dim, t.bg);
       g.drawString(live ? "asking repeaters in" : "no answers.", lx, L::BODY_Y + 30);
-      g.drawString(live ? "direct range to answer..." : "press to try again", lx, L::BODY_Y + 48);
+      g.drawString(live ? (NARROW ? "direct range..." : "direct range to answer...")
+                        : (BOARD_HAS_TOUCH ? "tap to try again" : "press to try again"), lx, L::BODY_Y + 48);
       return;
     }
     g.setTextColor(t.greenDim, t.bg);
     g.drawString("node", lx, L::BODY_Y + 2);
-    g.drawString("they", 348, L::BODY_Y + 2);
-    g.drawString("we", 418, L::BODY_Y + 2);
-    const int first = max(0, min(_focus - 3, n - 7));
+    g.drawString("they", THEY_X, L::BODY_Y + 2);
+    g.drawString("we", WE_X, L::BODY_Y + 2);
+    const int first = firstRow(n);
     for (int i = first; i < n && i < first + 7; i++) {
       const DiscoverHit& h = g_node->discovered[i];
       const int y = L::BODY_Y + 20 + (i - first) * 22;
@@ -101,7 +120,7 @@ public:
       char nm[36];
       if (c) sanitize(c->name, nm, sizeof(nm));
       else snprintf(nm, sizeof(nm), "%02x%02x%02x (new)", h.pub[0], h.pub[1], h.pub[2]);
-      richFit(g, nm, 348 - lx - 6);
+      richFit(g, nm, THEY_X - lx - 6);
       const uint16_t bg = on ? t.focus : t.bg;
       g.setTextColor(on ? t.green : t.white, bg);
       drawRich(g, nm, lx, y);
@@ -109,17 +128,24 @@ public:
       snprintf(a, sizeof(a), "%.0f", h.theirSnr4 / 4.0);
       snprintf(b, sizeof(b), "%.0f", h.ourSnr4 / 4.0);
       g.setTextColor(h.theirSnr4 > 0 ? t.green : h.theirSnr4 > -28 ? t.amber : t.red, bg);
-      g.drawString(a, 348, y);
+      g.drawString(a, THEY_X, y);
       g.setTextColor(h.ourSnr4 > 0 ? t.green : h.ourSnr4 > -28 ? t.amber : t.red, bg);
-      g.drawString(b, 418, y);
+      g.drawString(b, WE_X, y);
       g.setTextColor(t.dim, bg);
-      g.drawString("dB", 348 + g.textWidth(a) + 3, y);
-      g.drawString("dB", 418 + g.textWidth(b) + 3, y);
+      g.drawString("dB", THEY_X + g.textWidth(a) + 3, y);
+      g.drawString("dB", WE_X + g.textWidth(b) + 3, y);
     }
   }
 private:
   static constexpr uint32_t LISTEN_MS = 12000;
-  static constexpr int RX = 92, RY = 132, RR = 82;     // the scope: centre and radius
+  // The scope (centre, radius) and the list's columns. On a narrow screen (the
+  // T-Deck) the scope shrinks and the columns move in to fit.
+  static constexpr bool NARROW = L::W < 400;
+  static constexpr int RX = NARROW ? 60 : 92, RY = NARROW ? 140 : 132, RR = NARROW ? 54 : 82;
+  static constexpr int LX = RX + RR + (NARROW ? 12 : 16);
+  static constexpr int THEY_X = NARROW ? L::W - 84 : 348, WE_X = NARROW ? L::W - 42 : 418;
+  // The first of the seven rows shown, keeping the focus in view.
+  int firstRow(int n) const { return max(0, min(_focus - 3, n - 7)); }
 
   // Where an answer sits on the scope: its bearing from its key (stable, so a
   // node lands in the same place every scan), its distance from how well we

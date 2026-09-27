@@ -50,13 +50,18 @@ static void addChannel(int idx, const char* name, uint8_t seed) {
 
 static void populate() {
   strlcpy(g_node->prefs().node_name, "Squatch T-Deck", sizeof(g_node->prefs().node_name));
-  addContact("Mt Spokane RPT", ADV_TYPE_REPEATER, 1, 0, 120);
-  addContact("Browne Mtn RPT", ADV_TYPE_REPEATER, 2, 1, 600);
-  addContact("CDA Hill RPT", ADV_TYPE_REPEATER, 3, 2, 3000);
-  addContact("Trailhead", ADV_TYPE_CHAT, 4, 1, 300);
-  addContact("Ridge Runner", ADV_TYPE_CHAT, 5, 2, 900);
-  addContact("Basecamp", ADV_TYPE_CHAT, 6, 0, 60);
-  addContact("Silver Valley Room", ADV_TYPE_ROOM, 7, 2, 7200);
+  // Positions round Spokane, in MeshCore's micro-degrees, so the map and the
+  // distances have something to show. Basecamp is a favourite.
+  auto at = [](ContactInfo& c, double lat, double lon) { c.gps_lat = (int32_t)(lat * 1e6); c.gps_lon = (int32_t)(lon * 1e6); };
+  at(addContact("Mt Spokane RPT", ADV_TYPE_REPEATER, 1, 0, 120), 47.9217, -117.1133);
+  at(addContact("Browne Mtn RPT", ADV_TYPE_REPEATER, 2, 1, 600), 47.6135, -117.3526);
+  at(addContact("CDA Hill RPT", ADV_TYPE_REPEATER, 3, 2, 3000), 47.6905, -116.7640);
+  at(addContact("Trailhead", ADV_TYPE_CHAT, 4, 1, 300), 47.8960, -117.1280);
+  at(addContact("Ridge Runner", ADV_TYPE_CHAT, 5, 2, 900), 47.7512, -117.2050);
+  ContactInfo& base = addContact("Basecamp", ADV_TYPE_CHAT, 6, 0, 60);
+  at(base, 47.6720, -117.4080);
+  base.flags |= 1;
+  at(addContact("Silver Valley Room", ADV_TYPE_ROOM, 7, 2, 7200), 47.5410, -116.1210);
   addContact("Pine Marten", ADV_TYPE_CHAT, 8, 3, 86400);
   addChannel(0, "Public", 1);
   addChannel(1, "#inw", 2);
@@ -258,6 +263,43 @@ int main(int argc, char** argv) {
   tap(296, 42 + 24); tap(24, 42 + 24); tap(24, 216); tap(296, 216);
   shot("touchtest_3_mirrored_fixed");
   ui_settings.orient = 0;
+  clearTo(base);
+
+  // The dock's other screens, by finger: Settings, People, Map.
+  app::openSettings(); run(300);          shot("dock_settings_0");
+  drag(160, 210, 160, 90);                shot("dock_settings_1_dragged");
+  clearTo(base);
+  app::openContacts(); run(300);          shot("dock_people_0");
+  tap(150, 42 + 12);                      shot("dock_people_1_sort_tapped");
+  drag(160, 200, 160, 110);               shot("dock_people_2_dragged");
+  clearTo(base);
+  app::openMap(0, 0, nullptr); run(300);  shot("dock_map_0");
+  tap(320 - 24, 18 + 30 + 42 + 18);       shot("dock_map_1_zoomed_out");
+  drag(200, 140, 120, 110);               shot("dock_map_2_dragged");
+  tap(8, 8);
+  clearTo(base);
+
+  // What's under the dock, by finger.
+  app::openTools(); run(300);             shot("tools_0");
+  // Discover: three answers already in, then the listening time runs out.
+  for (int i = 0; i < 3; i++) {
+    DiscoverHit& h = g_node->discovered[i];
+    memcpy(h.pub, g_node->contacts[i].id.pub_key, 32);
+    h.type = ADV_TYPE_REPEATER; h.theirSnr4 = 40 - 30 * i; h.ourSnr4 = 32 - 36 * i; h.rssi = -70 - 12 * i; h.at = millis();
+  }
+  g_node->discoveredCount = 3;
+  tap(160, 42 + 3 * 28 + 14); run(13000); shot("tools_1_discover");
+  clearTo(base);
+  app::openSettings(); run(300);
+  tap(8 + 149 + 6 + 70, 46 + 2 * 58 + 26); run(300);   shot("settings_wifi");
+  tap(160, 42 + 2 * 28 + 14); run(300);                shot("settings_wifi_scan");
+  clearTo(base);
+  app::openSettings(); run(300);
+  nav.top()->key('d'); nav.top()->press(); run(300);   shot("settings_display_0");
+  drag(160, 220, 160, 60); drag(160, 220, 160, 60);    shot("settings_display_1_touch");
+  clearTo(base);
+  app::openContacts(); run(300);
+  tap(160, 42 + 28 + 17); run(300);                    shot("contact_detail");
   clearTo(base);
 #endif
   return 0;

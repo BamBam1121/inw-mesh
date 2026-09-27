@@ -188,6 +188,10 @@ protected:
   bool _editing = false;
   uint32_t _lastRefresh = 0;
   int _dragAcc = 0;                       // touch: pixels dragged, not yet a whole row
+  // The highlight (and the "3/12" count) belong to the wheel, trackball and keys.
+  // On a touchscreen board they stay hidden until one of those is used: the first
+  // roll or click only shows where the focus is.
+  bool _wheel = !BOARD_HAS_TOUCH;
 };
 
 // ---- text prompt ------------------------------------------------------------------

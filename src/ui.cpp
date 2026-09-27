@@ -725,6 +725,18 @@ void MenuView::moveFocus(int d) {
 
 void MenuView::rotate(int d) {
   if (_rows.empty()) return;
+  if (!_wheel) {
+    // Show the focus where the finger left the page: the first row in view.
+    _wheel = true;
+    const int shown = (L::H - L::BODY_Y) / L::ROW_H;
+    if (!focusable(_focus) || _focus < _scroll || _focus >= _scroll + shown) {
+      _focus = _scroll;
+      if (!focusable(_focus)) moveFocus(1);
+    }
+    _drawnFocus = _focus;
+    dirty = true;
+    return;
+  }
   if (_editing) {
     MenuRow& r = _rows[_focus];
     // Values go up when the wheel turns up, like a volume knob. (The wheel reports
@@ -753,6 +765,7 @@ void MenuView::rotate(int d) {
 
 void MenuView::press() {
   if (_rows.empty()) return;
+  if (!_wheel) { rotate(0); return; }       // a click with nothing shown: show it first
   // The focused row scrolled out of sight: bring it back rather than act on
   // something the user can't see.
   const int visible = (L::H - L::BODY_Y) / L::ROW_H;
@@ -776,7 +789,7 @@ void MenuView::key(char c) {
   for (int k = 1; k <= n; k++) {
     const int i = (_focus + k) % n;
     if (focusable(i) && _rows[i].label.length() && tolower(_rows[i].label[0]) == lc) {
-      _focus = i; dirty = true; return;
+      _focus = i; _wheel = true; dirty = true; return;
     }
   }
 }
@@ -789,7 +802,7 @@ void MenuView::draw(Canvas& g) {
   const Theme& t = nav.theme();
   char pos[24] = "";
   const int visible = (L::H - L::BODY_Y) / L::ROW_H;
-  if ((int)_rows.size() > visible) snprintf(pos, sizeof(pos), "%d/%d", _focus + 1, (int)_rows.size());
+  if ((int)_rows.size() > visible && _wheel) snprintf(pos, sizeof(pos), "%d/%d", _focus + 1, (int)_rows.size());
   drawHeader(g, _title.c_str(), pos);
   if (_rows.empty()) {
     g.setTextColor(t.dim, t.bg);
@@ -810,7 +823,7 @@ void MenuView::draw(Canvas& g) {
   for (int i = _scroll; i < (int)_rows.size() && i < _scroll + visible; i++) {
     const MenuRow& r = _rows[i];
     const int y = L::BODY_Y + (i - _scroll) * L::ROW_H;
-    const bool on = i == _focus;
+    const bool on = i == _focus && _wheel;
     const uint16_t bg = on ? t.focus : t.bg;
     if (r.kind == RowKind::Header) {
       g.setTextColor(t.greenDim, t.bg);
@@ -821,8 +834,23 @@ void MenuView::draw(Canvas& g) {
     if (on) { g.fillRect(0, y, L::W, L::ROW_H, bg); g.fillRect(0, y, 3, L::ROW_H, t.green); }
     g.setTextColor(r.kind == RowKind::Info ? t.dim : (on ? t.green : t.txt), bg);
     const int ty = y + (L::ROW_H - 16) / 2;   // text, centred in the row
-    drawUtf8(g, r.label.c_str(), 12, ty, L::W - 170);
     const int rx = L::W - 12;
+    // The pager keeps a fixed column for values. A narrow screen (the T-Deck) can't
+    // spare one, so each label gets whatever its row leaves free.
+    int labelW = L::W - 170;
+    if (L::W < 400) {
+      String v = r.value && r.kind != RowKind::Toggle ? r.value() : String();
+      const int vw = v.length() ? widthUtf8(g, v.c_str()) : 0;
+      switch (r.kind) {
+        case RowKind::Toggle:  labelW = rx - 30 - 20; break;
+        case RowKind::Submenu: labelW = rx - 14 - (vw ? vw + 10 : 0) - 12; break;
+        case RowKind::Value: case RowKind::Adjust: case RowKind::Info:
+          labelW = rx - vw - (on && _editing ? 30 : 0) - 24; break;
+        default:               labelW = rx - 12; break;
+      }
+      labelW = max(labelW, 60);
+    }
+    drawUtf8(g, r.label.c_str(), 12, ty, labelW);
     switch (r.kind) {
       case RowKind::Toggle:
         drawToggle(g, rx - 30, y + (L::ROW_H - 14) / 2, r.toggled && r.toggled());
@@ -865,6 +893,7 @@ bool MenuView::touch(const TouchEvent& e) {
   switch (e.type) {
     case TouchEvent::Down: _dragAcc = 0; return false;
     case TouchEvent::Drag:
+      _wheel = false;                    // a finger took over: the highlight goes
       _dragAcc += e.dy;
       while (_dragAcc <= -L::ROW_H && _scroll < maxScroll) { _scroll++; _dragAcc += L::ROW_H; }
       while (_dragAcc >= L::ROW_H && _scroll > 0) { _scroll--; _dragAcc -= L::ROW_H; }
@@ -876,6 +905,7 @@ bool MenuView::touch(const TouchEvent& e) {
       if (i >= (int)_rows.size() || !focusable(i)) return false;
       _focus = _drawnFocus = i;
       _editing = false;
+      _wheel = false;
       MenuRow& r = _rows[i];
       if (r.kind == RowKind::Adjust) { if (r.onAdjust && e.x > L::W / 2) r.onAdjust(e.x > L::W * 3 / 4 ? 1 : -1); return true; }
       if (r.onPress) { auto fn = r.onPress; fn(); }   // copy: fn may rebuild _rows

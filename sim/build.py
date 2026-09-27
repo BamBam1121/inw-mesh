@@ -23,6 +23,8 @@ FIRMWARE = ["ui.cpp", "home.cpp", "quips.cpp", "regional.cpp", "settings.cpp", "
 SIM = ["sim_stubs.cpp", "sim_main.cpp"]
 # The T-Deck's own screens (src/tdeck); the pager build doesn't have them.
 BOARD_UI = [] if "--pager" in sys.argv else ["dashboard.cpp", "hwcheck.cpp"]
+# Firmware screens with more behind them, T-Deck sim only for now (stubs in sim_stubs.cpp).
+SCREENS = [] if "--pager" in sys.argv else ["contacts.cpp", "mapview.cpp", "settings_ui.cpp", "tools.cpp"]
 
 FLAGS = ["-std=gnu++14", "-O1", "-w", "-DARDUINO=10819", "-DLGFX_USE_V1", "-DINW_SIM=1",
          '-DFW_VERSION="1.2.1"', "-DMAX_CONTACTS=2000", "-DMAX_GROUP_CHANNELS=40"]
@@ -35,7 +37,8 @@ env = dict(os.environ, PATH=os.path.dirname(GXX) + os.pathsep + os.environ["PATH
 def run(cmd):
     r = subprocess.run(cmd, env=env, capture_output=True, text=True)
     if r.returncode:
-        errs = [l for l in (r.stdout + r.stderr).splitlines() if "error" in l or "undefined reference" in l]
+        errs = [l for l in (r.stdout + r.stderr).splitlines()
+                if "error" in l or "undefined reference" in l or "multiple definition" in l or "cannot" in l]
         print("\n".join(errs[:40]) or (r.stdout + r.stderr)[-3000:])
         sys.exit(1)
 
@@ -72,7 +75,7 @@ def main():
     newest_h = max(os.path.getmtime(h) for h in heads)
     def stale(src, o):
         return not os.path.exists(o) or os.path.getmtime(o) < max(os.path.getmtime(src), newest_h)
-    for src in [os.path.join(SRC, f) for f in FIRMWARE + BOARD_UI] + [os.path.join(ROOT, "sim", f) for f in SIM]:
+    for src in [os.path.join(SRC, f) for f in FIRMWARE + SCREENS + BOARD_UI] + [os.path.join(ROOT, "sim", f) for f in SIM]:
         o = os.path.join(OBJ, os.path.basename(src).replace(".cpp", ".o"))
         if stale(src, o):
             print("cc", os.path.basename(src)); run([GXX] + FLAGS + INC + ["-c", src, "-o", o])

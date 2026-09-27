@@ -8,6 +8,11 @@
 #include <string.h>
 #include <stdarg.h>
 #include <math.h>
+#include <time.h>
+#ifdef _WIN32
+inline struct tm* sim_gmtime_r(const time_t* t, struct tm* r) { *r = *gmtime(t); return r; }   // MinGW's is optional
+#define gmtime_r sim_gmtime_r
+#endif
 #include <algorithm>
 #include <functional>
 
