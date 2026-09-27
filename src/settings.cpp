@@ -23,7 +23,11 @@ static bool s_fromNvs = false;
 static void adopt(UiSettings* s, const uint8_t* buf, size_t len) {
   size_t n = len;
   if (len < sizeof(UiSettings)) {
-    static const size_t ADDED[] = {offsetof(UiSettings, wifiOn), offsetof(UiSettings, tzZone)};
+    // orient: the T-Deck's, after 1.2.2's fields. Without it a pager's 1.2.2
+    // settings read here lost everything from tzZone on (a pager given T-Deck
+    // firmware by mistake came back without its time zone).
+    static const size_t ADDED[] = {offsetof(UiSettings, wifiOn), offsetof(UiSettings, tzZone),
+                                   offsetof(UiSettings, orient)};
     for (size_t b : ADDED) if (len >= b) n = b;
   }
   memcpy((void*)s, buf, min(n, sizeof(UiSettings)));
