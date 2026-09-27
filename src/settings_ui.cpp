@@ -276,7 +276,20 @@ public:
     while (!_asking && _next < g_node->discoveredCount) {
       const DiscoverHit& h = g_node->discovered[_next++];
       if (h.type != ADV_TYPE_REPEATER) continue;
-      if (!g_node->contact(h.pub)) { _unknown++; changed = true; continue; }
+      if (!g_node->contact(h.pub)) {
+        // Not a contact yet (a fresh install hears adverts slowly), and the answer
+        // can only be read from one: add it, as the MeshCore app does for this
+        // request. Its next advert gives it its real name.
+        ContactInfo ci;
+        memset(&ci, 0, sizeof(ci));
+        ci.id = mesh::Identity(h.pub);
+        mesh::Utils::toHex(ci.name, h.pub, 4);
+        ci.type = ADV_TYPE_REPEATER;
+        ci.out_path_len = 0;
+        ci.lastmod = app::now();
+        if (!g_node->addContact(ci)) { _unknown++; changed = true; continue; }
+        _added++;
+      }
       if (g_node->requestRegions(h.pub)) { _asking = true; _askedAt = millis(); changed = true; }
     }
     const bool done = !_asking && millis() - _started > LISTEN_MS && _next >= g_node->discoveredCount;
@@ -338,9 +351,13 @@ private:
     }
     if (_done && !_answered)
       info(_silent ? "no answer" : "no repeaters in range", [] { return String("try closer to one"); });
+    if (_added) {
+      const int a = _added;
+      info("added to contacts", [a] { return String(a) + (a == 1 ? " repeater" : " repeaters"); });
+    }
     if (_unknown) {
       const int u = _unknown;
-      info("not in contacts yet", [u] { return String(u) + (u == 1 ? " repeater" : " repeaters"); });
+      info("contacts full, skipped", [u] { return String(u) + (u == 1 ? " repeater" : " repeaters"); });
     }
     _focus = constrain(f, 0, max(0, (int)_rows.size() - 1));
     _scroll = s;
@@ -350,7 +367,7 @@ private:
   std::function<void(const char*)> _pick;
   char _names[MAX_NAMES][regions::NAME_LEN + 1];
   int  _counts[MAX_NAMES] = {0};
-  int  _nNames = 0, _answered = 0, _wild = 0, _silent = 0, _unknown = 0;
+  int  _nNames = 0, _answered = 0, _wild = 0, _silent = 0, _unknown = 0, _added = 0;
   uint8_t _next = 0;
   bool _asking = false, _done = false, _failed = false;
   uint32_t _gen = 0, _started = 0, _askedAt = 0;
