@@ -142,6 +142,10 @@ static void feedTouch(bool down, int x, int y) {
   while (s_finger.feed(down, x, y, millis(), e)) nav.touch(e);
 }
 static void tap(int x, int y) { feedTouch(true, x, y); run(60); feedTouch(false, x, y); run(500); }
+static void doubleTap(int x, int y) {
+  feedTouch(true, x, y); run(40); feedTouch(false, x, y); run(120);
+  feedTouch(true, x, y); run(40); feedTouch(false, x, y); run(500);
+}
 static void swipe(int x0, int y0, int x1, int y1, int steps = 8) {
   feedTouch(true, x0, y0);
   for (int k = 1; k <= steps; k++) { sim::advance(16); feedTouch(true, x0 + (x1 - x0) * k / steps, y0 + (y1 - y0) * k / steps); }
@@ -277,6 +281,7 @@ int main(int argc, char** argv) {
   app::openMap(0, 0, nullptr); run(300);  shot("dock_map_0");
   tap(320 - 24, 18 + 30 + 42 + 18);       shot("dock_map_1_zoomed_out");
   drag(200, 140, 120, 110);               shot("dock_map_2_dragged");
+  doubleTap(120, 150);                    shot("dock_map_3_double_tap");
   tap(8, 8);
   clearTo(base);
 

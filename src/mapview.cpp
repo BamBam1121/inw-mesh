@@ -198,6 +198,18 @@ public:
           default: break;
         }
         if (_focus >= 0 && e.x >= _pillX && e.y >= L::H - 26) { press(); return true; }
+        // A second tap on the same spot, quickly: zoom in there (one finger is all
+        // the touch chip reports, so no pinch).
+        const uint32_t now = millis();
+        if (_lastTap && now - _lastTap < 400 && abs(e.x - _tapX) < 30 && abs(e.y - _tapY) < 30) {
+          const double left = lon2x(_lon, _z) - L::W / 2.0, top = lat2y(_lat, _z) - MAP_H / 2.0;
+          _lon = x2lon(left + e.x, _z);
+          _lat = constrain(y2lat(top + (e.y - MAP_Y), _z), -85.0, 85.0);
+          _lastTap = 0;
+          rotate(1);
+          return true;
+        }
+        _lastTap = now; _tapX = e.x; _tapY = e.y;
         _focus = nodeAt(e.x, e.y);        // nothing there: let go of the one picked
         return true;
       }
@@ -353,7 +365,7 @@ public:
       _pillX = L::W - w - 6;
       drawPill(g, _pillX, L::H - 24, w, 20, t.panel, t.green, info);
     } else {
-      const char* hint = TOUCH ? "drag to move  tap a node" : "turn zoom  wasd pan  n next node  c me";
+      const char* hint = TOUCH ? "drag: move  double tap: zoom" : "turn zoom  wasd pan  n next node  c me";
       g.setTextColor(t.txt, t.bg);
       g.fillRect(L::W - g.textWidth(hint) - 12, L::H - 22, g.textWidth(hint) + 12, 20, t.bg);
       g.drawString(hint, L::W - g.textWidth(hint) - 6, L::H - 20);
@@ -429,6 +441,8 @@ private:
   std::vector<MapNode> _nodes;
   double _lat = 0, _lon = 0;
   int _z = 12, _focus = -1, _pillX = L::W;
+  uint32_t _lastTap = 0;              // double tap to zoom
+  int _tapX = 0, _tapY = 0;
   uint8_t _layer = 0;
   uint32_t _gen = 0, _collected = 0, _last = 0;
 };
