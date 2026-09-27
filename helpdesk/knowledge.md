@@ -37,6 +37,29 @@ Sound, battery and screen (1.2.1)
 - Every theme has its own animation when you move between screens, unlock and lock. They're meant to be
   there; there's no setting to turn them off.
 
+First start (1.2.2)
+- After a fresh install and storage setup, three questions: radio region (MeshCore presets, or keep the
+  current radio), time zone (named zones, follow daylight saving), clock and units (12/24 h, miles/km).
+  Each has "keep"; all can be changed later in Settings. Updating from 1.2.1 asks them once too.
+
+Wi-Fi (1.2.2)
+- It says why it can't join: "wrong password?", "not found (2.4 GHz only)" (5 GHz networks are invisible
+  to it), "no answer, weak signal?", "joined, router gave no address". Before 1.2.2 it could say
+  "scanning..." forever; that's fixed. To change a saved password: scan + join the network again.
+
+Message details (1.2.2)
+- A message's details (roll onto it and press; the bottom of that menu) show the route, with repeaters
+  named when they're in your contacts. "4h 2B" beside
+  the hops means 4 hops, 2-byte repeater ids; Settings > Messages > "with repeater id size" hides the 2B.
+
+Top header, sensors and IO9 (1.2.2)
+- Pinout (LilyGo's J3): 1 GND, 2 3.3 V, 3 TX (IO43), 4 RX (IO44), 5 SCK, 6 MOSI, 7 MISO (5-7 are the
+  radio's bus: leave them alone), 8 IO9, 9 SDA (IO3), 10 NRF_CE, 11 SCL (IO2), 12 5 V (only on USB).
+- Sensors: BME280, BMP280, SHT3x, SHT4x, AHT20, BH1750 on 3.3 V, GND, SDA, SCL. Shown under Tools > top
+  header and sent as telemetry. Not showing: check it's 3.3 V (not 5 V) and SDA/SCL aren't swapped.
+- IO9: an LED (IO9 > 330 ohm > LED > GND) or an active 3.3 V buzzer (IO9 and GND). Modes: off, flash on
+  new messages, on while unread.
+
 Region scopes (1.2.2) - what the MeshCore app calls regions or flood scope
 - A region keeps messages to the repeaters that serve it, instead of the whole mesh. Its key is made from
   the name ("#spokane"), so it has to match the repeaters' exactly, capitals included. A repeater drops a

@@ -97,10 +97,12 @@
 
       <h2 id="first">First start</h2>
       <div class="panel reveal">
-        <p class="sub" style="font-size:14px;margin:0">Give the node a name when it asks; that is how you
-        appear to everyone else. Then check <b>Settings &rarr; Radio &amp; Mesh</b> and pick the preset for
-        your area if it is not already set. A fresh install formats storage first, which takes a few
-        minutes and only ever happens once.</p>
+        <p class="sub" style="font-size:14px;margin:0">A fresh install formats storage first, which takes a
+        few minutes and only ever happens once. Then three quick questions: your <b>radio region</b> (the
+        MeshCore presets, or keep what's set), your <b>time zone</b> (it follows daylight saving by itself),
+        and <b>clock and units</b> (12 or 24 hour, miles or km). Each can be kept as it is and changed later
+        under Settings. Give the node a name under <b>Settings &rarr; Profile</b>: that is how you appear to
+        everyone else.</p>
       </div>
 
       <h2 id="updates">Updates</h2>
@@ -147,6 +149,33 @@
         <code>910.5250244 MHz</code>, <code>62.5 kHz</code>, <code>SF7</code>, <code>CR 4/5</code>. Any
         MeshCore radio settings work, so set whatever your local mesh uses. Everyone on a mesh has to
         agree on these or you will hear nothing.</p>
+      </div>
+
+      <h2 id="wifi">Wi-Fi</h2>
+      <div class="panel reveal">
+        <p class="sub" style="font-size:14px;margin:0">Wi-Fi is for updates, the clock and map tiles; the mesh
+        itself never needs it. <b>Settings &rarr; Wi-Fi &rarr; scan + join a network</b>. It only sees
+        <b>2.4 GHz</b> networks. When it can't join, it says why: <i>wrong password?</i>, <i>not found (2.4 GHz
+        only)</i>, <i>no answer, weak signal?</i> or <i>joined, router gave no address</i>. To fix a password,
+        scan and join the network again.</p>
+      </div>
+
+      <h2 id="messages">Message details</h2>
+      <div class="panel reveal">
+        <p class="sub" style="font-size:14px;margin:0">Roll onto a message and press: at the bottom of its menu
+        is the route it came by, with the repeaters named where they are in your contacts. Beside the hop count (<code>4h</code>) is the size of
+        the repeater ids in its path (<code>2B</code>); turn that off under <b>Settings &rarr; Messages &rarr;
+        with repeater id size</b>.</p>
+      </div>
+
+      <h2 id="header">Top header: sensors and IO9</h2>
+      <div class="panel reveal">
+        <p class="sub" style="font-size:14px;margin:0">The 12-pin header on top takes a small I2C sensor:
+        BME280, BMP280, SHT3x, SHT4x, AHT20 or BH1750. Wire its VCC to <b>3.3 V</b> (pin 2), GND (pin 1), SDA
+        (pin 9) and SCL (pin 11). It shows up under <b>Tools &rarr; top header</b> and goes out with your
+        telemetry. <b>IO9</b> (pin 8) can drive an LED (through a 330 ohm resistor) or a small active 3.3 V
+        buzzer: <i>flash on new messages</i> or <i>on while unread</i>. Leave pins 5, 6 and 7 alone: they are
+        the radio's bus. Pin 12 has 5 V only while USB is in.</p>
       </div>
 
       <h2 id="regions">Region scopes</h2>
