@@ -10,6 +10,7 @@
 enum class NodeEvent : uint8_t {
   DirectMsg, ChannelMsg, RoomMsg, NewContact, Delivered, Failed,
   LoginOk, LoginFail, Status, Telemetry, Trace, Discover, CliReply, ContactsChanged,
+  Regions,
 };
 
 // Result of the last status request, RepeaterStats from simple_repeater.
@@ -79,6 +80,11 @@ public:
   bool login(const uint8_t* pub, const char* password);
   bool requestStatus(const uint8_t* pub);
   bool requestTelemetry(const uint8_t* pub);
+  // MeshCore's anonymous regions request: which regions a repeater in direct
+  // range floods, and whether it still floods unscoped ("*"). Asked with no
+  // hops, as repeaters only answer it direct. The answer lands in regionsReply
+  // (regionsGen goes up) and comes as NodeEvent::Regions.
+  bool requestRegions(const uint8_t* pub);
   bool sendCli(const uint8_t* pub, const char* cmd);
   bool trace(const uint8_t* pub);
   bool discover();
@@ -113,6 +119,10 @@ public:
   const RemoteStatus& lastStatus() const { return _status; }
   const TraceResult&  lastTrace()  const { return _trace; }
   char   telemetryText[200] = "";
+  // The last regions answer: who, and their list as they sent it ("*,spokane,wa,").
+  struct RegionsReply { uint8_t pub[32]; char names[180]; };
+  RegionsReply regionsReply = {};
+  uint32_t regionsGen = 0;
   uint8_t loginState(const uint8_t* pub) const;   // 0 none, 1 pending, 2 ok, 3 failed
   bool   loginIsAdmin() const { return _loginAdmin; }
 
@@ -159,6 +169,11 @@ protected:
   void logRxRaw(float snr, float rssi, const uint8_t raw[], int len) override;
   void logRx(mesh::Packet* packet, int len, float score) override;
   void logTx(mesh::Packet* packet, int len) override;
+  // A channel with a region scope of its own floods within that region, or across
+  // the whole mesh; otherwise the device's default region, as MeshCore does it
+  // (regions.h).
+  using MyMesh::sendFloodScoped;
+  void sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis = 0) override;
 
 private:
   void emit(NodeEvent e, const void* arg = nullptr) { if (onEvent) onEvent(e, arg); }
@@ -190,6 +205,7 @@ private:
   uint32_t _statusTag = 0, _statusSent = 0;
   uint8_t  _telemPub[4] = {0};
   uint32_t _telemTag = 0;
+  uint32_t _regionsTag = 0;
   uint32_t _traceTag = 0, _traceSent = 0;
   uint32_t _discoverTag = 0;
 

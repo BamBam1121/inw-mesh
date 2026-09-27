@@ -6,6 +6,7 @@
 #include <array>
 #include <vector>
 #include "app.h"
+#include "regions.h"
 #include <helpers/esp32/SerialBLEInterface.h>
 #include <helpers/TxtDataHelpers.h>
 #include <helpers/AdvertDataHelpers.h>
@@ -167,6 +168,15 @@ bool InwNode::sendChannel(uint8_t idx, const char* text, uint32_t histId) {
   return ok;
 }
 
+void InwNode::sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis) {
+  const char* choice = regions::forChannel(channel.secret);
+  if (!*choice) { MyMesh::sendFloodScoped(channel, pkt, delay_millis); return; }   // the device default
+  TransportKey scope;
+  memset(scope.key, 0, sizeof(scope.key));                 // a null key: the whole mesh
+  if (strcmp(choice, regions::WHOLE_MESH)) regions::keyFor(choice, scope.key);
+  MyMesh::sendFloodScoped(scope, pkt, delay_millis);
+}
+
 int InwNode::findChannelBySecret(const uint8_t* secret6) {
   for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
     ChannelDetails ch;
@@ -310,6 +320,20 @@ bool InwNode::requestTelemetry(const uint8_t* pub) {
   return true;
 }
 
+// ANON_REQ_TYPE_REGIONS (simple_repeater): {type}{reply path length}{reply path}.
+// A reply path of none sends the answer straight back, as the question came.
+bool InwNode::requestRegions(const uint8_t* pub) {
+  ContactInfo* c = contact(pub);
+  if (!c) return false;
+  ContactInfo direct = *c;
+  direct.out_path_len = 0;          // zero hops: a repeater ignores this request flooded
+  const uint8_t req[2] = {0x01, 0};
+  uint32_t tag = 0, est = 0;
+  if (sendAnonReq(direct, req, sizeof(req), tag, est) == MSG_SEND_FAILED) return false;
+  _regionsTag = tag;
+  return true;
+}
+
 bool InwNode::sendCli(const uint8_t* pub, const char* cmd) {
   ContactInfo* c = contact(pub);
   if (!c) return false;
@@ -394,6 +418,18 @@ void InwNode::onContactResponse(const ContactInfo& contact, const uint8_t* data,
       _loginState = 3;
     }
     emit(_loginState == 2 ? NodeEvent::LoginOk : NodeEvent::LoginFail, &contact);
+    return;
+  }
+  // A regions answer: {our tag}{their clock}{names, comma after each}. Matched on
+  // the tag alone, so it can't be taken for a status reply from the same repeater.
+  if (_regionsTag && tag == _regionsTag && len >= 8) {
+    memcpy(regionsReply.pub, contact.id.pub_key, 32);
+    const size_t n = min<size_t>(len - 8, sizeof(regionsReply.names) - 1);
+    memcpy(regionsReply.names, &data[8], n);
+    regionsReply.names[n] = 0;
+    _regionsTag = 0;
+    regionsGen++;
+    emit(NodeEvent::Regions, &contact);
     return;
   }
   if (_statusTag && len > 4 && (tag == _statusTag || !memcmp(_statusPub, contact.id.pub_key, 4))) {

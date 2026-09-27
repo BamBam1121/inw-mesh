@@ -41,6 +41,7 @@ static Gestures   gestures;
 #include "logstore.h"
 #include "theme.h"
 #include "app.h"
+#include "regions.h"
 #include "node.h"
 #include "history.h"
 #include "dataio.h"
@@ -537,6 +538,9 @@ static void onNodeEvent(NodeEvent e, const void* arg) {
     }
     case NodeEvent::LoginOk:   nav.toast(g_node->loginIsAdmin() ? "logged in as admin" : "logged in"); break;
     case NodeEvent::LoginFail: nav.toast("login failed or timed out"); break;
+    case NodeEvent::Regions:   // the scan screen reads it; USB shows it for checking
+      Serial.printf("[regions] %s: %s\n", ((const ContactInfo*)arg)->name, g_node->regionsReply.names);
+      break;
     default: break;
   }
   nav.statusChanged();
@@ -974,6 +978,32 @@ static void usbCommands() {
       if (!app::powerOff("usb command")) Serial.println("[power] refused: USB is plugged in");
       continue;
     }
+    // Region scopes: "regions" shows them; "regions ask [name]" puts MeshCore's
+    // regions request to a repeater in direct range (by name, or the one heard
+    // most recently with no hops) and the answer prints when it comes.
+    if (!strncmp(line, "regions", 7) && g_node) {
+      if (!strncmp(line, "regions ask", 11)) {
+        const char* want = line[11] == ' ' ? line + 12 : "";
+        ContactInfo best, c;
+        bool found = false;
+        ContactsIterator it = g_node->startContactsIterator();
+        while (it.hasNext(g_node, c)) {
+          if (c.type != ADV_TYPE_REPEATER) continue;
+          if (*want ? !strcasestr(c.name, want) : c.out_path_len != 0) continue;
+          if (!found || c.lastmod > best.lastmod) { best = c; found = true; }
+        }
+        if (!found) Serial.println("[regions] no such repeater in direct range (try: regions ask <name>)");
+        else Serial.printf("[regions] asking %s: %s\n", best.name, g_node->requestRegions(best.id.pub_key) ? "sent" : "failed");
+      } else {
+        Serial.printf("[regions] default: %s\n", *regions::defaultName() ? regions::defaultName() : "(none, whole mesh)");
+        for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
+          ChannelDetails ch;
+          if (g_node->getChannel(i, ch) && ch.name[0])
+            Serial.printf("[regions]   %-20s %s\n", ch.name, regions::describe(ch.channel.secret).c_str());
+        }
+      }
+      continue;
+    }
     if (!strcmp(line, "status")) {
       // board= lets the web installer refuse to put one board's firmware on another.
       // The pager has always left it out, so no board means a pager.
@@ -1282,6 +1312,7 @@ void setup() {
   }
   bootStep("restore", true, report);
   bootStep("messages", history.begin());
+  regions::begin();                               // channels' region scopes (regions.h)
 
   board.battReader = [] { return battery.millivolts(); };
   s_radioOk = nodeBegin();

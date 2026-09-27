@@ -251,12 +251,14 @@ static void sosTick() {
 // side button, which locks the screen on top of this view, and a countdown that
 // only ran while its view was on top would then never send.
 static uint32_t s_armAt = 0;                 // millis the countdown started; 0 = not armed
+// 20 s: long enough to notice an SOS you didn't mean and cancel it, from a pocket.
+static constexpr uint32_t ARM_MS = 20000;
 static uint32_t armRemaining() {
   if (!s_armAt) return 0;
   // Signed: s_armAt is millis()|1, one ahead of millis() on an even millisecond.
-  // Unsigned, that wrapped to "5 s passed" and could skip the cancel window.
+  // Unsigned, that wrapped to "the time has passed" and could skip the cancel window.
   const int32_t e = max((int32_t)(millis() - s_armAt), (int32_t)0);
-  return e >= 5000 ? 0 : (uint32_t)(5000 - e + 999) / 1000;
+  return e >= (int32_t)ARM_MS ? 0 : (uint32_t)(ARM_MS - e + 999) / 1000;
 }
 
 // A siren for each second of the countdown: a square wave sweeping up and back
@@ -366,7 +368,7 @@ static void sosMenu() {
   m->rebuild = [](MenuView& v) {
     v.info("status", []() -> String { return s_sos ? String("ON - sent ") + s_sosSent + (s_sosSent == 1 ? " time" : " times") : String("off"); });
     if (s_sos) v.action("STOP SOS", [] { sosStop(); nav.pop(); });
-    else v.action("send SOS now (5 s countdown)", [] { nav.pop(); sosArm(); });
+    else v.action("send SOS now (20 s countdown)", [] { nav.pop(); sosArm(); });
     v.value("channel", []() -> String {
       const int idx = sosChannel();
       ChannelDetails ch;

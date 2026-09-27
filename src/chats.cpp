@@ -3,6 +3,7 @@
 #include "app.h"
 #include "node.h"
 #include "history.h"
+#include "regions.h"
 #include "notify.h"
 #include "fx.h"
 #include "chats.h"
@@ -194,7 +195,11 @@ public:
     convName(_key, title, sizeof(title), &kind);
     char sub[40] = "";
     if (_key.type == CONV_CHANNEL) {
-      snprintf(sub, sizeof(sub), "%u messages", _n);
+      // A channel scoped to a region says so: its messages only go where that
+      // region's repeaters are (regions.h).
+      const String where = regions::describe(_key.id);
+      if (where.startsWith("#")) snprintf(sub, sizeof(sub), "%s  %u msgs", where.c_str(), _n);
+      else snprintf(sub, sizeof(sub), "%u messages", _n);
     } else if (ContactInfo* c = contact()) {
       if (c->type == ADV_TYPE_ROOM) {
         const uint8_t ls = g_node->loginState(c->id.pub_key);

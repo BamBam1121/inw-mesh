@@ -18,6 +18,8 @@
 #include "ota.h"
 #include "logstore.h"
 #include "regional.h"
+#include "regions.h"
+#include <algorithm>
 #include <SPIFFS.h>
 #include <SD.h>
 
@@ -186,6 +188,8 @@ void startSetup() {
   else setupZone();
 }
 
+static void scopeMenu(const uint8_t* secret);   // region scope, below
+
 static void radioMenu() {
   auto* m = new MenuView("Radio & Mesh");
   m->rebuild = [](MenuView& v) {
@@ -211,6 +215,10 @@ static void radioMenu() {
     v.toggle("rx boosted gain", [] { return P().rx_boosted_gain != 0; },
              [] { P().rx_boosted_gain = !P().rx_boosted_gain; radioChanged(); });
     v.header("mesh");
+    v.submenu("region scope", [] { scopeMenu(nullptr); }, []() -> String {
+      const char* d = regions::defaultName();
+      return *d ? String("#") + d : String("none");
+    });
     v.toggle("client repeat (forward packets)", [] { return P().isRepeatEn(); }, [] {
       P().setRepeatEn(!P().isRepeatEn()); markPrefsDirty();
       nav.toast(P().isRepeatEn() ? "repeating: this node now relays traffic" : "repeat off");
@@ -229,6 +237,181 @@ static void radioMenu() {
 }
 
 // ---- channels ------------------------------------------------------------------------------------
+// ---- region scope ----------------------------------------------------------------------------------
+// Where messages flood: across the whole mesh, or only through the repeaters that
+// serve a region (regions.h). A repeater passes a region's messages on only if it
+// has that exact region (spelling and capitals), so the safe way to choose is from
+// what the repeaters in range say they serve: RegionScanView asks them.
+
+// Asks the repeaters in direct range which regions they flood: finds them with a
+// discover, then puts MeshCore's regions request to each in turn. Lists every
+// region with how many answered for it, and how many still pass the whole mesh
+// (unscoped). pick(name) gets the choice: a name, or regions::WHOLE_MESH.
+class RegionScanView : public MenuView {
+public:
+  explicit RegionScanView(std::function<void(const char*)> pick) : MenuView("Regions nearby"), _pick(pick) {
+    refreshMs = 500;
+    _started = millis();
+    if (g_node) { _gen = g_node->regionsGen; _failed = !g_node->discover(); }
+    else _failed = true;
+    refresh();
+  }
+  void tick() override {
+    MenuView::tick();
+    if (!g_node || _failed) return;
+    bool changed = false;
+    if (_asking) {
+      if (g_node->regionsGen != _gen) {
+        _gen = g_node->regionsGen;
+        record(g_node->regionsReply.names);
+        _asking = false;
+        changed = true;
+      } else if (millis() - _askedAt > ASK_MS) {
+        _asking = false;
+        _silent++;
+        changed = true;
+      }
+    }
+    // One question in the air at a time: two repeaters answering at once collide.
+    while (!_asking && _next < g_node->discoveredCount) {
+      const DiscoverHit& h = g_node->discovered[_next++];
+      if (h.type != ADV_TYPE_REPEATER) continue;
+      if (!g_node->contact(h.pub)) { _unknown++; changed = true; continue; }
+      if (g_node->requestRegions(h.pub)) { _asking = true; _askedAt = millis(); changed = true; }
+    }
+    const bool done = !_asking && millis() - _started > LISTEN_MS && _next >= g_node->discoveredCount;
+    if (done != _done) { _done = done; changed = true; }
+    if (changed) refresh();
+  }
+
+private:
+  static constexpr uint32_t LISTEN_MS = 12000, ASK_MS = 5000;
+  static constexpr int MAX_NAMES = 16;
+
+  // "*,spokane,wa," from one repeater.
+  void record(const char* list) {
+    _answered++;
+    char tok[regions::NAME_LEN + 2];
+    size_t n = 0;
+    for (const char* p = list;; p++) {
+      if (*p && *p != ',') { if (n + 1 < sizeof(tok)) tok[n++] = *p; continue; }
+      tok[n] = 0;
+      if (!strcmp(tok, "*")) _wild++;
+      else if (n && tok[0] != '$') {            // private regions need a key we don't have
+        char clean[regions::NAME_LEN + 1];
+        if (regions::clean(tok, clean, sizeof(clean))) {
+          int i = 0;
+          while (i < _nNames && strcmp(_names[i], clean)) i++;
+          if (i < _nNames) _counts[i]++;
+          else if (_nNames < MAX_NAMES) { strlcpy(_names[_nNames], clean, sizeof(_names[0])); _counts[_nNames++] = 1; }
+        }
+      }
+      n = 0;
+      if (!*p) break;
+    }
+  }
+
+  void refresh() {
+    const int f = _focus, s = _scroll;
+    _rows.clear();
+    if (_failed) {
+      info("radio busy", [] { return String("try again in a moment"); });
+    } else {
+      const String state = _done ? String("done") : _asking ? String("asking a repeater...") : String("listening...");
+      info(state, [this] { return String(_answered) + " answered"; });
+    }
+    // Most-served first.
+    int order[MAX_NAMES];
+    for (int i = 0; i < _nNames; i++) order[i] = i;
+    std::sort(order, order + _nNames, [this](int a, int b) { return _counts[a] > _counts[b]; });
+    for (int k = 0; k < _nNames; k++) {
+      const int i = order[k];
+      const String nm = _names[i];
+      const int c = _counts[i];
+      value("#" + nm, [c] { return String(c) + (c == 1 ? " repeater" : " repeaters"); },
+            [this, nm] { auto fn = _pick; nav.pop(); fn(nm.c_str()); });
+    }
+    if (_answered) {
+      const int w = _wild, a = _answered;
+      value("whole mesh, no region", [w, a] { return String(w) + " of " + String(a) + " pass it"; },
+            [this] { auto fn = _pick; nav.pop(); fn(regions::WHOLE_MESH); });
+    }
+    if (_done && !_answered)
+      info(_silent ? "no answer" : "no repeaters in range", [] { return String("try closer to one"); });
+    if (_unknown) {
+      const int u = _unknown;
+      info("not in contacts yet", [u] { return String(u) + (u == 1 ? " repeater" : " repeaters"); });
+    }
+    _focus = constrain(f, 0, max(0, (int)_rows.size() - 1));
+    _scroll = s;
+    dirty = true;
+  }
+
+  std::function<void(const char*)> _pick;
+  char _names[MAX_NAMES][regions::NAME_LEN + 1];
+  int  _counts[MAX_NAMES] = {0};
+  int  _nNames = 0, _answered = 0, _wild = 0, _silent = 0, _unknown = 0;
+  uint8_t _next = 0;
+  bool _asking = false, _done = false, _failed = false;
+  uint32_t _gen = 0, _started = 0, _askedAt = 0;
+};
+
+// secret: one channel's own choice; nullptr: the device's default, which every
+// other flood (other channels, direct messages when flooded, adverts) follows.
+static void scopeMenu(const uint8_t* secret) {
+  struct Who { bool channel; uint8_t s[16]; } who{secret != nullptr, {0}};
+  if (secret) memcpy(who.s, secret, 16);
+  auto* m = new MenuView(secret ? "Channel region" : "Region scope");
+  m->rebuild = [who](MenuView& v) {
+    auto choice = [who]() -> String {
+      return who.channel ? String(regions::forChannel(who.s)) : String(regions::defaultName());
+    };
+    // For the device default, "whole mesh" is simply no region.
+    auto pick = [who](const char* c) {
+      if (who.channel) regions::setForChannel(who.s, c);
+      else regions::setDefault(strcmp(c, regions::WHOLE_MESH) ? c : "");
+      const String now = who.channel ? regions::describe(who.s)
+                                     : (*regions::defaultName() ? String("#") + regions::defaultName() : String("whole mesh"));
+      nav.toast((String("messages now flood: ") + now).c_str());
+    };
+    auto pickAndClose = [pick](const char* c) { nav.pop(); pick(c); };
+    v.header("only repeaters that serve it pass it on");
+    if (who.channel) {
+      const char* d = regions::defaultName();
+      v.toggle(*d ? String("like the rest: #") + d : String("like the rest: whole mesh"),
+               [choice] { return choice().length() == 0; }, [pickAndClose] { pickAndClose(""); });
+      v.toggle("whole mesh, no region", [choice] { return choice() == regions::WHOLE_MESH; },
+               [pickAndClose] { pickAndClose(regions::WHOLE_MESH); });
+    } else {
+      v.toggle("whole mesh, no region", [choice] { return choice().length() == 0; }, [pickAndClose] { pickAndClose(""); });
+    }
+    char names[12][regions::NAME_LEN + 1];
+    const int n = regions::known(names, 12);
+    for (int i = 0; i < n; i++) {
+      const String nm = names[i];
+      v.toggle("#" + nm, [choice, nm] { return choice() == nm; }, [pickAndClose, nm] { pickAndClose(nm.c_str()); });
+    }
+    v.action("ask repeaters nearby", [pickAndClose] {
+      nav.push(new RegionScanView([pickAndClose](const char* c) { pickAndClose(c); }));
+    });
+    v.action("type a region name", [pick, choice] {
+      const String cur = choice() == regions::WHOLE_MESH ? String("") : choice();
+      prompt("Region", "exactly as your repeaters have it", cur, regions::NAME_LEN, [pick](const String& s) {
+        char name[regions::NAME_LEN + 1];
+        const char* err = nullptr;
+        if (!s.length()) return;                 // nothing typed: nothing changes
+        if (!regions::clean(s.c_str(), name, sizeof(name), &err)) { nav.toast(err); return; }
+        // A name no repeater near here serves means messages that go nowhere.
+        const String nm = name;
+        confirm("Use #" + nm + "?", "repeaters that don't serve it drop these messages. spelling and capitals must match",
+                [pick, nm] { nav.pop(); pick(nm.c_str()); });
+      });
+    });
+  };
+  m->rebuild(*m);
+  nav.push(m);
+}
+
 static void channelMenu(int idx) {
   ChannelDetails ch;
   if (!g_node->getChannel(idx, ch) || !ch.name[0]) return;
@@ -240,6 +423,7 @@ static void channelMenu(int idx) {
     const ConvKey k = ConvKey::channel(secret);
     setNotifyMode(k, (notifyMode(k) + 1) % NM_COUNT);      // press to cycle
   });
+  m->value("region scope", [secret]() -> String { return regions::describe(secret); }, [secret] { scopeMenu(secret); });
   m->info("key", [secret]() -> String { char h[40]; mesh::Utils::toHex(h, secret, 16); return String(h); });
   m->info("messages", [secret]() -> String { return String(history.count(ConvKey::channel(secret))); });
   m->action("mark all read", [secret] { history.markRead(ConvKey::channel(secret)); nav.toast("done"); });
