@@ -30,14 +30,17 @@ static void adopt(UiSettings* s, const uint8_t* buf, size_t len) {
 }
 
 // One blob: forty keys would be forty flash writes every time a toggle moves.
-// A size or version mismatch falls back to defaults, which beats misreading.
+// A version mismatch falls back to defaults, which beats misreading.
 void UiSettings::load() {
   Preferences p;
   if (!p.begin("inw-ui", true)) return;
   // A shorter blob is an older build: its fields are a prefix of ours (new ones
   // are only ever appended), so read what's there and keep defaults for the rest.
+  // A longer one is a newer build's, or another board's (the T-Deck's has fields
+  // after ours): ours are a prefix of it, so adopt() takes those. Turning it away
+  // would reset every setting on going back to an older release.
   const size_t len = p.getBytesLength("blob");
-  if (p.getUChar("ver", 0) == VERSION && len > 0 && len <= sizeof(UiSettings)) {
+  if (p.getUChar("ver", 0) == VERSION && len > 0 && len <= 4096) {
     uint8_t* buf = (uint8_t*)malloc(len);
     if (buf) {
       p.getBytes("blob", buf, len);
@@ -85,16 +88,19 @@ const char* UiSettings::restoreIfWiped(bool sdReady) {
   if (s_fromNvs) return nullptr;
   uint8_t buf[sizeof(UiSettings) + 1];
   const char* from = nullptr;
+  // As in load(): a longer copy (a newer build's) is read as far as our fields go.
   File f = SPIFFS.open(MIRROR, FILE_READ);
-  if (f && f.size() >= 2 && f.size() <= sizeof(buf) && f.read(buf, f.size()) == (int)f.size() && buf[0] == VERSION) {
-    adopt(this, buf + 1, f.size() - 1);
+  size_t n = f ? min((size_t)f.size(), sizeof(buf)) : 0;
+  if (f && n >= 2 && f.read(buf, n) == (int)n && buf[0] == VERSION) {
+    adopt(this, buf + 1, n - 1);
     from = "flash copy";
   }
   if (f) f.close();
   if (!from && sdReady) {
     File g = SD.open("/inw/ui.bin", FILE_READ);
-    if (g && g.size() >= 2 && g.size() <= sizeof(buf) && g.read(buf, g.size()) == (int)g.size() && buf[0] == VERSION) {
-      adopt(this, buf + 1, g.size() - 1);
+    n = g ? min((size_t)g.size(), sizeof(buf)) : 0;
+    if (g && n >= 2 && g.read(buf, n) == (int)n && buf[0] == VERSION) {
+      adopt(this, buf + 1, n - 1);
       from = "sd card";
     }
     if (g) g.close();
