@@ -624,14 +624,28 @@ void Nav::drawOverlays(lgfx::LovyanGFX& g) {
     drawRich(g, line, 16, y + 22);
   }
   if (_toastUntil) {
-    const int w = min(L::W - 20, (int)g.textWidth(_toast) + 24);
+    // One line if it fits; a toast too wide for the screen (the T-Deck's is 320 px)
+    // breaks at the space nearest its middle instead of running off both edges.
+    const int tw = g.textWidth(_toast);
+    char a[sizeof(_toast)], b[sizeof(_toast)] = "";
+    strlcpy(a, _toast, sizeof(a));
+    if (tw > L::W - 44) {
+      const int n = strlen(a);
+      int cut = -1;
+      for (int i = 0; i < n; i++)
+        if (a[i] == ' ' && (cut < 0 || abs(i - n / 2) < abs(cut - n / 2))) cut = i;
+      if (cut > 0) { strlcpy(b, a + cut + 1, sizeof(b)); a[cut] = 0; }
+    }
+    const int lines = b[0] ? 2 : 1, h = lines == 2 ? 40 : 22;
+    const int w = min(L::W - 20, max((int)g.textWidth(a), (int)g.textWidth(b)) + 24);
     const int x = (L::W - w) / 2;
-    const int y = L::H - 28 + (int)((1 - overlayShow(_toastAt, _toastUntil)) * 34);
+    const int y = L::H - 6 - h + (int)((1 - overlayShow(_toastAt, _toastUntil)) * (h + 12));
     const int r = t.style == STYLE_BLOCKS ? 0 : 11;
-    g.fillRoundRect(x, y, w, 22, r, t.greenDim);
-    if (t.style != STYLE_INW) edge(x, y, w, 22, r);
+    g.fillRoundRect(x, y, w, h, r, t.greenDim);
+    if (t.style != STYLE_INW) edge(x, y, w, h, r);
     g.setTextColor(t.white, t.greenDim);
-    g.drawString(_toast, x + (w - g.textWidth(_toast)) / 2, y + 3);
+    g.drawString(a, x + (w - g.textWidth(a)) / 2, y + 3);
+    if (lines == 2) g.drawString(b, x + (w - g.textWidth(b)) / 2, y + 21);
   }
 }
 
@@ -958,13 +972,26 @@ void PromptView::draw(Canvas& g) {
     g.drawString(BOARD_HAS_TOUCH ? (_show ? "tap the eye to hide" : "tap the eye to show")
                                  : (_show ? "turn the wheel to hide" : "turn the wheel to show"), 12, fy + fh + 6);
   }
-  g.drawString(BOARD_HAS_TOUCH ? "enter saves  -  backspace on empty cancels  -  alt for 123"
-                               : "enter saves  -  backspace on empty cancels  -  hold orange for 123", 12, L::H - 20);
+#if BOARD_HAS_TOUCH
+  // Buttons a finger can find; enter and backspace still do the same.
+  g.setTextColor(t.dim, t.bg);
+  g.drawString("enter saves  -  alt + key for 123", 12, fy + fh + 26);
+  const int by = L::H - BTN_H - 6, bw = (L::W - 36) / 2;
+  drawPill(g, 12, by, bw, BTN_H, t.panel, t.txt, "cancel");
+  drawPill(g, 24 + bw, by, bw, BTN_H, t.green, t.bg, "save");
+#else
+  g.drawString("enter saves  -  backspace on empty cancels  -  hold orange for 123", 12, L::H - 20);
+#endif
 }
 
 // Touch: the eye shows or hides a secret.
 bool PromptView::touch(const TouchEvent& e) {
-  if (e.type != TouchEvent::Tap || !_secret) return false;
+  if (e.type != TouchEvent::Tap) return false;
+  if (e.y >= L::H - BTN_H - 12) {               // the cancel and save buttons
+    if (e.x < L::W / 2) nav.pop(); else commit();
+    return true;
+  }
+  if (!_secret) return false;
   const int fy = L::BODY_Y + 32, fh = 36;
   if (e.x < L::W - 70 || e.y < fy - 6 || e.y > fy + fh + 6) return false;
   _show = !_show;

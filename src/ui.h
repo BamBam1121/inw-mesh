@@ -210,6 +210,7 @@ public:
   bool wantsAllKeys() override { return true; }
 private:
   void commit();
+  static constexpr int BTN_H = 28;         // touchscreen boards: cancel and save
   String _title, _hint, _buf;
   size_t _maxLen;
   std::function<void(const String&)> _done;

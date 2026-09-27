@@ -301,6 +301,18 @@ int main(int argc, char** argv) {
   app::openContacts(); run(300);
   tap(160, 42 + 28 + 17); run(300);                    shot("contact_detail");
   clearTo(base);
+
+  // Pop-ups over the home screen, and typing a password.
+  nav.banner("Ridge Runner", "Count me in, bringing the T-Deck", 6000); run(400);   shot("overlay_banner");
+  nav.toast("not a contact yet - it will be once it adverts", 6000); run(400);      shot("overlay_toast_long");
+  run(7000);
+  app::openSettings(); run(300);
+  tap(8 + 149 + 6 + 70, 46 + 2 * 58 + 26); run(300);
+  tap(160, 42 + 2 * 28 + 14); run(300);
+  tap(160, 42 + 14); run(300);
+  for (const char* k = "hunter2"; *k; k++) nav.top()->key(*k);
+  run(1200);                                           shot("prompt_password");
+  clearTo(base);
 #endif
   return 0;
 }
