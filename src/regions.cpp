@@ -2,6 +2,8 @@
 #include <SPIFFS.h>
 #include <helpers/TransportKeyStore.h>
 #include "node.h"
+#include "app.h"
+#include <algorithm>
 
 bool inwQueueReplace(const char* path, const uint8_t* data, size_t len);   // tools/patch_meshcore.py
 
@@ -122,6 +124,84 @@ int known(char names[][NAME_LEN + 1], int max) {
   add(defaultName());
   for (int i = 0; i < s_n; i++) add(s_list[i].name);
   return n;
+}
+
+// ---- asking the repeaters in range ----------------------------------------------------
+namespace {
+constexpr uint32_t LISTEN_MS = 12000, ASK_MS = 5000;   // discover's listening time; one answer's wait
+}
+
+bool Scan::start() {
+  *this = Scan();
+  _started = true;
+  _at = millis();
+  if (!g_node || !g_node->discover()) { _failed = _done = true; return false; }
+  _gen = g_node->regionsGen;
+  return true;
+}
+
+bool Scan::tick() {
+  if (!_started || _done || !g_node) return false;
+  bool changed = false;
+  if (_asking) {
+    if (g_node->regionsGen != _gen) {
+      _gen = g_node->regionsGen;
+      record(g_node->regionsReply.names);
+      _asking = false;
+      changed = true;
+    } else if (millis() - _askedAt > ASK_MS) {
+      _asking = false;
+      silent++;
+      changed = true;
+    }
+  }
+  while (!_asking && _next < g_node->discoveredCount) {
+    const DiscoverHit& h = g_node->discovered[_next++];
+    if (h.type != ADV_TYPE_REPEATER) continue;
+    if (!g_node->contact(h.pub)) {
+      ContactInfo ci;
+      memset(&ci, 0, sizeof(ci));
+      ci.id = mesh::Identity(h.pub);
+      mesh::Utils::toHex(ci.name, h.pub, 4);   // its next advert names it
+      ci.type = ADV_TYPE_REPEATER;
+      ci.out_path_len = 0;
+      ci.lastmod = app::now();
+      if (!g_node->addContact(ci)) { full++; changed = true; continue; }
+      added++;
+    }
+    if (g_node->requestRegions(h.pub)) { _asking = true; _askedAt = millis(); changed = true; }
+  }
+  if (!_asking && millis() - _at > LISTEN_MS && _next >= g_node->discoveredCount) { _done = true; changed = true; }
+  return changed;
+}
+
+// "*,spokane,wa," from one repeater.
+void Scan::record(const char* list) {
+  answered++;
+  char tok[NAME_LEN + 2];
+  size_t n = 0;
+  for (const char* p = list;; p++) {
+    if (*p && *p != ',') { if (n + 1 < sizeof(tok)) tok[n++] = *p; continue; }
+    tok[n] = 0;
+    if (!strcmp(tok, "*")) wholeMesh++;
+    else if (n && tok[0] != '$') {                 // private regions need a key we don't have
+      char nm[NAME_LEN + 1];
+      if (clean(tok, nm, sizeof(nm))) {
+        int i = 0;
+        while (i < _n && strcmp(_names[i], nm)) i++;
+        if (i < _n) _counts[i]++;
+        else if (_n < MAX_NAMES) { strlcpy(_names[_n], nm, sizeof(_names[0])); _counts[_n++] = 1; }
+      }
+    }
+    n = 0;
+    if (!*p) break;
+  }
+  sort();
+}
+
+void Scan::sort() {
+  for (int i = 0; i < _n; i++) _order[i] = i;
+  std::sort(_order, _order + _n, [this](int a, int b) { return _counts[a] > _counts[b]; });
 }
 
 void begin() {

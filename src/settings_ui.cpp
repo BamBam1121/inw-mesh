@@ -243,120 +243,50 @@ static void radioMenu() {
 // has that exact region (spelling and capitals), so the safe way to choose is from
 // what the repeaters in range say they serve: RegionScanView asks them.
 
-// Asks the repeaters in direct range which regions they flood: finds them with a
-// discover, then puts MeshCore's regions request to each in turn. Lists every
-// region with how many answered for it, and how many still pass the whole mesh
-// (unscoped). pick(name) gets the choice: a name, or regions::WHOLE_MESH.
+// What the repeaters in range say they flood (regions::Scan), as a list to pick
+// from: every region with how many serve it, then the whole mesh with how many
+// still pass it. pick(name) gets the choice: a name, or regions::WHOLE_MESH.
 class RegionScanView : public MenuView {
 public:
   explicit RegionScanView(std::function<void(const char*)> pick) : MenuView("Regions nearby"), _pick(pick) {
     refreshMs = 500;
-    _started = millis();
-    if (g_node) { _gen = g_node->regionsGen; _failed = !g_node->discover(); }
-    else _failed = true;
+    _scan.start();
     refresh();
   }
   void tick() override {
     MenuView::tick();
-    if (!g_node || _failed) return;
-    bool changed = false;
-    if (_asking) {
-      if (g_node->regionsGen != _gen) {
-        _gen = g_node->regionsGen;
-        record(g_node->regionsReply.names);
-        _asking = false;
-        changed = true;
-      } else if (millis() - _askedAt > ASK_MS) {
-        _asking = false;
-        _silent++;
-        changed = true;
-      }
-    }
-    // One question in the air at a time: two repeaters answering at once collide.
-    while (!_asking && _next < g_node->discoveredCount) {
-      const DiscoverHit& h = g_node->discovered[_next++];
-      if (h.type != ADV_TYPE_REPEATER) continue;
-      if (!g_node->contact(h.pub)) {
-        // Not a contact yet (a fresh install hears adverts slowly), and the answer
-        // can only be read from one: add it, as the MeshCore app does for this
-        // request. Its next advert gives it its real name.
-        ContactInfo ci;
-        memset(&ci, 0, sizeof(ci));
-        ci.id = mesh::Identity(h.pub);
-        mesh::Utils::toHex(ci.name, h.pub, 4);
-        ci.type = ADV_TYPE_REPEATER;
-        ci.out_path_len = 0;
-        ci.lastmod = app::now();
-        if (!g_node->addContact(ci)) { _unknown++; changed = true; continue; }
-        _added++;
-      }
-      if (g_node->requestRegions(h.pub)) { _asking = true; _askedAt = millis(); changed = true; }
-    }
-    const bool done = !_asking && millis() - _started > LISTEN_MS && _next >= g_node->discoveredCount;
-    if (done != _done) { _done = done; changed = true; }
-    if (changed) refresh();
+    if (_scan.tick()) refresh();
   }
 
 private:
-  static constexpr uint32_t LISTEN_MS = 12000, ASK_MS = 5000;
-  static constexpr int MAX_NAMES = 16;
-
-  // "*,spokane,wa," from one repeater.
-  void record(const char* list) {
-    _answered++;
-    char tok[regions::NAME_LEN + 2];
-    size_t n = 0;
-    for (const char* p = list;; p++) {
-      if (*p && *p != ',') { if (n + 1 < sizeof(tok)) tok[n++] = *p; continue; }
-      tok[n] = 0;
-      if (!strcmp(tok, "*")) _wild++;
-      else if (n && tok[0] != '$') {            // private regions need a key we don't have
-        char clean[regions::NAME_LEN + 1];
-        if (regions::clean(tok, clean, sizeof(clean))) {
-          int i = 0;
-          while (i < _nNames && strcmp(_names[i], clean)) i++;
-          if (i < _nNames) _counts[i]++;
-          else if (_nNames < MAX_NAMES) { strlcpy(_names[_nNames], clean, sizeof(_names[0])); _counts[_nNames++] = 1; }
-        }
-      }
-      n = 0;
-      if (!*p) break;
-    }
-  }
-
   void refresh() {
     const int f = _focus, s = _scroll;
     _rows.clear();
-    if (_failed) {
+    if (_scan.failed()) {
       info("radio busy", [] { return String("try again in a moment"); });
     } else {
-      const String state = _done ? String("done") : _asking ? String("asking a repeater...") : String("listening...");
-      info(state, [this] { return String(_answered) + " answered"; });
+      const String state = _scan.done() ? String("done") : _scan.asking() ? String("asking a repeater...") : String("listening...");
+      info(state, [this] { return String(_scan.answered) + " answered"; });
     }
-    // Most-served first.
-    int order[MAX_NAMES];
-    for (int i = 0; i < _nNames; i++) order[i] = i;
-    std::sort(order, order + _nNames, [this](int a, int b) { return _counts[a] > _counts[b]; });
-    for (int k = 0; k < _nNames; k++) {
-      const int i = order[k];
-      const String nm = _names[i];
-      const int c = _counts[i];
+    for (int i = 0; i < _scan.count(); i++) {
+      const String nm = _scan.name(i);
+      const int c = _scan.servedBy(i);
       value("#" + nm, [c] { return String(c) + (c == 1 ? " repeater" : " repeaters"); },
             [this, nm] { auto fn = _pick; nav.pop(); fn(nm.c_str()); });
     }
-    if (_answered) {
-      const int w = _wild, a = _answered;
+    if (_scan.answered) {
+      const int w = _scan.wholeMesh, a = _scan.answered;
       value("whole mesh, no region", [w, a] { return String(w) + " of " + String(a) + " pass it"; },
             [this] { auto fn = _pick; nav.pop(); fn(regions::WHOLE_MESH); });
     }
-    if (_done && !_answered)
-      info(_silent ? "no answer" : "no repeaters in range", [] { return String("try closer to one"); });
-    if (_added) {
-      const int a = _added;
+    if (_scan.done() && !_scan.answered)
+      info(_scan.silent ? "no answer" : "no repeaters in range", [] { return String("try closer to one"); });
+    if (_scan.added) {
+      const int a = _scan.added;
       info("added to contacts", [a] { return String(a) + (a == 1 ? " repeater" : " repeaters"); });
     }
-    if (_unknown) {
-      const int u = _unknown;
+    if (_scan.full) {
+      const int u = _scan.full;
       info("contacts full, skipped", [u] { return String(u) + (u == 1 ? " repeater" : " repeaters"); });
     }
     _focus = constrain(f, 0, max(0, (int)_rows.size() - 1));
@@ -365,12 +295,7 @@ private:
   }
 
   std::function<void(const char*)> _pick;
-  char _names[MAX_NAMES][regions::NAME_LEN + 1];
-  int  _counts[MAX_NAMES] = {0};
-  int  _nNames = 0, _answered = 0, _wild = 0, _silent = 0, _unknown = 0, _added = 0;
-  uint8_t _next = 0;
-  bool _asking = false, _done = false, _failed = false;
-  uint32_t _gen = 0, _started = 0, _askedAt = 0;
+  regions::Scan _scan;
 };
 
 // secret: one channel's own choice; nullptr: the device's default, which every

@@ -40,4 +40,34 @@ int known(char names[][NAME_LEN + 1], int max);
 
 void begin();                            // after the store is mounted
 
+// Asking the repeaters in direct range which regions they flood: a discover to
+// find them, then MeshCore's regions request to each in turn - one question in
+// the air at a time, as two repeaters answering at once collide. A repeater that
+// isn't a contact yet is added first (only a contact's answer can be read), as
+// the MeshCore app does. Settings shows it (RegionScanView); USB prints it.
+class Scan {
+public:
+  static constexpr int MAX_NAMES = 16;
+  bool start();                          // false: the radio is busy
+  bool tick();                           // call often; true when something changed
+  bool running() const { return _started && !_done; }
+  bool done() const { return _done; }
+  bool failed() const { return _failed; }
+  bool asking() const { return _asking; }
+  // Regions heard, most-served first after sort().
+  int  count() const { return _n; }
+  const char* name(int i) const { return _names[_order[i]]; }
+  int  servedBy(int i) const { return _counts[_order[i]]; }
+  int  answered = 0, wholeMesh = 0, silent = 0, added = 0, full = 0;
+
+private:
+  void record(const char* list);
+  void sort();
+  char _names[MAX_NAMES][NAME_LEN + 1];
+  int  _counts[MAX_NAMES] = {0}, _order[MAX_NAMES] = {0}, _n = 0;
+  uint8_t _next = 0;
+  bool _asking = false, _done = false, _failed = false, _started = false;
+  uint32_t _gen = 0, _at = 0, _askedAt = 0;
+};
+
 }  // namespace regions
