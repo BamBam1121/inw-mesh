@@ -267,6 +267,9 @@ void importBeforeNode(char* report, size_t cap) {
     else if (restoreFromKeep("pr", "/prefs.json")) from = "safety copy";
     note("settings", from);
   }
+  // Channels' region scopes (regions.h): read after this, so restored first.
+  if (!SPIFFS.exists("/chregion.bin") && sdMount() && fileSize(SD, "/inw/chregion.bin") &&
+      copyFile(SD, "/inw/chregion.bin", SPIFFS, "/chregion.bin")) note("channel regions", "sd mirror");
   if (!SPIFFS.exists("/hist.log") && sdMount() && fileSize(SD, "/inw/hist.log")) {
     if (copyFile(SD, "/inw/hist.log", SPIFFS, "/hist.log")) note("messages", "sd mirror");
     if (fileSize(SD, "/inw/hist_read.bin")) copyFile(SD, "/inw/hist_read.bin", SPIFFS, "/hist_read.bin");
@@ -575,6 +578,7 @@ const char* sdBackupNow(bool force) {
     s_progress = "copying settings to sd";
     if (copyFile(SPIFFS, "/prefs.json", SD, "/inw/prefs.json")) n++;
     if (copyFile(SPIFFS, "/ui.bin", SD, "/inw/ui.bin")) n++;      // theme, brightness, the rest of the UI
+    if (SPIFFS.exists("/chregion.bin")) copyFile(SPIFFS, "/chregion.bin", SD, "/inw/chregion.bin");   // channels' region scopes
     s_progress = "copying messages to sd";
     if (copyFile(SPIFFS, "/hist.log", SD, "/inw/hist.log")) n++;
     copyFile(SPIFFS, "/hist_read.bin", SD, "/inw/hist_read.bin");
