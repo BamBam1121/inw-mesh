@@ -118,7 +118,9 @@ static bool s_radioOk = false;
 #if BOARD_HAS_TOUCH
 static bool s_touchWake = false;   // touchscreen: a double tap on the dark screen (tapWake)
 #endif
+#if INW_DEV
 static regions::Scan s_usbScan;    // USB "regions scan"
+#endif
 static char s_radioFault[64] = "radio not responding";
 
 void markPrefsDirty() { s_prefsDirtyAt = millis() | 1; }
@@ -542,9 +544,11 @@ static void onNodeEvent(NodeEvent e, const void* arg) {
     }
     case NodeEvent::LoginOk:   nav.toast(g_node->loginIsAdmin() ? "logged in as admin" : "logged in"); break;
     case NodeEvent::LoginFail: nav.toast("login failed or timed out"); break;
-    case NodeEvent::Regions:   // the scan screen reads it; USB shows it for checking
+#if INW_DEV
+    case NodeEvent::Regions:   // the scan screen reads it; the developer build prints it
       Serial.printf("[regions] %s: %s\n", ((const ContactInfo*)arg)->name, g_node->regionsReply.names);
       break;
+#endif
     default: break;
   }
   nav.statusChanged();
@@ -616,6 +620,35 @@ static void usbCommands() {
     line[n] = 0;
     n = 0;
     if (!line[0]) continue;
+    // Every build answers the web installer's two questions: "status" (what is on
+    // it) and "save" (put everything on flash before it is reset).
+    if (!strcmp(line, "status")) {
+      // board= lets the web installer refuse to put one board's firmware on another.
+      // The pager has always left it out, so no board means a pager.
+#ifdef OTA_BOARD
+      Serial.printf("[status] fw=%s radio=%s radio_ok=%d contacts=%d board=" OTA_BOARD "\n",
+#else
+      Serial.printf("[status] fw=%s radio=%s radio_ok=%d contacts=%d\n",
+#endif
+                    FW_VERSION, radio_chip, s_radioOk ? 1 : 0,
+                    g_node ? g_node->getNumContacts() : -1);
+      continue;
+    }
+    // The browser installer sends this before it resets the pager, so nothing
+    // learned since the last lazy write is lost to the flash. Cheap enough to
+    // run on demand: contacts are only written if there is something pending.
+    if (!strcmp(line, "save")) {
+      if (g_node) {
+        if (g_node->hasPendingWork()) g_node->saveContactsNow();
+        g_node->savePrefsNow();
+      }
+      ui_settings.save();
+      const bool landed = inwStoreFlush(10000);      // "ok" means on flash, not just queued
+      Serial.printf("[save] %s contacts=%d\n", landed ? "ok" : "slow", g_node ? g_node->getNumContacts() : -1);
+      continue;
+    }
+#if INW_DEV   // the rest is for the developer build (pio run -e t-lora-pager-dev), never a release:
+              // diagnostics, remote control for screenshots, test commands
     // Anyone with a USB cable could send "press" or "key" to get past the lock
     // screen, or "shot" to read what's on it. While locked (or dark, which locks)
     // only commands that don't reveal or unlock anything are accepted.
@@ -629,9 +662,6 @@ static void usbCommands() {
       Serial.println("[usb] pager is locked: unlock it on the device first");
       continue;
     }
-    // One line the installer (and anyone with a serial monitor) can ask for, so
-    // nobody has to catch the boot report as it scrolls past. Answered without
-    // waking the screen.
     // Diagnostic for the "a website update wipes my settings" report: how full
     // NVS is, what it holds, and the settings most likely to be noticed missing.
     if (!strcmp(line, "nvs")) {
@@ -699,19 +729,6 @@ static void usbCommands() {
       int files = 0; size_t bytes = 0;
       for (File f = root.openNextFile(); f; f = root.openNextFile()) { files++; bytes += f.size(); }
       Serial.printf("[fs] %d files, %u bytes\n", files, (unsigned)bytes);
-      continue;
-    }
-    // The browser installer sends this before it resets the pager, so nothing
-    // learned since the last lazy write is lost to the flash. Cheap enough to
-    // run on demand: contacts are only written if there is something pending.
-    if (!strcmp(line, "save")) {
-      if (g_node) {
-        if (g_node->hasPendingWork()) g_node->saveContactsNow();
-        g_node->savePrefsNow();
-      }
-      ui_settings.save();
-      const bool landed = inwStoreFlush(10000);      // "ok" means on flash, not just queued
-      Serial.printf("[save] %s contacts=%d\n", landed ? "ok" : "slow", g_node ? g_node->getNumContacts() : -1);
       continue;
     }
     if (!strcmp(line, "backup")) {          // same job as Settings -> back up to sd now
@@ -1005,21 +1022,9 @@ static void usbCommands() {
         for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
           ChannelDetails ch;
           if (g_node->getChannel(i, ch) && ch.name[0])
-            Serial.printf("[regions]   %-20s %s\n", ch.name, regions::describe(ch.channel.secret).c_str());
+            Serial.printf("[regions]   %-20s %s\n", ch.name, (*regions::effective(ch.channel.secret) ? regions::effective(ch.channel.secret) : "(whole mesh)"));
         }
       }
-      continue;
-    }
-    if (!strcmp(line, "status")) {
-      // board= lets the web installer refuse to put one board's firmware on another.
-      // The pager has always left it out, so no board means a pager.
-#ifdef OTA_BOARD
-      Serial.printf("[status] fw=%s radio=%s radio_ok=%d contacts=%d board=" OTA_BOARD "\n",
-#else
-      Serial.printf("[status] fw=%s radio=%s radio_ok=%d contacts=%d\n",
-#endif
-                    FW_VERSION, radio_chip, s_radioOk ? 1 : 0,
-                    g_node ? g_node->getNumContacts() : -1);
       continue;
     }
     // What is plugged into the top header, and what IO9 is doing.
@@ -1062,6 +1067,7 @@ static void usbCommands() {
       ext::openPage();
     }
     nav.invalidate();
+#endif
   }
 }
 
@@ -1624,13 +1630,15 @@ void loop() {
   // 1000+ contacts, with the screen frozen for it.
   if (s_uiDirtyAt && millis() - s_uiDirtyAt > 2000) { s_uiDirtyAt = 0; ui_settings.save(); }
   if (g_shotAt && (int32_t)(millis() - g_shotAt) >= 0) { g_shotAt = 0; takeScreenshot(); }
+#if INW_DEV
   // USB "regions scan": each answer prints as it comes (onNodeEvent), the tally at the end.
   if (s_usbScan.running() && s_usbScan.tick() && s_usbScan.done()) {
     Serial.printf("[regions] done: %d answered, %d pass the whole mesh, %d silent, %d added to contacts\n",
                   s_usbScan.answered, s_usbScan.wholeMesh, s_usbScan.silent, s_usbScan.added);
     for (int i = 0; i < s_usbScan.count(); i++)
-      Serial.printf("[regions]   #%-20s %d\n", s_usbScan.name(i), s_usbScan.servedBy(i));
+      Serial.printf("[regions]   %-20s %d\n", s_usbScan.name(i), s_usbScan.servedBy(i));
   }
+#endif
   usbCommands();
 
   lap(6);

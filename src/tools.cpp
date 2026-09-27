@@ -292,6 +292,8 @@ void app::openTools() {
 #endif
   m->action("log", [] { logsPage(); });
   m->action("test notification", [] { app::testNotify(); });
+#if INW_DEV   // for documentation screenshots: the developer build only
   m->action("screenshot in 5 s (to sd)", [] { g_shotAt = millis() + 5000; nav.toast("go to the screen - capturing in 5 s"); });
+#endif
   nav.push(m);
 }

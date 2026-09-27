@@ -6,29 +6,34 @@
 #include <algorithm>
 
 bool inwQueueReplace(const char* path, const uint8_t* data, size_t len);   // tools/patch_meshcore.py
+void markPrefsDirty();                                                      // main.cpp
 
 namespace regions {
 namespace {
 
-// One channel's choice, found by the first bytes of its key (indices move when
-// a channel is left).
+// One channel's region, found by the first bytes of its key (indices move when a
+// channel is left).
 struct Entry {
   uint8_t id[6];
-  char    name[NAME_LEN + 1];              // WHOLE_MESH, or a region name
+  char    name[NAME_LEN + 1];
 };
-Entry s_list[MAX_GROUP_CHANNELS];
-int s_n = 0;
-const char* PATH = "/chregion.bin";
+Entry s_ch[MAX_GROUP_CHANNELS];
+int s_nch = 0;
+char s_list[LIST_MAX][NAME_LEN + 1];      // the regions added, as the app lists them
+int s_nlist = 0;
+const char* CH_PATH = "/chregion.bin";
+const char* LIST_PATH = "/regions.bin";
 
-void save() {
-  const size_t len = sizeof(Entry) * s_n;
-  if (inwQueueReplace(PATH, (const uint8_t*)s_list, len)) return;   // written in the background
-  File f = SPIFFS.open(PATH, FILE_WRITE);
-  if (f) { f.write((const uint8_t*)s_list, len); f.close(); }
+void write(const char* path, const void* data, size_t len) {
+  if (inwQueueReplace(path, (const uint8_t*)data, len)) return;   // written in the background
+  File f = SPIFFS.open(path, FILE_WRITE);
+  if (f) { f.write((const uint8_t*)data, len); f.close(); }
 }
+void saveChannels() { write(CH_PATH, s_ch, sizeof(Entry) * s_nch); }
+void saveList() { write(LIST_PATH, s_list, sizeof(s_list[0]) * s_nlist); }
 
 Entry* find(const uint8_t* secret16) {
-  for (int i = 0; i < s_n; i++) if (!memcmp(s_list[i].id, secret16, 6)) return &s_list[i];
+  for (int i = 0; i < s_nch; i++) if (!memcmp(s_ch[i].id, secret16, 6)) return &s_ch[i];
   return nullptr;
 }
 
@@ -41,7 +46,7 @@ bool clean(const char* in, char* out, size_t cap, const char** err) {
   for (; *in && *in != ' '; in++) {
     const char c = *in;
     if (c == '$') { if (err) *err = "private regions ($) aren't supported yet"; return false; }
-    if (!isalnum((unsigned char)c) && c != '-' && c != '_') { if (err) *err = "letters, digits, - and _ only"; return false; }
+    if (!isalnum((unsigned char)c) && c != '-') { if (err) *err = "letters, digits and - only"; return false; }
     if (n + 1 >= cap || n >= NAME_LEN) { if (err) *err = "too long"; return false; }
     out[n++] = c;
   }
@@ -59,6 +64,40 @@ void keyFor(const char* name, uint8_t key[16]) {
   memcpy(key, k.key, 16);
 }
 
+int list(char names[][NAME_LEN + 1], int max) {
+  const int n = min(max, s_nlist);
+  for (int i = 0; i < n; i++) strlcpy(names[i], s_list[i], NAME_LEN + 1);
+  return n;
+}
+
+void add(const char* name) {
+  if (!name || !*name) return;
+  for (int i = 0; i < s_nlist; i++) if (!strcmp(s_list[i], name)) return;
+  if (s_nlist >= LIST_MAX) {                  // full: the oldest goes, unless it's in use
+    int drop = -1;
+    for (int i = 0; i < s_nlist && drop < 0; i++) {
+      bool used = !strcmp(s_list[i], defaultName());
+      for (int k = 0; k < s_nch && !used; k++) used = !strcmp(s_ch[k].name, s_list[i]);
+      if (!used) drop = i;
+    }
+    if (drop < 0) return;
+    for (int i = drop; i + 1 < s_nlist; i++) memcpy(s_list[i], s_list[i + 1], sizeof(s_list[0]));
+    s_nlist--;
+  }
+  strlcpy(s_list[s_nlist++], name, NAME_LEN + 1);
+  saveList();
+}
+
+void remove(const char* name) {
+  for (int i = 0; i < s_nlist; i++) {
+    if (strcmp(s_list[i], name)) continue;
+    for (int k = i; k + 1 < s_nlist; k++) memcpy(s_list[k], s_list[k + 1], sizeof(s_list[0]));
+    s_nlist--;
+    saveList();
+    return;
+  }
+}
+
 const char* defaultName() {
   return g_node ? g_node->prefs().default_scope_name : "";
 }
@@ -69,11 +108,12 @@ void setDefault(const char* name) {
   if (name && *name) {
     strlcpy(p.default_scope_name, name, sizeof(p.default_scope_name));
     keyFor(p.default_scope_name, p.default_scope_key);
+    add(name);
   } else {
     memset(p.default_scope_name, 0, sizeof(p.default_scope_name));
     memset(p.default_scope_key, 0, sizeof(p.default_scope_key));
   }
-  g_node->savePrefsNow();
+  markPrefsDirty();          // saved shortly, as the radio settings are: no stall here
 }
 
 const char* forChannel(const uint8_t* secret16) {
@@ -81,49 +121,36 @@ const char* forChannel(const uint8_t* secret16) {
   return e ? e->name : "";
 }
 
-void setForChannel(const uint8_t* secret16, const char* choice) {
+void setForChannel(const uint8_t* secret16, const char* name) {
   Entry* e = find(secret16);
-  if (!choice || !*choice) {                       // back to the default: drop the entry
+  if (!name || !*name) {                           // cleared: back to the default
     if (!e) return;
-    *e = s_list[--s_n];
+    *e = s_ch[--s_nch];
   } else {
     if (!e) {
-      if (s_n >= MAX_GROUP_CHANNELS) {
+      if (s_nch >= MAX_GROUP_CHANNELS) {
         // Full of entries for channels since left: forget those first.
         int k = 0;
-        for (int i = 0; i < s_n; i++) {
+        for (int i = 0; i < s_nch; i++) {
           uint8_t secret6[6];
-          memcpy(secret6, s_list[i].id, 6);
-          if (g_node && g_node->findChannelBySecret(secret6) >= 0) s_list[k++] = s_list[i];
+          memcpy(secret6, s_ch[i].id, 6);
+          if (g_node && g_node->findChannelBySecret(secret6) >= 0) s_ch[k++] = s_ch[i];
         }
-        s_n = k;
-        if (s_n >= MAX_GROUP_CHANNELS) return;
+        s_nch = k;
+        if (s_nch >= MAX_GROUP_CHANNELS) return;
       }
-      e = &s_list[s_n++];
+      e = &s_ch[s_nch++];
       memcpy(e->id, secret16, 6);
     }
-    strlcpy(e->name, choice, sizeof(e->name));
+    strlcpy(e->name, name, sizeof(e->name));
+    add(name);
   }
-  save();
+  saveChannels();
 }
 
-String describe(const uint8_t* secret16) {
+const char* effective(const uint8_t* secret16) {
   const char* c = forChannel(secret16);
-  if (!strcmp(c, WHOLE_MESH)) return "whole mesh";
-  if (!*c) c = defaultName();
-  return *c ? String("#") + c : String("whole mesh");
-}
-
-int known(char names[][NAME_LEN + 1], int max) {
-  int n = 0;
-  auto add = [&](const char* s) {
-    if (!*s || !strcmp(s, WHOLE_MESH) || n >= max) return;
-    for (int i = 0; i < n; i++) if (!strcmp(names[i], s)) return;
-    strlcpy(names[n++], s, NAME_LEN + 1);
-  };
-  add(defaultName());
-  for (int i = 0; i < s_n; i++) add(s_list[i].name);
-  return n;
+  return *c ? c : defaultName();
 }
 
 // ---- asking the repeaters in range ----------------------------------------------------
@@ -205,14 +232,32 @@ void Scan::sort() {
 }
 
 void begin() {
-  s_n = 0;
-  File f = SPIFFS.open(PATH, FILE_READ);
-  if (!f) return;
-  const size_t len = f.size();
-  if (len % sizeof(Entry) == 0 && len <= sizeof(s_list) && f.read((uint8_t*)s_list, len) == (int)len)
-    s_n = len / sizeof(Entry);
-  f.close();
-  for (int i = 0; i < s_n; i++) s_list[i].name[NAME_LEN] = 0;
+  s_nch = 0;
+  s_nlist = 0;
+  File f = SPIFFS.open(CH_PATH, FILE_READ);
+  if (f) {
+    const size_t len = f.size();
+    if (len % sizeof(Entry) == 0 && len <= sizeof(s_ch) && f.read((uint8_t*)s_ch, len) == (int)len)
+      s_nch = len / sizeof(Entry);
+    f.close();
+  }
+  int k = 0;
+  for (int i = 0; i < s_nch; i++) {
+    s_ch[i].name[NAME_LEN] = 0;
+    if (s_ch[i].name[0] && s_ch[i].name[0] != '*') s_ch[k++] = s_ch[i];   // "*" was a beta's "whole mesh"
+  }
+  s_nch = k;
+  File g = SPIFFS.open(LIST_PATH, FILE_READ);
+  if (g) {
+    const size_t len = g.size();
+    if (len % sizeof(s_list[0]) == 0 && len <= sizeof(s_list) && g.read((uint8_t*)s_list, len) == (int)len)
+      s_nlist = len / sizeof(s_list[0]);
+    g.close();
+  }
+  for (int i = 0; i < s_nlist; i++) s_list[i][NAME_LEN] = 0;
+  // Regions in use belong on the list (the default may have come from the app).
+  if (*defaultName()) add(defaultName());
+  for (int i = 0; i < s_nch; i++) add(s_ch[i].name);
 }
 
 }  // namespace regions

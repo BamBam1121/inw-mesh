@@ -169,11 +169,13 @@ protected:
   void logRxRaw(float snr, float rssi, const uint8_t raw[], int len) override;
   void logRx(mesh::Packet* packet, int len, float score) override;
   void logTx(mesh::Packet* packet, int len) override;
-  // A channel with a region scope of its own floods within that region, or across
-  // the whole mesh; otherwise the device's default region, as MeshCore does it
-  // (regions.h).
+  // Region scopes (regions.h). What the phone app sends goes as MeshCore sends it,
+  // in the app's scope. This node's own floods go in its channel's region if it has
+  // one, else the default region - never in a scope the app left set.
   using MyMesh::sendFloodScoped;
   void sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis = 0) override;
+  void sendFloodScoped(const ContactInfo& to, mesh::Packet* pkt, uint32_t delay_millis = 0) override;
+  void floodInDefault(mesh::Packet* pkt, uint32_t delay_millis);
 
 private:
   void emit(NodeEvent e, const void* arg = nullptr) { if (onEvent) onEvent(e, arg); }

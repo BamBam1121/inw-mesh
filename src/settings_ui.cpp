@@ -215,9 +215,9 @@ static void radioMenu() {
     v.toggle("rx boosted gain", [] { return P().rx_boosted_gain != 0; },
              [] { P().rx_boosted_gain = !P().rx_boosted_gain; radioChanged(); });
     v.header("mesh");
-    v.submenu("region scope", [] { scopeMenu(nullptr); }, []() -> String {
+    v.submenu("default region scope", [] { scopeMenu(nullptr); }, []() -> String {
       const char* d = regions::defaultName();
-      return *d ? String("#") + d : String("none");
+      return *d ? String(d) : String("none");
     });
     v.toggle("client repeat (forward packets)", [] { return P().isRepeatEn(); }, [] {
       P().setRepeatEn(!P().isRepeatEn()); markPrefsDirty();
@@ -243,12 +243,12 @@ static void radioMenu() {
 // has that exact region (spelling and capitals), so the safe way to choose is from
 // what the repeaters in range say they serve: RegionScanView asks them.
 
-// What the repeaters in range say they flood (regions::Scan), as a list to pick
-// from: every region with how many serve it, then the whole mesh with how many
-// still pass it. pick(name) gets the choice: a name, or regions::WHOLE_MESH.
+// What the repeaters in range say they carry (regions::Scan), as the app's
+// Discover Regions: every region with how many carry it, to pick one; and how many
+// still pass messages with no region. pick(name) gets the region chosen.
 class RegionScanView : public MenuView {
 public:
-  explicit RegionScanView(std::function<void(const char*)> pick) : MenuView("Regions nearby"), _pick(pick) {
+  explicit RegionScanView(std::function<void(const char*)> pick) : MenuView("Discover regions"), _pick(pick) {
     refreshMs = 500;
     _scan.start();
     refresh();
@@ -271,13 +271,12 @@ private:
     for (int i = 0; i < _scan.count(); i++) {
       const String nm = _scan.name(i);
       const int c = _scan.servedBy(i);
-      value("#" + nm, [c] { return String(c) + (c == 1 ? " repeater" : " repeaters"); },
+      value(nm, [c] { return String(c) + (c == 1 ? " repeater" : " repeaters"); },
             [this, nm] { auto fn = _pick; nav.pop(); fn(nm.c_str()); });
     }
     if (_scan.answered) {
       const int w = _scan.wholeMesh, a = _scan.answered;
-      value("whole mesh, no region", [w, a] { return String(w) + " of " + String(a) + " pass it"; },
-            [this] { auto fn = _pick; nav.pop(); fn(regions::WHOLE_MESH); });
+      info("no region (unscoped)", [w, a] { return String(w) + " of " + String(a) + " pass it"; });
     }
     if (_scan.done() && !_scan.answered)
       info(_scan.silent ? "no answer" : "no repeaters in range", [] { return String("try closer to one"); });
@@ -298,61 +297,80 @@ private:
   regions::Scan _scan;
 };
 
-// secret: one channel's own choice; nullptr: the device's default, which every
-// other flood (other channels, direct messages when flooded, adverts) follows.
+// The app's Set Region Scope (secret: that channel) and Default Region Scope
+// (nullptr): pick from the regions added, clear it, discover what the repeaters
+// in range carry, or add one by name. A channel with no region follows the
+// default; the default with none is the whole mesh.
+static void regionListMenu();
 static void scopeMenu(const uint8_t* secret) {
   struct Who { bool channel; uint8_t s[16]; } who{secret != nullptr, {0}};
   if (secret) memcpy(who.s, secret, 16);
-  auto* m = new MenuView(secret ? "Channel region" : "Region scope");
+  auto* m = new MenuView(secret ? "Set region scope" : "Default region scope");
   m->rebuild = [who](MenuView& v) {
-    auto choice = [who]() -> String {
+    auto current = [who]() -> String {
       return who.channel ? String(regions::forChannel(who.s)) : String(regions::defaultName());
     };
-    // For the device default, "whole mesh" is simply no region.
-    auto pick = [who](const char* c) {
-      if (who.channel) regions::setForChannel(who.s, c);
-      else regions::setDefault(strcmp(c, regions::WHOLE_MESH) ? c : "");
-      const String now = who.channel ? regions::describe(who.s)
-                                     : (*regions::defaultName() ? String("#") + regions::defaultName() : String("whole mesh"));
-      nav.toast((String("messages now flood: ") + now).c_str());
+    auto set = [who](const char* name) {
+      if (who.channel) regions::setForChannel(who.s, name); else regions::setDefault(name);
+      if (*name) nav.toast((String("region scope: ") + name).c_str());
+      else if (who.channel) nav.toast(*regions::defaultName() ? (String("scope cleared: default ") + regions::defaultName()).c_str()
+                                                             : "scope cleared: no region");
+      else nav.toast("no default region: the whole mesh");
     };
-    auto pickAndClose = [pick](const char* c) { nav.pop(); pick(c); };
-    v.header("only repeaters that serve it pass it on");
-    if (who.channel) {
-      const char* d = regions::defaultName();
-      v.toggle(*d ? String("like the rest: #") + d : String("like the rest: whole mesh"),
-               [choice] { return choice().length() == 0; }, [pickAndClose] { pickAndClose(""); });
-      v.toggle("whole mesh, no region", [choice] { return choice() == regions::WHOLE_MESH; },
-               [pickAndClose] { pickAndClose(regions::WHOLE_MESH); });
-    } else {
-      v.toggle("whole mesh, no region", [choice] { return choice().length() == 0; }, [pickAndClose] { pickAndClose(""); });
-    }
-    char names[12][regions::NAME_LEN + 1];
-    const int n = regions::known(names, 12);
+    auto setAndClose = [set](const char* name) { nav.pop(); set(name); };
+    v.header("only repeaters that carry it pass it on");
+    const char* d = regions::defaultName();
+    const String none = who.channel ? (*d ? String("clear scope (default ") + d + ")" : String("clear scope (no region)"))
+                                    : String("none: the whole mesh");
+    v.toggle(none, [current] { return current().length() == 0; }, [setAndClose] { setAndClose(""); });
+    char names[regions::LIST_MAX][regions::NAME_LEN + 1];
+    const int n = regions::list(names, regions::LIST_MAX);
     for (int i = 0; i < n; i++) {
       const String nm = names[i];
-      v.toggle("#" + nm, [choice, nm] { return choice() == nm; }, [pickAndClose, nm] { pickAndClose(nm.c_str()); });
+      v.toggle(nm, [current, nm] { return current() == nm; }, [setAndClose, nm] { setAndClose(nm.c_str()); });
     }
-    v.action("ask repeaters nearby", [pickAndClose] {
-      nav.push(new RegionScanView([pickAndClose](const char* c) { pickAndClose(c); }));
+    v.action("discover regions", [setAndClose] {
+      nav.push(new RegionScanView([setAndClose](const char* c) { setAndClose(c); }));
     });
-    v.action("type a region name", [pick, choice] {
-      const String cur = choice() == regions::WHOLE_MESH ? String("") : choice();
-      prompt("Region", "exactly as your repeaters have it", cur, regions::NAME_LEN, [pick](const String& s) {
+    v.action("+ add a region", [set] {
+      prompt("Add a region", "its name, exactly as the repeaters have it", "", regions::NAME_LEN, [set](const String& s) {
         char name[regions::NAME_LEN + 1];
         const char* err = nullptr;
         if (!s.length()) return;                 // nothing typed: nothing changes
         if (!regions::clean(s.c_str(), name, sizeof(name), &err)) { nav.toast(err); return; }
-        // A name no repeater near here serves means messages that go nowhere.
+        // A name no repeater near here carries means messages that go nowhere.
         const String nm = name;
-        confirm("Use #" + nm + "?", "repeaters that don't serve it drop these messages. spelling and capitals must match",
-                [pick, nm] { nav.pop(); pick(nm.c_str()); });
+        confirm("Use " + nm + "?", "repeaters that don't carry it drop these messages. spelling and capitals must match",
+                [set, nm] { regions::add(nm.c_str()); nav.pop(); set(nm.c_str()); });
       });
     });
+    if (n) v.action("edit the list", [] { regionListMenu(); });
   };
   m->rebuild(*m);
   nav.push(m);
 }
+
+// The regions added, to remove ones no longer wanted. Removing one from the list
+// leaves any channel or default using it as it is.
+static void regionListMenu() {
+  auto* m = new MenuView("Regions added");
+  m->rebuild = [](MenuView& v) {
+    char names[regions::LIST_MAX][regions::NAME_LEN + 1];
+    const int n = regions::list(names, regions::LIST_MAX);
+    if (!n) v.info("none yet", [] { return String(""); });
+    for (int i = 0; i < n; i++) {
+      const String nm = names[i];
+      v.action("remove " + nm, [nm] {
+        confirm("Remove " + nm + "?", "from the list; channels using it keep it", [nm] { regions::remove(nm.c_str()); nav.toast("removed"); });
+      });
+    }
+  };
+  m->rebuild(*m);
+  nav.push(m);
+}
+
+// Opened from a channel's chat (its message menu, or the T-Deck's header).
+void openChannelRegionScope(const uint8_t* secret16) { scopeMenu(secret16); }
 
 static void channelMenu(int idx) {
   ChannelDetails ch;
@@ -365,7 +383,11 @@ static void channelMenu(int idx) {
     const ConvKey k = ConvKey::channel(secret);
     setNotifyMode(k, (notifyMode(k) + 1) % NM_COUNT);      // press to cycle
   });
-  m->value("region scope", [secret]() -> String { return regions::describe(secret); }, [secret] { scopeMenu(secret); });
+  m->value("region scope", [secret]() -> String {
+    const char* own = regions::forChannel(secret);
+    if (*own) return String(own);
+    return *regions::defaultName() ? String("default ") + regions::defaultName() : String("none");
+  }, [secret] { scopeMenu(secret); });
   m->info("key", [secret]() -> String { char h[40]; mesh::Utils::toHex(h, secret, 16); return String(h); });
   m->info("messages", [secret]() -> String { return String(history.count(ConvKey::channel(secret))); });
   m->action("mark all read", [secret] { history.markRead(ConvKey::channel(secret)); nav.toast("done"); });

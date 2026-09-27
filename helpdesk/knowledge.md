@@ -60,18 +60,22 @@ Top header, sensors and IO9 (1.2.2)
 - IO9: an LED (IO9 > 330 ohm > LED > GND) or an active 3.3 V buzzer (IO9 and GND). Modes: off, flash on
   new messages, on while unread.
 
-Region scopes (1.2.2) - what the MeshCore app calls regions or flood scope
-- A region keeps messages to the repeaters that serve it, instead of the whole mesh. Its key is made from
-  the name ("#spokane"), so it has to match the repeaters' exactly, capitals included. A repeater drops a
-  message for a region it doesn't carry: a wrong name means messages that reach almost no one.
-- For everything: Settings > Radio & Mesh > region scope. It also covers flooded direct messages and
-  adverts. The MeshCore phone app sets the same one.
-- For one channel: Settings > Channels > the channel > region scope: like the rest, the whole mesh (no
-  region), or another region. A scoped channel's chat header shows it ("#spokane").
-- "ask repeaters nearby" asks the repeaters in direct range which regions they carry and lists them,
-  with how many still pass whole-mesh messages. Choosing from that list is the safe way.
-- Messages stopped arriving after setting a region: set it back to the whole mesh, then use "ask
-  repeaters nearby" to find one they carry. Private regions (names starting with $) aren't supported yet.
+Region scopes (1.2.2) - same as the MeshCore app's regions / flood scope
+- A region keeps messages to the repeaters that carry it, instead of the whole mesh. Its key is made from
+  the name, so it has to match the repeaters' exactly, capitals included (names are letters, digits and -,
+  shown without #). A repeater drops a message for a region it doesn't carry: a wrong name means messages
+  that reach almost no one.
+- It works as the app does: a list of regions you've added, a per-channel "Set Region Scope" (in the
+  channel's chat: roll onto a message, press, "region scope"; or Settings > Channels), and a "default region
+  scope" for everything else (Settings > Radio & Mesh; the app's Experimental > Default Region Scope is the
+  same setting). A channel's region overrides the default; "clear scope" puts it back on the default.
+- A scoped channel's chat title shows "Region: name".
+- "discover regions" asks the repeaters in direct range which regions they carry and how many still pass
+  messages with no region. Choosing from that list is the safe way.
+- Messages sent from the MeshCore app over Bluetooth follow the app's own region settings; messages sent on
+  the pager follow the pager's.
+- Messages stopped arriving after setting a region: clear it, then use "discover regions" to find one the
+  repeaters carry. Private regions (names starting with $) aren't supported yet.
 
 Things to check before handing off a problem
 - Which firmware version, and whether it was installed from squatchmesh.com/install or updated over Wi-Fi.

@@ -85,7 +85,7 @@ public:
   void draw();
   // Draw the top view into the canvas without sending it to the panel, for a
   // transition to reveal (or collapse) the real picture.
-  void compose();
+  void compose(bool overlays = true);
 
   Canvas& canvas() { return _canvas; }
   LGFX* display() { return _d; }

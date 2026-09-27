@@ -532,6 +532,20 @@ def patch_mymesh(src):
     if src.count(old) != 1:
         raise SystemExit("patch_meshcore.py: MyMesh.cpp prefs defaults changed upstream, patch did not apply")
     src = src.replace(old, old + " _prefs.path_hash_mode = 1; // INW: 2-byte path hashes")
+    # Region scopes: while a command from the phone app is handled, what the node
+    # sends is the app's and takes the app's scope, exactly as MeshCore does; the
+    # rest of the time it follows this firmware's own settings (src/regions.h,
+    # InwNode::sendFloodScoped). The app's scope override would otherwise stay
+    # set and ride along on the pager's own messages after the app goes away.
+    old = "    handleCmdFrame(len);\n  } else if (_iter_started"
+    if src.count(old) != 1:
+        raise SystemExit("patch_meshcore.py: MyMesh.cpp command frame call changed upstream, patch did not apply")
+    src = src.replace(old, "    inwAppFrame(true); handleCmdFrame(len); inwAppFrame(false);   // INW: the app's sends\n"
+                           "  } else if (_iter_started")
+    old = '#include "MyMesh.h"\n'
+    if not src.startswith(old):
+        raise SystemExit("patch_meshcore.py: MyMesh.cpp includes changed upstream, patch did not apply")
+    src = old + "void inwAppFrame(bool on);   // INW: src/node.cpp\n" + src[len(old):]
     return src
 
 

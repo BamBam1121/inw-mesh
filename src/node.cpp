@@ -168,12 +168,29 @@ bool InwNode::sendChannel(uint8_t idx, const char* text, uint32_t histId) {
   return ok;
 }
 
+// Set while MeshCore handles a command from the phone app (tools/patch_meshcore.py).
+static bool s_fromApp = false;
+void inwAppFrame(bool on) { s_fromApp = on; }
+
 void InwNode::sendFloodScoped(const mesh::GroupChannel& channel, mesh::Packet* pkt, uint32_t delay_millis) {
-  const char* choice = regions::forChannel(channel.secret);
-  if (!*choice) { MyMesh::sendFloodScoped(channel, pkt, delay_millis); return; }   // the device default
+  if (s_fromApp) { MyMesh::sendFloodScoped(channel, pkt, delay_millis); return; }
+  const char* region = regions::forChannel(channel.secret);
+  if (!*region) { floodInDefault(pkt, delay_millis); return; }
   TransportKey scope;
-  memset(scope.key, 0, sizeof(scope.key));                 // a null key: the whole mesh
-  if (strcmp(choice, regions::WHOLE_MESH)) regions::keyFor(choice, scope.key);
+  regions::keyFor(region, scope.key);
+  MyMesh::sendFloodScoped(scope, pkt, delay_millis);
+}
+
+void InwNode::sendFloodScoped(const ContactInfo& to, mesh::Packet* pkt, uint32_t delay_millis) {
+  if (s_fromApp) { MyMesh::sendFloodScoped(to, pkt, delay_millis); return; }
+  floodInDefault(pkt, delay_millis);
+}
+
+// The default region's own key, as MeshCore keeps it (the app can set one); all
+// zeros, the whole mesh.
+void InwNode::floodInDefault(mesh::Packet* pkt, uint32_t delay_millis) {
+  TransportKey scope;
+  memcpy(scope.key, prefs().default_scope_key, sizeof(scope.key));
   MyMesh::sendFloodScoped(scope, pkt, delay_millis);
 }
 

@@ -590,13 +590,13 @@ void Nav::tick() {
   fxWas = fxNow;
 }
 
-void Nav::compose() {
+void Nav::compose(bool overlays) {
   View* v = top();
   if (!v || !_d) return;
   _canvas.fillScreen(_t->bg);
   if (!v->isLock()) drawStatusBar(_canvas, *_t);
   v->draw(_canvas);
-  drawOverlays(_canvas);
+  if (overlays) drawOverlays(_canvas);
 }
 
 void Nav::drawOverlays(lgfx::LovyanGFX& g) {
@@ -656,10 +656,15 @@ void Nav::draw() {
     const uint8_t k = _trans;
     _trans = 0;
     Canvas* old = fx::scratch();
-    compose();
+    // The screens without the toast or banner: a transition plays one still frame
+    // of where it's going, and a toast raised on the way would sit in it half slid
+    // in, cut off at the bottom edge, for the whole transition. It slides in after.
+    compose(false);
     if (old && app::animationsOk()) fx::transition((fx::Trans)k, *old, _canvas);
     else _canvas.pushSprite(_d, 0, 0);
-    v->dirty = false;
+    if (_toastUntil) _toastAt = millis() | 1;
+    if (_bannerUntil) _bannerAt = millis() | 1;
+    v->dirty = !!(_toastUntil || _bannerUntil);
     _statusDirty = false;
     return;
   }

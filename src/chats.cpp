@@ -4,6 +4,7 @@
 #include "node.h"
 #include "history.h"
 #include "regions.h"
+void openChannelRegionScope(const uint8_t* secret16);   // settings_ui.cpp
 #include "notify.h"
 #include "fx.h"
 #include "chats.h"
@@ -197,10 +198,10 @@ public:
     convName(_key, title, sizeof(title), &kind);
     char sub[40] = "";
     if (_key.type == CONV_CHANNEL) {
-      // A channel scoped to a region says so: its messages only go where that
-      // region's repeaters are (regions.h).
-      const String where = regions::describe(_key.id);
-      if (where.startsWith("#")) snprintf(sub, sizeof(sub), "%s  %u msgs", where.c_str(), _n);
+      // As the app's chat title does: the region its messages go out in, if any
+      // (regions.h). Only repeaters that carry it pass them on.
+      const char* region = regions::effective(_key.id);
+      if (*region) snprintf(sub, sizeof(sub), L::W < 400 ? "Region: %s" : "Region: %s  %u msgs", region, _n);
       else snprintf(sub, sizeof(sub), "%u messages", _n);
     } else if (ContactInfo* c = contact()) {
       if (c->type == ADV_TYPE_ROOM) {
@@ -651,6 +652,18 @@ static void openMessageActions(ThreadView* tv, uint32_t id) {
   const ConvKey ck = tv->key();
   m->value("notifications for this chat", [ck]() -> String { return notifyModeName(notifyMode(ck)); },
            [ck] { setNotifyMode(ck, (notifyMode(ck) + 1) % NM_COUNT); });
+  // The app's Set Region Scope, from the channel's chat as there.
+  ChannelDetails chd;
+  const int chIdx = ck.type == CONV_CHANNEL && g_node ? g_node->findChannelBySecret(ck.id) : -1;
+  if (chIdx >= 0 && g_node->getChannel(chIdx, chd)) {
+    uint8_t secret[16];
+    memcpy(secret, chd.channel.secret, 16);
+    m->value("region scope", [secret]() -> String {
+      const char* own = regions::forChannel(secret);
+      if (*own) return String(own);
+      return *regions::defaultName() ? String("default ") + regions::defaultName() : String("none");
+    }, [secret] { openChannelRegionScope(secret); });
+  }
   m->header("details");
   m->info("time", [id]() -> String { HistMsg* x = history.find(id); return String(x && x->ts ? clockText(x->ts, true) : "unknown"); });
   if (!out) {

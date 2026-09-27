@@ -1,42 +1,45 @@
-// Region scopes: a message floods only through the repeaters that serve a region
-// (MeshCore's "flood scope"), instead of across the whole mesh.
-//
-// A public region is just a name. Its key is the first 16 bytes of SHA-256 of
-// "#name", the same on every device and repeater (TransportKeyStore::
-// getAutoKeyFor), so "spokane" and "#spokane" are one region.
-//
-// The device's default region lives in MeshCore's own prefs (default_scope_name
-// and _key), so the phone app shows and sets the same one; with no default,
-// messages flood the whole mesh as before. A channel can have its own choice on
-// top: another region, or the whole mesh even when there is a default. Those
-// are ours, kept in /chregion.bin by channel key.
+// Region scopes: a message floods only through the repeaters that carry a region
+// (MeshCore's "flood scope"), instead of across the whole mesh. Made to work as
+// the MeshCore app does it:
+//   - a list of regions you've added (typed in, or picked from what the repeaters
+//     in range report - the app's "Discover Regions");
+//   - a default region for everything the node floods (the app's Default Region
+//     Scope: MeshCore's own prefs.default_scope_*, so the app and this show and
+//     set the same one);
+//   - a region for one channel, overriding the default (the app's Set Region
+//     Scope), or cleared, back to the default.
+// Names are shown as the app shows them: plain letters, digits and '-', no '#'.
+// A region's key is the first 16 bytes of SHA-256 of "#name" (TransportKeyStore::
+// getAutoKeyFor), exact spelling and capitals, the same on every device and
+// repeater. Channel choices are kept in /chregion.bin, the list in /regions.bin.
 #pragma once
 #include <Arduino.h>
 
 namespace regions {
 
 constexpr size_t NAME_LEN = 30;          // MeshCore's default_scope_name[31]
-constexpr const char* WHOLE_MESH = "*";  // a channel's choice: no region at all
+constexpr int LIST_MAX = 16;
 
-// "spokane" or "#spokane" -> "spokane". Letters, digits, '-' and '_'; false
-// (with why in err) for anything a repeater couldn't match.
+// "spo" or "#spo" -> "spo". Letters, digits and '-'; false (with why in err) for
+// anything else, which a repeater couldn't match.
 bool clean(const char* in, char* out, size_t cap, const char** err = nullptr);
 void keyFor(const char* name, uint8_t key[16]);
 
-// The device default, "" for none.
+// The regions you've added, in the order added.
+int  list(char names[][NAME_LEN + 1], int max);
+void add(const char* name);              // no-op if already there
+void remove(const char* name);
+
+// The device default, "" for none (the whole mesh).
 const char* defaultName();
 void setDefault(const char* name);       // "" clears it
 
-// A channel's own choice: "" = the device default, WHOLE_MESH, or a region name.
-// Only the key's first 6 bytes are read, so a ConvKey's id will do.
+// A channel's own region, "" when it has none (it follows the default). Only the
+// key's first 6 bytes are read, so a ConvKey's id will do.
 const char* forChannel(const uint8_t* secret16);
-void setForChannel(const uint8_t* secret16, const char* choice);
-// Where a channel's messages go, for showing: "#spokane" or "whole mesh".
-String describe(const uint8_t* secret16);
-
-// Region names this device knows of (the default and every channel's), for
-// picking from a list instead of typing. Returns how many.
-int known(char names[][NAME_LEN + 1], int max);
+void setForChannel(const uint8_t* secret16, const char* name);   // "" clears it
+// The region a channel's messages actually go out in ("" = the whole mesh).
+const char* effective(const uint8_t* secret16);
 
 void begin();                            // after the store is mounted
 
