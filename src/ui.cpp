@@ -1080,6 +1080,34 @@ void TextPageView::tick() {
     const size_t before = _lines.size();
     _lines.clear();
     _fill(_lines);
+    // Pages are written as columns for the pager's 480 px. On a narrower screen a
+    // line that doesn't fit first loses its wide column gaps, then wraps, the rest
+    // indented under it.
+    if (L::W < 400) {
+      Canvas& g = nav.canvas();
+      g.setFont(&fonts::Font2);
+      const int maxW = L::W - 24;
+      std::vector<String> out;
+      for (String line : _lines) {
+        if (g.textWidth(line) > maxW) while (line.indexOf("   ") >= 0) line.replace("   ", "  ");
+        bool first = true;
+        while (g.textWidth(line) > maxW) {
+          int cut = -1;
+          for (int i = line.indexOf(' ', 1); i > 0; i = line.indexOf(' ', i + 1)) {
+            if (g.textWidth(line.substring(0, i)) > maxW) break;
+            cut = i;
+          }
+          if (cut <= 0) break;                      // one long word: let it run
+          out.push_back(line.substring(0, cut));
+          String rest = line.substring(cut);
+          rest.trim();
+          line = (line.startsWith("#") && first ? String("#    ") : String("    ")) + rest;
+          first = false;
+        }
+        out.push_back(line);
+      }
+      _lines.swap(out);
+    }
     const int visible = (L::H - L::BODY_Y - 4) / 18;
     if (_stickBottom && _lines.size() != before) _scroll = max(0, (int)_lines.size() - visible);
     dirty = true;

@@ -330,6 +330,16 @@ int main(int argc, char** argv) {
   regions::setForChannel(g_node->channels[2].channel.secret, "");
   regions::setDefault("");
   clearTo(base);
+
+  // Tools' text pages at this width: signal, then device info.
+  app::openTools(); run(300);
+  drag(160, 220, 160, 80); run(200);                   // five rows down
+  tap(160, 42 + 3 * 28 + 14); run(600);                shot("text_signal");
+  clearTo(base);
+  app::openTools(); run(300);
+  drag(160, 220, 160, 80); drag(160, 220, 160, 80); run(200);
+  tap(160, 42 + 2 * 28 + 14); run(600);                shot("text_device");
+  clearTo(base);
 #endif
   return 0;
 }
