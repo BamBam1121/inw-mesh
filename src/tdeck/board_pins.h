@@ -97,6 +97,13 @@
 // ---- Battery: half the cell voltage on GPIO4 -------------------------------------
 #define PIN_BAT_ADC    4
 
+// ---- Where MeshCore's T-Deck build keeps its store ----------------------------------
+// Its board file (boards/t-deck.json) uses the core's default_16MB.csv: a SPIFFS
+// partition at 0xC90000, 0x360000 long, inside ours (partitions_inw.csv). The first
+// start reads the identity, contacts and channels out before formatting (fsmigrate.h).
+#define MESHCORE_FS_OFFSET 0xC90000
+#define MESHCORE_FS_SIZE   0x360000
+
 // ---- Parts the pager has and this board doesn't ----------------------------------
 // Shared code still names them; these values are never driven on a T-Deck.
 #define PIN_NFC_CS     (-1)

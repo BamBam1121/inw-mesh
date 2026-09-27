@@ -49,6 +49,7 @@ static Gestures   gestures;
 #include "fx.h"
 #include "regional.h"
 #include "bootscreen.h"
+#include "fsmigrate.h"
 #include "extport.h"
 #if INW_DEV
 #include <CayenneLPP.h>
@@ -1239,10 +1240,16 @@ void setup() {
 #endif
 
   bool fsOk = SPIFFS.begin(false);
+  int carried = 0;                  // files brought across from MeshCore's store
   if (!fsOk) {
     // First boot on this partition table: the store has to be formatted once.
-    bootNote("first start: preparing storage, this takes a few minutes");
+    // If MeshCore had this board, its store is still in flash until that format:
+    // take the identity, contacts and channels out of it first (fsmigrate.h).
+    carried = fsmigrate::rescue();
+    bootNote(carried ? "found MeshCore's data: bringing it across"
+                     : L::W < 400 ? "first start: preparing storage" : "first start: preparing storage, this takes a few minutes");
     fsOk = SPIFFS.begin(true);
+    if (fsOk && carried) carried = fsmigrate::restore();
     BootBusLock lock;
     display.fillRect(0, boot::ERR_Y0 - 2, L::W, 28, theme.bg);
   }
@@ -1269,6 +1276,10 @@ void setup() {
   }
   char report[96];
   importBeforeNode(report, sizeof(report));
+  if (carried) {
+    snprintf(report, sizeof(report), "from MeshCore: %s", fsmigrate::summary());
+    logs.add(LOG_INFO, "brought across from MeshCore's store: %s", fsmigrate::summary());
+  }
   bootStep("restore", true, report);
   bootStep("messages", history.begin());
 
