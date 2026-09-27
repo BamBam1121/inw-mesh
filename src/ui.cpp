@@ -525,7 +525,7 @@ bool Nav::touch(const TouchEvent& e) {
   if (_depth > 1 && !v->isLock() && !v->isHome()) {
     const bool headerTap = e.type == TouchEvent::Tap && v->headerBack() && e.x < 64 &&
                            e.y >= L::HEAD_Y && e.y < L::HEAD_Y + L::HEAD_H;
-    const bool edgeSwipe = e.type == TouchEvent::Swipe && e.dir == 'R' && e.x0 < 24;
+    const bool edgeSwipe = e.type == TouchEvent::Swipe && e.dir == 'R' && e.x0 < 24 && v->swipeBack();
     if (headerTap || edgeSwipe) { pop(); return true; }
   }
   const bool used = v->touch(e);

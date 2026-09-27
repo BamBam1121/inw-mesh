@@ -285,6 +285,25 @@ public:
     m->action("clear this log", [] { nav.pop(); if (g_node) g_node->cliClear(); });
     nav.push(m);
   }
+  // A finger: drag the log to read back, tap the command line for the list of
+  // commands (or to send what's typed).
+  bool touch(const TouchEvent& e) override {
+    switch (e.type) {
+      case TouchEvent::Down: _dragAcc = 0; return false;
+      case TouchEvent::Drag: {
+        const int n = g_node ? g_node->cliCount : 0;
+        _dragAcc += e.dy;
+        while (_dragAcc >= LINE_H && _scroll < max(0, n - lines())) { _scroll++; _dragAcc -= LINE_H; }
+        while (_dragAcc <= -LINE_H && _scroll > 0) { _scroll--; _dragAcc += LINE_H; }
+        return true;
+      }
+      case TouchEvent::Tap:
+        if (e.y < L::H - 30) return false;
+        press();
+        return true;
+      default: return false;
+    }
+  }
   void draw(Canvas& g) override {
     const Theme& t = nav.theme();
     ContactInfo* c = g_node ? g_node->contact(_pub) : nullptr;
@@ -292,7 +311,7 @@ public:
     snprintf(title, sizeof(title), "Console  %s", c ? c->name : "?");
     const uint8_t ls = g_node ? g_node->loginState(_pub) : 0;
     drawHeader(g, title, ls == 2 ? (g_node->loginIsAdmin() ? "admin" : "guest") : ls == 1 ? "logging in" : "not logged in");
-    const int lines = 8, top = L::BODY_Y + 2;
+    const int lines = this->lines(), top = L::BODY_Y + 2;
     const int n = g_node ? g_node->cliCount : 0;
     const int first = max(0, n - lines - _scroll);
     for (int i = 0; i < lines && first + i < n; i++) {
@@ -300,9 +319,12 @@ public:
       char safe[80];
       sanitize(l, safe, sizeof(safe));
       g.setTextColor(l[0] == '>' ? t.green : t.txt, t.bg);
-      g.drawString(safe, 10, top + i * 17);
+      g.drawString(safe, 10, top + i * LINE_H);
     }
-    if (!n) { g.setTextColor(t.dim, t.bg); g.drawString("type a command, or press for a list", 10, top + 4); }
+    if (!n) {
+      g.setTextColor(t.dim, t.bg);
+      g.drawString(BOARD_HAS_TOUCH ? "type a command, or tap below for a list" : "type a command, or press for a list", 10, top + 4);
+    }
     const int y = L::H - 26;
     g.fillRoundRect(6, y, L::W - 12, 24, 6, t.panel);
     g.setTextColor(t.green, t.panel);
@@ -312,6 +334,10 @@ public:
     if (_caret) g.fillRect(29 + g.textWidth(_cmd), y + 5, 2, 14, t.green);
   }
 private:
+  // Log lines above the command line: 8 on the pager, 9 on the T-Deck's taller screen.
+  static constexpr int LINE_H = 17;
+  static int lines() { return (L::H - 28 - (L::BODY_Y + 2)) / LINE_H; }
+  int _dragAcc = 0;
   void run() {
     if (!g_node || !_cmd.length()) return;
     if (!g_node->sendCli(_pub, _cmd.c_str())) nav.toast("send failed");

@@ -48,6 +48,9 @@ public:
   virtual bool touch(const TouchEvent& e) { return false; }
   // Has the usual header, whose "<" can be tapped to go back.
   virtual bool headerBack() { return !isHome() && !isLock(); }
+  // A swipe in from the left edge goes back. A screen that must not be left that
+  // way (the SOS countdown: leaving isn't cancelling) says no.
+  virtual bool swipeBack() { return true; }
   bool dirty = true;
 };
 

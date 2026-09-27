@@ -307,7 +307,7 @@ public:
       snprintf(b, sizeof(b), "to channel %s, with your position", nm);
       g.drawString(b, L::W / 2, 145);
     }
-    g.drawString("press any key to cancel", L::W / 2, 180);
+    g.drawString(BOARD_HAS_TOUCH ? "tap anywhere to cancel" : "press any key to cancel", L::W / 2, 180);
     g.setTextDatum(textdatum_t::top_left);
   }
   void key(char) override { cancel(); }
@@ -315,6 +315,14 @@ public:
   void rotate(int) override { cancel(); }
   bool backspace() override { cancel(); return true; }
   bool wantsAllKeys() override { return true; }
+  // A finger anywhere cancels, the header and an edge swipe included: leaving this
+  // screen any other way would leave the countdown running out of sight.
+  bool touch(const TouchEvent& e) override {
+    if (e.type == TouchEvent::Tap || e.type == TouchEvent::Swipe) cancel();
+    return true;
+  }
+  bool headerBack() override { return false; }
+  bool swipeBack() override { return false; }
 private:
   void cancel() {
     if (!s_armAt) return;
