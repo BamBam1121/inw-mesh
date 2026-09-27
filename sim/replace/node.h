@@ -27,7 +27,11 @@
 #endif
 
 namespace mesh {
-struct Identity { uint8_t pub_key[PUB_KEY_SIZE]; };
+struct Identity {
+  uint8_t pub_key[PUB_KEY_SIZE];
+  Identity() { memset(pub_key, 0, sizeof(pub_key)); }
+  explicit Identity(const uint8_t* pub) { memcpy(pub_key, pub, PUB_KEY_SIZE); }
+};
 struct LocalIdentity : Identity {};
 class GroupChannel {
 public:
@@ -237,6 +241,7 @@ public:
   bool login(const uint8_t*, const char*) { return true; }
   uint8_t loginState(const uint8_t*) const { return 0; }
   bool addChannelNamed(const char*, const uint8_t*) { return true; }
+  bool addContact(const ContactInfo& c) { if (num_contacts >= 64) return false; contacts[num_contacts++] = c; return true; }
 
   NodePrefs& prefs() { return _prefs; }
   const char* name() { return _prefs.node_name; }
