@@ -23,11 +23,26 @@
      which esptool-js 0.6.1 gets wrong (see writeIt). */
 import { ESPLoader, Transport } from "./vendor/esptool-0.6.1.js";
 
-const UPDATE_MANIFEST = "https://bambam1121.github.io/inw-mesh/manifest-update.json";
-const INSTALL_MANIFEST = "https://bambam1121.github.io/inw-mesh/manifest-install.json";
-const SUPPORTED = !!(navigator.serial && window.isSecureContext);
-
 const panel = document.getElementById("flasher");
+/* Which device this page flashes. The pager's page sets nothing; another board's
+   page says on the panel: data-device (what the words call it), data-board (what
+   its firmware reports as board= in [status]), data-full-name, and its own
+   data-install / data-update manifests. Pager firmware has never sent board=. */
+const CFG = (panel && panel.dataset) || {};
+const DEVICE = CFG.device || "pager";
+const BOARD = CFG.board || "t-lora-pager";
+const FULL_NAME = CFG.fullName || "LilyGo T-Lora Pager";
+const BOARD_NAMES = { "t-lora-pager": "T-Lora Pager", "t-deck": "T-Deck" };
+const UPDATE_MANIFEST = CFG.update || "https://bambam1121.github.io/inw-mesh/manifest-update.json";
+const INSTALL_MANIFEST = CFG.install || "https://bambam1121.github.io/inw-mesh/manifest-install.json";
+// How to put the chip into its USB loader by hand, per board.
+const LOADER_HOW = BOARD === "t-deck"
+  ? "turn the T-Deck off, hold the trackball down while you switch it back on, then let go"
+  : "hold BOOT, tap RESET, let go of BOOT";
+const SUPPORTED = !!(navigator.serial && window.isSecureContext);
+// The messages are written about the pager; other boards swap in their own name.
+// (Not inside a board id such as "t-lora-pager".)
+const named = (t) => (DEVICE === "pager" ? t : String(t).replace(/(^|[^-\w])pager\b/g, "$1" + DEVICE));
 const startBtn = document.getElementById("qs-start");
 // Start is hidden until it has been proven on a pager; ?flashtest shows it for testing.
 if (/[?&]flashtest\b/.test(location.search)) { const q = document.getElementById("quickstart"); if (q) q.hidden = false; }
@@ -52,11 +67,11 @@ if (panel) {
   }
   let lastKind = "auto";
 
-  const show = (title, cls) => { panel.hidden = false; head.textContent = title; head.className = "fl-head " + cls; };
-  const say = (text) => { note.textContent = text; };
+  const show = (title, cls) => { panel.hidden = false; head.textContent = named(title); head.className = "fl-head " + cls; };
+  const say = (text) => { note.textContent = named(text); };
   const pct = (n) => { bar.style.width = Math.max(0, Math.min(100, n)) + "%"; };
   function log(line) {
-    const s = String(line).replace(/\r/g, "");
+    const s = named(String(line).replace(/\r/g, ""));
     logPre.textContent += s + (s.endsWith("\n") ? "" : "\n");
     logPre.scrollTop = logPre.scrollHeight;
   }
@@ -270,7 +285,9 @@ if (panel) {
     if (text.trim()) log(text.trim());
     const m = text.match(/\[status\]\s+fw=(\S+)\s+radio=(\S+)\s+radio_ok=(\d)\s+contacts=(-?\d+)/);
     if (!m) return { squatch: false, raw: text };
-    return { squatch: true, version: m[1], radio: m[2], radioOk: m[3] === "1", contacts: parseInt(m[4], 10), raw: text };
+    const b = text.match(/\[status\][^\n]*\bboard=(\S+)/);
+    return { squatch: true, version: m[1], radio: m[2], radioOk: m[3] === "1", contacts: parseInt(m[4], 10),
+             board: b ? b[1] : "t-lora-pager", raw: text };
   }
 
   // Ask it to put contacts, channels and settings on flash before we reset it.
@@ -285,6 +302,7 @@ if (panel) {
   /* ---- the flash itself ---------------------------------------------------------- */
 
   async function fetchParts(manifestUrl) {
+    manifestUrl = new URL(manifestUrl, location.href).href;   // a page may give it relative to itself
     const res = await fetch(manifestUrl, { cache: "no-store" });
     if (!res.ok) throw new Error("couldn't fetch the file list (" + res.status + ")");
     const manifest = await res.json();
@@ -352,6 +370,7 @@ if (panel) {
     if (startBtn) { startBtn.disabled = true; startBtn.classList.add("working"); startBtn.textContent = "WORKING…"; }
     logPre.textContent = "";
     pct(0);
+    let writing = false;            // until then, a failure has changed nothing on the device
 
     try {
       if (!port) {
@@ -364,6 +383,18 @@ if (panel) {
       show("Checking the pager…", "busy");
       say("Asking what firmware it is running.");
       const found = kind === "install" ? { squatch: false } : await identify();
+      // Squatch Mesh for another board: its firmware would start on this one's
+      // pins and do nothing useful. Stop before anything is written.
+      if (found.squatch && found.board !== BOARD) {
+        const other = BOARD_NAMES[found.board] || found.board;
+        log("[flasher] this is a " + other + " (board=" + found.board + "), not a " + (BOARD_NAMES[BOARD] || BOARD) + " - stopped");
+        show("That's a " + other + ", not a " + DEVICE, "bad");
+        say("It's running Squatch Mesh for the " + other + ". Nothing was written. Use the " + other +
+            " installer for it, or plug in the " + DEVICE + " and press try again.");
+        again.hidden = false;
+        port = null;
+        return;
+      }
       let wanted = kind;
       if (kind === "auto") {
         wanted = found.squatch ? "update" : "install";
@@ -393,6 +424,7 @@ if (panel) {
       // dropped off USB meanwhile, wait for it to come back and use that.
       if (usb.gone === port) await refindPort(8000);
       let chip = null, lastErr = null, openFails = 0;
+      writing = true;
       /* The ladder: compressed (what esptool itself uses, and quicker), then
          slower for cables and hubs that can't hold 921600, then a plain write.
          Every attempt is read back and checked (md5 above), so a rung only
@@ -442,12 +474,21 @@ if (panel) {
         again.hidden = false;
         port = null;                     // a fresh pick hands us a port object that works
         report("port-would-not-open", { kind: lastKind, error: msg, log: logPre.textContent.split("\n").slice(-30).join("\n") });
+      } else if (!writing) {
+        log("[flasher] failed: " + msg);
+        show("Nothing was written", "bad");
+        say(msg + " — it stopped before writing anything, so the pager is just as it was. Check the internet " +
+            "connection and press try again.");
+        logBox.open = true;
+        again.hidden = false;
+        report("failed-before-write", { kind: lastKind, error: msg, log: logPre.textContent.split("\n").slice(-30).join("\n") });
       } else {
         log("[flasher] failed: " + msg);
         show("That didn't finish", "bad");
         say(msg + " — the firmware was only part written, so the pager may not start until this " +
             "finishes. Press try again: it picks up from scratch and repairs it. If it still won't take, " +
-            "unplug the pager, plug it back in, and hold the BOOT button while you press try again.");
+            (BOARD === "t-deck" ? LOADER_HOW + ", and press try again."
+                           : "unplug the pager, plug it back in, and hold the BOOT button while you press try again."));
         logBox.open = true;
         again.hidden = false;
         report("failed", { kind: lastKind, error: msg, log: logPre.textContent.split("\n").slice(-30).join("\n") });
@@ -488,7 +529,7 @@ if (panel) {
       again.hidden = false;
       report("radio", { kind: kind, version: version, before: before && before.radio, log: boot.split("\n").slice(-25).join("\n") });
       if (window.__squatchHelp) {
-        window.__squatchHelp.ask("A LilyGo T-Lora Pager was just flashed from the browser (" + kind + ", v" + version +
+        window.__squatchHelp.ask("A " + FULL_NAME + " was just flashed from the browser (" + kind + ", v" + version +
           "). It booted but reports its radio did not come up. Its own USB output:\n" +
           boot.split("\n").slice(-25).join("\n") +
           "\nSay what is wrong and the single most useful thing to do next. Be brief.");
@@ -499,8 +540,8 @@ if (panel) {
     // runnable app in flash. Never call that a success.
     if ((boot.match(/rst:0x/g) || []).length > 2 || (boot.match(/ESP-ROM:/g) || []).length > 2) {
       show("It's restarting over and over", "bad");
-      say("The pager isn't starting the new firmware. Hold BOOT, tap RESET, let go of BOOT, then press " +
-          "try again - your contacts and settings are kept in a part of the chip this doesn't touch.");
+      say("The pager isn't starting the new firmware. " + LOADER_HOW.charAt(0).toUpperCase() + LOADER_HOW.slice(1) +
+          ", then press try again - your contacts and settings are kept in a part of the chip this doesn't touch.");
       logBox.open = true;
       again.hidden = false;
       report("boot-loop", { kind: kind, version: version, log: boot.split("\n").slice(-25).join("\n") });
@@ -517,6 +558,7 @@ if (panel) {
      about even when nobody writes in; this is the same endpoint the help chat uses. */
   function report(what, detail) {
     detail.browser = navigator.userAgent.slice(0, 160);
+    detail.board = BOARD;
     try {
       fetch("/api/help/chat", {
         method: "POST",

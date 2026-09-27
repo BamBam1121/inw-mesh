@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-Deck beta &middot; Squatch Mesh</title>
+<meta name="description" content="Squatch Mesh for the LilyGo T-Deck and T-Deck Plus. Beta, not yet tested on hardware.">
+<!-- Not linked from the site yet: for the first testers, until it has run on real T-Decks. -->
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css?v=7">
+<link rel="stylesheet" href="/assets/help.css?v=5">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#070b0a">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="logo" href="/" aria-label="Squatch Mesh home"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu"><span></span></button>
+    <nav id="site-nav" class="nav-links" aria-label="Main">
+      <a class="link" href="/features">Features</a>
+      <a class="link" href="/guide">Guide</a>
+      <a class="link" href="/help">Help</a>
+      <a class="btn solid" href="/install">Install</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <div class="tag" style="margin-top:46px;color:var(--amber);border-color:var(--amber)">beta &middot; untested</div>
+  <h1>Squatch Mesh for the T-Deck</h1>
+  <p class="sub">For the LilyGo <b>T-Deck</b> and <b>T-Deck Plus</b>. Made for the touchscreen: a home
+  screen of your newest chats and big buttons, swipe up to unlock, tap to answer. The keyboard and
+  trackball work everywhere too. Version <b>1.2.2-beta1</b>.</p>
+
+  <div class="panel warn" style="margin-top:18px">
+    <p class="sub" style="font-size:14px;margin:0"><b>Not tested on a real T-Deck yet.</b> It is built
+    from the T-Deck drivers other firmware uses on real units, and every screen has been run in a
+    simulator, but this is its first time on hardware. If something is wrong it will not harm the
+    T-Deck: you can always flash Meshtastic or MeshCore back (<a href="#going-back">how</a>).
+    <b>Not for the T-Lora Pager</b> &mdash; that is <a href="/install">the normal installer</a>.</p>
+  </div>
+
+  <h2 style="margin-top:34px">Before you flash</h2>
+  <div class="grid c2" style="margin-top:12px">
+    <div class="panel">
+      <h3>Coming from MeshCore</h3>
+      <p class="sub" style="font-size:14px;margin:8px 0 0">In the MeshCore app, export the config
+      (it holds your private key, contacts and channels). Copy the <b>.json</b> to the SD card's top folder,
+      rename it <b>meshcore-backup.json</b> and leave the card in. The first start brings your identity,
+      contacts and channels across. Keep that file private.</p>
+    </div>
+    <div class="panel">
+      <h3>Coming from Meshtastic</h3>
+      <p class="sub" style="font-size:14px;margin:8px 0 0">Meshtastic keys can't be carried over, so the
+      T-Deck starts with a new identity. Write down anything you want to keep (channel names and keys,
+      your node name) first. Flashing Meshtastic back later sets it up fresh.</p>
+    </div>
+  </div>
+
+  <section class="quickstart" id="quickstart" style="margin-top:26px">
+    <div class="qs-glow" aria-hidden="true"></div>
+    <div class="qs-inner">
+      <p class="qs-kicker">Flash the T-Deck</p>
+      <h2 class="qs-title">Switch it on, plug it in, press start</h2>
+      <p class="qs-sub">Use a USB-C cable that carries data. It checks what's on the T-Deck, installs or
+      updates, and waits for it to start. About two minutes. Chrome or Edge on a Mac, Windows or Linux
+      computer; no drivers needed.</p>
+      <button class="qs-btn" id="qs-start" data-flash data-kind="auto">START</button>
+      <p class="qs-fine">Your browser will ask which USB device to use &mdash; pick the one named
+      <b>USB JTAG/serial debug unit</b> (on a Mac, <b>cu.usbmodem&hellip;</b>).</p>
+    </div>
+  </section>
+
+  <p id="flash-unsupported" hidden class="sub" style="color:var(--amber);margin-top:14px">This browser can't
+  flash over USB. Use Chrome or Edge on a desktop computer.</p>
+
+  <div class="panel" id="flasher" hidden style="margin-top:18px"
+       data-device="T-Deck" data-board="t-deck" data-full-name="LilyGo T-Deck"
+       data-install="/tdeck/manifest-install.json" data-update="/tdeck/manifest-update.json">
+    <div class="fl-top">
+      <span class="fl-head busy">Working&hellip;</span>
+      <button type="button" class="btn small fl-again" hidden>Try again</button>
+    </div>
+    <div class="fl-bar"><span></span></div>
+    <p class="fl-note sub"></p>
+    <details class="fl-log"><summary>Show the details</summary><pre></pre></details>
+  </div>
+
+  <div class="grid c2" style="margin-top:22px">
+    <div class="panel">
+      <h3>No port shows up, or it won't connect</h3>
+      <ol class="sub" style="font-size:14px;margin:8px 0 0;padding-left:20px">
+        <li>Try another cable: charge-only cables are the usual reason.</li>
+        <li>Put it in download mode: switch the T-Deck <b>off</b>, hold the <b>trackball</b> down, switch it
+        <b>on</b>, let go. The screen stays dark; that's expected.</li>
+        <li>Press start again. After the flash, switch it off and on to start the new firmware.</li>
+      </ol>
+    </div>
+    <div class="panel">
+      <h3>After it starts</h3>
+      <ol class="sub" style="font-size:14px;margin:8px 0 0;padding-left:20px">
+        <li>The first start sets up storage: give it a minute.</li>
+        <li><b>Tools &rsaquo; hardware check</b> shows every part with a dot: touch, roll, click and type until
+        they go green.</li>
+        <li><b>Tools &rsaquo; touch test</b>: tap the four rings. If touch comes out mirrored it fixes itself.</li>
+        <li>Screen upside down, ball backwards, odd colours? <b>Settings &rsaquo; Display &rsaquo; screen + touch</b>
+        (the trackball works there even if touch doesn't).</li>
+      </ol>
+    </div>
+  </div>
+
+  <h2 id="going-back" style="margin-top:34px">Going back</h2>
+  <div class="panel">
+    <p class="sub" style="font-size:14px;margin:0">Both of these erase the T-Deck and install fresh, from
+    Chrome, with the T-Deck in download mode if they can't connect:
+    <a href="https://flasher.meshtastic.org/" rel="noopener">Meshtastic web flasher</a> (pick T-Deck) &middot;
+    <a href="https://flasher.meshcore.co.uk/" rel="noopener">MeshCore web flasher</a> (pick LilyGo T-Deck,
+    Companion).</p>
+  </div>
+
+  <h2 style="margin-top:34px">Other ways to flash</h2>
+  <div class="panel">
+    <p class="sub" style="font-size:14px;margin:0">One file with everything, written at address
+    <b>0x0</b>: <a href="/tdeck/squatch-mesh-tdeck-1.2.2-beta1-full.bin" download>squatch-mesh-tdeck-1.2.2-beta1-full.bin</a>.
+    Use it with <a href="https://espressif.github.io/esptool-js/" rel="noopener">Espressif's web flasher</a>
+    (address 0x0, don't erase first), or esptool:</p>
+    <pre style="margin:12px 0 0;white-space:pre-wrap;font-family:var(--mono);font-size:13px">esptool.py --chip esp32s3 write_flash 0x0 squatch-mesh-tdeck-1.2.2-beta1-full.bin</pre>
+  </div>
+
+  <h2 style="margin-top:34px">Tell us how it went</h2>
+  <div class="panel" style="margin-bottom:60px">
+    <p class="sub" style="font-size:14px;margin:0">Good or bad, it helps: <a href="/help">the help page</a>
+    or <a href="mailto:support@squatchmesh.com">support@squatchmesh.com</a>. A photo of the hardware check
+    screen says most of it. If it didn't start, open <b>Show the details</b> above and paste what's there.</p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-base">
+    <span>GPL-3.0</span>
+    <span>Independent project. Not affiliated with LilyGo, Meshtastic or the MeshCore project.</span>
+  </div>
+</footer>
+
+<script src="/assets/app.js?v=8" defer></script>
+<script type="module" src="/assets/flasher.js?v=17"></script>
+</body>
+</html>

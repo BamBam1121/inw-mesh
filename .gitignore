@@ -26,3 +26,6 @@ helpdesk/mail.json
 helpdesk/settings.json
 helpdesk/logs/
 helpdesk/salt.bin
+
+# T-Deck beta installer files: made by tools/package_tdeck.py, not source
+web/tdeck/
