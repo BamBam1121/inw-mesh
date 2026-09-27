@@ -14,6 +14,7 @@
 #include "touch.h"
 #include "bootscreen.h"
 #include "regions.h"
+void startSetup();   // settings_ui.cpp
 #if BOARD_HAS_TOUCH
 #include "hwcheck.h"
 #include "touch_gt911.h"
@@ -334,6 +335,12 @@ int main(int argc, char** argv) {
   app::openThreadForChannel(2); run(300);              shot("regions_4_channel_header");
   regions::setForChannel(g_node->channels[2].channel.secret, "");
   regions::setDefault("");
+  clearTo(base);
+
+  // First-start setup, all three steps, keeping what's there each time.
+  startSetup(); run(300);                              shot("setup_1_region");
+  tap(160, 42 + 14); run(300);                         shot("setup_2_zone");
+  tap(160, 42 + 14); run(300);                         shot("setup_3_units");
   clearTo(base);
 
   // Tools' text pages at this width: signal, then device info.
