@@ -15,6 +15,7 @@ OUT_DIR gets what the site serves under /tdeck/:
 Same layout and the same checks as the pager's (.github/workflows), so a T-Deck
 install leaves nothing behind from the firmware that was there before.
 """
+import hashlib
 import json
 import os
 import re
@@ -72,7 +73,10 @@ def main():
     # served the previous build after an update (the installer then flashed the old
     # firmware and said it came back on the old version). firmware/*.bin stays, for
     # the release assets CI takes from it.
-    vdir = os.path.join(fw, ver)
+    # The folder carries a fingerprint of the build too: the same version built twice
+    # (here, then by CI) is two different files, and a cache would mix them up.
+    tag = "%s-%s" % (ver, hashlib.sha256(app).hexdigest()[:8])
+    vdir = os.path.join(fw, tag)
     os.makedirs(vdir, exist_ok=True)
     for name, _ in OFFSETS:
         shutil.copy(os.path.join(fw, name), os.path.join(vdir, name))
@@ -83,7 +87,7 @@ def main():
             "version": ver,
             "new_install_prompt_erase": False,
             "builds": [{"chipFamily": "ESP32-S3",
-                        "parts": [{"path": "firmware/%s/%s" % (ver, n), "offset": o} for n, o in parts]}],
+                        "parts": [{"path": "firmware/%s/%s" % (tag, n), "offset": o} for n, o in parts]}],
         }
         with open(os.path.join(out, "manifest-%s.json" % kind), "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2)
