@@ -12,12 +12,18 @@
 #include "netwifi.h"
 #include "backlight.h"     // dimmer.idleFor(): send in a gap, not mid-scroll
 #include "node.h"          // bleConnected()
+#include "board_pins.h"    // REPORT_BOARD
+
+#ifndef REPORT_BOARD
+#define REPORT_BOARD "t-lora-pager"
+#endif
 
 extern LogStore logs;
 
 namespace report {
 
 static const char* URL = "https://squatchmesh.com/api/help/report";
+static const char* COUNT_URL = "https://squatchmesh.com/api/help/count";
 static const char* DIR = "/rpt";
 static constexpr uint8_t MAX_WAITING = 4;
 static constexpr uint8_t MAX_PER_BOOT = 6;          // a crash loop can't flood the inbox
@@ -104,7 +110,7 @@ void setEnabled(bool on) {
   if (p.begin("inw-rpt", false)) { p.putBool("on", on); p.end(); }
 }
 
-// A random id for this T-Deck, so reports from one device can be told apart
+// A random id for this device, so reports from one device can be told apart
 // without sending anything that identifies it on the mesh.
 static String deviceId() {
   Preferences p;
@@ -174,7 +180,7 @@ static const char* resetName(int r) {
 static String header(const char* kind, const char* why) {
   String j = "{\"kind\":\"";
   j += kind;
-  j += "\",\"board\":\"t-deck\",\"version\":\"" FW_VERSION "\",\"device\":\"";
+  j += "\",\"board\":\"" REPORT_BOARD "\",\"version\":\"" FW_VERSION "\",\"device\":\"";
   j += deviceId();
   j += "\",\"why\":\"";
   jsonEscape(j, String(why ? why : ""));
@@ -244,12 +250,12 @@ void begin() {
 }
 
 // ---- sending -----------------------------------------------------------------------------
-static bool post(const String& body) {
+static bool post(const String& body, const char* url = URL) {
   WiFiClientSecure tls;
   tls.setInsecure();                          // nothing secret in it; the server checks the shape
   HTTPClient http;
   http.setTimeout(8000);
-  if (!http.begin(tls, URL)) return false;
+  if (!http.begin(tls, url)) return false;
   http.addHeader("Content-Type", "application/json");
   const int code = http.POST(body);
   http.end();
@@ -258,16 +264,41 @@ static bool post(const String& body) {
   return code >= 200 && code < 500;
 }
 
+// Once a day (by the clock, or once a boot until the clock is set): "a device on
+// this version is in use". Board, version, the random id - nothing else.
+static bool s_checkedThisBoot = false;
+static bool checkInDue() {
+  if (!app::timeValid()) return !s_checkedThisBoot;
+  Preferences p;
+  uint32_t last = 0;
+  if (p.begin("inw-rpt", true)) { last = p.getUInt("chk", 0); p.end(); }
+  const uint32_t now = app::now();
+  return now < last || now - last >= 86400UL;
+}
+
+static void checkIn() {
+  const String body = String("{\"event\":\"checkin\",\"board\":\"" REPORT_BOARD "\",\"version\":\"" FW_VERSION
+                             "\",\"device\":\"") + deviceId() + "\"}";
+  post(body, COUNT_URL);                      // whatever it answers: one try a day is plenty
+  s_checkedThisBoot = true;
+  Preferences p;
+  if (app::timeValid() && p.begin("inw-rpt", false)) { p.putUInt("chk", app::now()); p.end(); }
+}
+
 void tick() {
-  static uint32_t lastTry = 0, connectedAt = 0;
+  static uint32_t lastTry = 0, connectedAt = 0, lastLook = 0;
   if (!s_mounted || !enabled()) { s_errWhy[0] = 0; return; }
   if (s_errWhy[0]) { sendLog(s_errWhy); s_errWhy[0] = 0; }
   if (!wifi::connected()) { connectedAt = 0; return; }
   if (!connectedAt) { connectedAt = millis(); return; }
   if (millis() - connectedAt < 30000) return;           // after the update check has had its go
   if (lastTry && millis() - lastTry < 60000) return;
-  if (s_sent >= MAX_PER_BOOT) return;
   if (dimmer.idleFor() < 4000 || bleConnected()) return;    // a blocking second: not mid-scroll
+  if (!lastLook || millis() - lastLook > 3600000UL) {   // looked at hourly, sent daily
+    lastLook = millis();
+    if (checkInDue()) { lastTry = millis(); checkIn(); return; }
+  }
+  if (s_sent >= MAX_PER_BOOT) return;
   lastTry = millis();
   File root = SPIFFS.open("/");
   String path;

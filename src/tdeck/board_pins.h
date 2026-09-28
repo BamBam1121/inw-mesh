@@ -29,6 +29,7 @@
 #define OTA_BOARD              "t-deck"
 // Crashes and errors go back to the developer over Wi-Fi (src/tdeck/bugreport.h).
 #define BOARD_HAS_REPORTS      1
+#define REPORT_BOARD           "t-deck"
 
 // ---- Power: one switch for the keyboard, radio, display and SD --------------------
 #define PIN_POWER_ON   10

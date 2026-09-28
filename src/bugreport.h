@@ -1,5 +1,6 @@
-// Problem reports for the T-Deck beta: when it crashes (or hits a real error),
-// what happened goes back to the developer by itself, over Wi-Fi.
+// Problem reports: when it crashes (or hits a real error), what happened goes back
+// to the developer by itself, over Wi-Fi. Also a once-a-day check-in (board,
+// version and a random id, nothing else) so we know how many are in use.
 //
 // What a report holds: the firmware version, why it restarted, where it crashed
 // (the task, the program counter and backtrace from ESP-IDF's core dump, which the
@@ -10,7 +11,7 @@
 //
 // Reports wait in the flash store (/rpt, at most 4) until Wi-Fi is up and the
 // screen has been left alone a few seconds, then go to squatchmesh.com. On by
-// default for the beta; Settings > System turns it off, and Tools > log can send
+// default; Settings > System turns it off (the check-in too), and Tools can send
 // the log on purpose ("send log to the developer").
 #pragma once
 #include <Arduino.h>

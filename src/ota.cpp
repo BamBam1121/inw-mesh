@@ -23,6 +23,9 @@ void inwProgress(const char* what, uint32_t done, uint32_t total);   // main.cpp
 namespace ota {
 
 // Each board has its own folder; the pager's is the original, top-level one.
+#ifndef OTA_SUBDIR
+#define OTA_SUBDIR ""
+#endif
 static const char* SITE = "https://bambam1121.github.io/inw-mesh/firmware/" OTA_SUBDIR;
 
 // Public half of the release signing key. Releases signed with anything else
@@ -67,14 +70,16 @@ static bool fromHex(const char* s, uint8_t* out, size_t n) {
   return true;
 }
 
-Info check() {
+Info check() { return check(ui_settings.betaUpdates); }
+
+Info check(bool beta) {
   Info info;
   if (!wifi::connected()) { strlcpy(info.error, "connect to wi-fi first", sizeof(info.error)); return info; }
   WiFiClientSecure tls;
   tls.setInsecure();                     // authenticity comes from the signature, not TLS
   HTTPClient http;
   http.setTimeout(8000);
-  info.beta = ui_settings.betaUpdates;
+  info.beta = beta;
   String url = String(SITE) + (info.beta ? "ota-beta.json" : "ota.json");
   if (!http.begin(tls, url)) { strlcpy(info.error, "couldn't reach the update site", sizeof(info.error)); return info; }
   const int code = http.GET();
@@ -209,21 +214,17 @@ const char* install(const Info& info) {
   return "restarting";
 }
 
-// ---- installing by itself (the T-Deck) ----------------------------------------------------------
+// ---- installing by itself ------------------------------------------------------------------------
 // Kept in its own NVS namespace, not the settings blob, so its layout is untouched.
 static int8_t s_auto = -1;                  // -1: not read yet
 
 bool autoInstall() {
-#ifdef OTA_BOARD
   if (s_auto < 0) {
     Preferences p;
-    s_auto = 1;
+    s_auto = 1;                             // on unless it's been turned off
     if (p.begin("inw-ota", true)) { s_auto = p.getBool("auto", true) ? 1 : 0; p.end(); }
   }
   return s_auto == 1;
-#else
-  return false;                             // the pager asks first, as it always has
-#endif
 }
 
 void setAutoInstall(bool on) {
@@ -285,12 +286,23 @@ void tick() {
   if (dimmer.idleFor() < 3000) return;
   checked = true;
   lastCheck = millis();
-  const Info info = check();
+  Info info = check();
+#ifdef OTA_BOARD
+  const bool autoThis = autoOn;                // every build of this board is a beta for now
+#else
+  // The pager puts in only official releases by itself. On beta updates it looks
+  // at the release feed too: a newer release installs itself, a beta still asks.
+  if (autoOn && info.beta) {
+    const Info rel = check(false);
+    if (rel.ok && rel.newer) info = rel;
+  }
+  const bool autoThis = autoOn && !info.beta;
+#endif
   if (!info.ok) { logs.add(LOG_INFO, "update check: %s", info.error); return; }
   if (!info.newer) { logs.add(LOG_INFO, "update check: up to date (%s)", FW_VERSION); return; }
   logs.add(LOG_INFO, "update available: %s", info.version);
   if (!supported()) { nav.banner("Update available", "reinstall once over usb to enable wi-fi updates", 6000); return; }
-  if (autoOn) {                                // no questions: it goes in when nobody's using it
+  if (autoThis) {                              // no questions: it goes in when nobody's using it
     found = info;
     pending = true;
     logs.add(LOG_INFO, "%s installs itself when idle", info.version);
