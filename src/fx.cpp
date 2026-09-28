@@ -125,7 +125,9 @@ void drawTick(lgfx::LovyanGFX& g, const Tick& k, uint32_t now) {
 
 void drawCharge(lgfx::LovyanGFX& g, uint32_t now) {
   const Theme& c = T();
-  const float t = clamp01((now - chargeAt) / (float)CHARGE_MS);
+  // Signed: chargeAt is millis()|1, a millisecond ahead on an even one; unsigned, the
+  // first frame read as finished and flashed a full battery.
+  const float t = clamp01((int32_t)(now - chargeAt) / (float)CHARGE_MS);
   const float fill = easeOut(clamp01(t / 0.6f));
   const int shown = (int)(chargePct * fill + 0.5f);
   const int bw = 190, bh = 74, bx = CX - bw / 2, by = CY - bh / 2 + 6;
@@ -391,7 +393,7 @@ void draw(lgfx::LovyanGFX& g) {
   for (auto& s : sparks) if (s.used) drawSpark(g, s, now);
   for (auto& k : ticks)  if (k.used) drawTick(g, k, now);
   if (shakeAt) {                                     // the red flash round the edge
-    const float t = (now - shakeAt) / (float)SHAKE_MS;
+    const float t = (int32_t)(now - shakeAt) / (float)SHAKE_MS;   // signed, as drawCharge
     if (t < 0.75f) for (int i = 0; i < 3; i++) g.drawRect(i, i, W - 2 * i, H - 2 * i, T().red);
   }
   if (chargeAt) drawCharge(g, now);

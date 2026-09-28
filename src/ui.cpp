@@ -561,7 +561,9 @@ static float overlayShow(uint32_t at, uint32_t until) {
   const uint32_t now = millis();
   float s = 1;
   if (at && (int32_t)(now - at) < (int32_t)OVL_IN) {
-    const float t = (now - at) / (float)OVL_IN;       // ease out with a small overshoot
+    // Signed: `at` is millis()|1, a millisecond ahead on an even one, and the unsigned
+    // difference threw that frame's overlay far off the screen.
+    const float t = (int32_t)(now - at) / (float)OVL_IN;   // ease out with a small overshoot
     const float c = 1.9f;
     s = 1 + (c + 1) * powf(t - 1, 3) + c * powf(t - 1, 2);
   }
