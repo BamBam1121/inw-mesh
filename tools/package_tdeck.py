@@ -67,13 +67,23 @@ def main():
     full_name = "squatch-mesh-tdeck-%s-full.bin" % ver
     open(os.path.join(out, full_name), "wb").write(full)
 
+    # The installer's copies also go in a folder named for the version, and the
+    # manifests point there: Cloudflare keeps .bin files for hours, so the same address
+    # served the previous build after an update (the installer then flashed the old
+    # firmware and said it came back on the old version). firmware/*.bin stays, for
+    # the release assets CI takes from it.
+    vdir = os.path.join(fw, ver)
+    os.makedirs(vdir, exist_ok=True)
+    for name, _ in OFFSETS:
+        shutil.copy(os.path.join(fw, name), os.path.join(vdir, name))
+
     for kind, parts in (("install", OFFSETS), ("update", OFFSETS[2:])):
         manifest = {
             "name": "Squatch Mesh for T-Deck (%s)" % ("first install" if kind == "install" else "update"),
             "version": ver,
             "new_install_prompt_erase": False,
             "builds": [{"chipFamily": "ESP32-S3",
-                        "parts": [{"path": "firmware/" + n, "offset": o} for n, o in parts]}],
+                        "parts": [{"path": "firmware/%s/%s" % (ver, n), "offset": o} for n, o in parts]}],
         }
         with open(os.path.join(out, "manifest-%s.json" % kind), "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2)
