@@ -1,6 +1,6 @@
 // T-Deck battery: no fuel gauge and no charger chip on I2C, just the cell
-// voltage halved onto GPIO4. The percentage is read off a Li-ion discharge
-// curve, smoothed so it doesn't jitter with radio bursts.
+// voltage halved onto GPIO4. What that voltage means - the percentage, and whether
+// a charger is in - is worked out in battery_est.h, which a PC can test.
 //
 // Read with analogReadMilliVolts (eFuse-calibrated), per Wadamesh: the S3's ADC
 // under-reads near the top of its range, so the plain analogRead*3.3/4096 sum
@@ -14,43 +14,48 @@
 #pragma once
 #include <Arduino.h>
 #include <Wire.h>
+#include <Preferences.h>
 #include "board_pins.h"
+#include "battery_est.h"
 
 class Battery {
 public:
     bool begin(TwoWire& = Wire) {
         analogReadResolution(12);
-        _mv = sample();
-        _haveReading = _mv > 2500;
-        _percent = fromCurve(_mv);
+        // This unit's reading correction, learned at the end of earlier full charges.
+        Preferences p;
+        if (p.begin("inw-batt", true)) {
+            const float c = p.getFloat("cal", 1.0f);
+            if (c > 0.89f && c < 1.11f) _est.cal = c;
+            p.end();
+        }
+        _est.update(millis(), sample(), HWCDC::isPlugged());
         return true;
     }
 
     bool present() const { return true; }
-    bool hasReading() const { return _haveReading; }
+    bool hasReading() const { return _est.mv > 2500; }
 
     void tick(uint32_t now) {
-        if (now - _lastRead < 2000) return;
+        if (now - _lastRead < BatteryEstimate::PERIOD_MS) return;
         _lastRead = now;
-        const uint16_t mv = sample();
-        if (mv < 2500) return;                         // nothing sensible on the pin
-        // Heavy smoothing: a transmit burst sags the cell for a moment.
-        _mv = _haveReading ? (uint16_t)((_mv * 7u + mv) / 8u) : mv;
-        _haveReading = true;
-        const uint8_t p = fromCurve(_mv);
-        // While on battery it only goes down; a jump up means it was plugged in.
-        if (pluggedIn() || p < _percent || p > _percent + 5) _percent = p;
+        _est.update(now, sample(), HWCDC::isPlugged());
+        if (_est.calChanged) {                   // a full charge corrected the reading: keep it
+            _est.calChanged = false;
+            Preferences p;
+            if (p.begin("inw-batt", false)) { p.putFloat("cal", _est.cal); p.end(); }
+        }
     }
 
-    uint8_t  percent() const { return _percent; }
-    uint8_t  gaugePercent() const { return _percent; }
-    uint16_t millivolts() const { return _mv; }
+    uint8_t  percent() const { return _est.percent; }
+    uint8_t  gaugePercent() const { return _est.percent; }
+    uint16_t millivolts() const { return _est.mv; }
 
-    // A computer on the USB port is visible; a wall charger isn't, but it lifts
-    // the cell above what a battery alone sits at.
-    bool pluggedIn() const { return HWCDC::isPlugged() || _mv >= 4230; }
+    // A computer on the USB port says so; a wall charger shows as the step it puts
+    // on the cell's voltage (battery_est.h).
+    bool pluggedIn() const { return _est.external; }
     bool pollVbus() { return pluggedIn(); }
-    bool charging() const { return pluggedIn() && _percent < 100; }
+    bool charging() const { return _est.external && !_est.full && _est.percent < 100; }
 
     // The pager's gauge and charger controls: nothing to drive here.
     float    remainingMah() const { return -1; }
@@ -65,8 +70,8 @@ public:
     bool     chargeHeld() const { return false; }
 
     void report() {
-        Serial.printf("[batt] %u mV, %u%%, %s (T-Deck: voltage only)\n", _mv, _percent,
-                      pluggedIn() ? "on USB" : "on battery");
+        Serial.printf("[batt] %u mV, %u%%, %s, reading x%.4f (T-Deck: voltage only)\n", _est.mv, _est.percent,
+                      _est.full ? "full, on power" : _est.external ? "charging" : "on battery", _est.cal);
     }
     void configReport() { Serial.println("[batt] no fuel gauge on this board"); }
 
@@ -77,18 +82,6 @@ private:
         return (uint16_t)(2.037f * sum / 8);
     }
 
-    // Resting Li-ion cell, lightly loaded.
-    static uint8_t fromCurve(uint16_t mv) {
-        static const uint16_t MV[]  = {4180, 4100, 4000, 3920, 3850, 3800, 3750, 3710, 3670, 3620, 3500, 3300};
-        static const uint8_t  PCT[] = { 100,   90,   80,   70,   60,   50,   40,   30,   20,   10,    5,    0};
-        if (mv >= MV[0]) return 100;
-        for (int i = 1; i < 12; i++)
-            if (mv >= MV[i]) return PCT[i] + (uint8_t)((uint32_t)(PCT[i - 1] - PCT[i]) * (mv - MV[i]) / (MV[i - 1] - MV[i]));
-        return 0;
-    }
-
-    uint16_t _mv = 0;
-    uint8_t  _percent = 0;
-    bool     _haveReading = false;
+    BatteryEstimate _est;
     uint32_t _lastRead = 0;
 };

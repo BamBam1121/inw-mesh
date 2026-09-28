@@ -1355,6 +1355,7 @@ void setup() {
 
   nav.begin(&display, &theme);
   nav.push(makeHomeView());
+  ota::announce();                                // "Updated, now on X" after an update restarted it
   // A new node is named after its key prefix; ask for a real name once.
   if (g_node) {
     char hex[10];

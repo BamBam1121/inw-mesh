@@ -13,6 +13,9 @@
 #include "ui.h"
 #include "backlight.h"     // dimmer.idleFor(): only check for updates in a gap
 #include "board_pins.h"    // OTA_SUBDIR, OTA_BOARD
+#include "fieldtools.h"    // field::wantsGps(): an SOS or range test isn't interrupted
+#include "node.h"          // bleConnected()
+#include <Preferences.h>
 
 extern LogStore logs;
 void inwProgress(const char* what, uint32_t done, uint32_t total);   // main.cpp
@@ -206,24 +209,93 @@ const char* install(const Info& info) {
   return "restarting";
 }
 
-// Once per boot, a while after Wi-Fi comes up, so it doesn't compete with startup.
+// ---- installing by itself (the T-Deck) ----------------------------------------------------------
+// Kept in its own NVS namespace, not the settings blob, so its layout is untouched.
+static int8_t s_auto = -1;                  // -1: not read yet
+
+bool autoInstall() {
+#ifdef OTA_BOARD
+  if (s_auto < 0) {
+    Preferences p;
+    s_auto = 1;
+    if (p.begin("inw-ota", true)) { s_auto = p.getBool("auto", true) ? 1 : 0; p.end(); }
+  }
+  return s_auto == 1;
+#else
+  return false;                             // the pager asks first, as it always has
+#endif
+}
+
+void setAutoInstall(bool on) {
+  s_auto = on ? 1 : 0;
+  Preferences p;
+  if (p.begin("inw-ota", false)) { p.putBool("auto", on); p.end(); }
+}
+
+void announce() {
+  Preferences p;
+  if (!p.begin("inw-ota", false)) return;
+  const String was = p.getString("ran", "");
+  if (was != FW_VERSION) {
+    p.putString("ran", FW_VERSION);
+    if (was.length()) {
+      logs.add(LOG_INFO, "updated: %s -> %s", was.c_str(), FW_VERSION);
+      nav.banner("Updated", (String("now on ") + FW_VERSION + ", everything kept").c_str(), 6000);
+    }
+  }
+  p.end();
+}
+
+// Nobody is using it: screen off and untouched for two minutes, enough battery to
+// finish (or on a charger), and nothing running that a restart would cut short.
+static bool idleForUpdate() {
+  return dimmer.asleep() && dimmer.idleFor() > 120000UL &&
+         (app::pluggedIn() || app::batteryPct() >= 30) &&
+         !field::wantsGps() &&                  // an SOS, range test or trail
+         !bleConnected();                        // the phone app mid-sync
+}
+
+// A while after Wi-Fi comes up, so it doesn't compete with startup; once per boot, or
+// every 6 hours where updates install by themselves.
 void tick() {
-  static bool done = false;
-  static uint32_t connectedAt = 0;
-  if (done || !ui_settings.autoUpdateCheck) return;
+  static bool checked = false, pending = false;
+  static uint32_t connectedAt = 0, lastCheck = 0;
+  static Info found;
+  const bool autoOn = autoInstall();
+  if (!ui_settings.autoUpdateCheck && !autoOn) return;
   if (!wifi::connected()) { connectedAt = 0; return; }
   if (!connectedAt) { connectedAt = millis(); return; }
   if (millis() - connectedAt < 20000) return;
+
+  if (pending) {
+    if (!autoOn) { pending = false; return; }  // turned off meanwhile: offer it next boot
+    if (!idleForUpdate()) return;
+    pending = false;
+    logs.add(LOG_INFO, "installing %s by itself", found.version);
+    const char* r = install(found);            // restarts when it works
+    logs.add(LOG_WARN, "update %s: %s", found.version, r);
+    lastCheck = millis();                      // try again at the next check
+    return;
+  }
+
+  if (checked && !(autoOn && millis() - lastCheck > 6UL * 3600UL * 1000UL)) return;
   // check() blocks for the best part of a second (TLS handshake, then the
   // fetch). Doing that mid-scroll is felt as a stutter, so wait for a gap in
-  // what the person is doing - it is a once-per-boot check and can wait.
+  // what the person is doing - it can wait.
   if (dimmer.idleFor() < 3000) return;
-  done = true;
+  checked = true;
+  lastCheck = millis();
   const Info info = check();
   if (!info.ok) { logs.add(LOG_INFO, "update check: %s", info.error); return; }
   if (!info.newer) { logs.add(LOG_INFO, "update check: up to date (%s)", FW_VERSION); return; }
   logs.add(LOG_INFO, "update available: %s", info.version);
   if (!supported()) { nav.banner("Update available", "reinstall once over usb to enable wi-fi updates", 6000); return; }
+  if (autoOn) {                                // no questions: it goes in when nobody's using it
+    found = info;
+    pending = true;
+    logs.add(LOG_INFO, "%s installs itself when idle", info.version);
+    return;
+  }
   const String body = String("version ") + info.version + (info.notes[0] ? String(" - ") + info.notes : String("")) +
                       ". takes about a minute; messages pause while it downloads.";
   confirm(String("Update to ") + info.version + "?", body, [info] { nav.toast(install(info), 5000); });

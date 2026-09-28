@@ -28,5 +28,13 @@ namespace ota {
   bool supported();            // false on the older one-slot partition table
   Info check();                // blocking, a second or two; needs Wi-Fi
   const char* install(const Info& info);   // blocking with a progress screen; reboots on success
-  void tick();                 // from loop: the once-per-boot automatic check
+  void tick();                 // from loop: the automatic check (and install, below)
+
+  // Boards whose updates install by themselves (the T-Deck, OTA_BOARD): checked on
+  // Wi-Fi when it connects and every 6 hours, installed once it's idle - screen off
+  // and untouched 2 minutes, charging or 30%+, no SOS or phone sync going. On by
+  // default; Settings > System turns it off. Always false on the pager.
+  bool autoInstall();
+  void setAutoInstall(bool on);
+  void announce();             // setup(): after a restart into a new version, say so
 }

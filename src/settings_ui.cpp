@@ -944,6 +944,13 @@ static void systemMenu() {
       }, 120000));
     });
   }
+#ifdef OTA_BOARD
+  // This board's updates go in by themselves once it's idle (ota.h).
+  m->toggle("install updates by itself", [] { return ota::autoInstall(); }, [] {
+    ota::setAutoInstall(!ota::autoInstall());
+    nav.toast(ota::autoInstall() ? "updates install when it's idle, on wi-fi" : "it will ask before updating", 3000);
+  });
+#endif
   m->toggle("check on start (wi-fi)", [] { return ui_settings.autoUpdateCheck; },
             [] { ui_settings.autoUpdateCheck = !ui_settings.autoUpdateCheck; markUiDirty(); });
   m->toggle("beta updates (every build)", [] { return ui_settings.betaUpdates; }, [] {

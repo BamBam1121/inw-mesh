@@ -25,8 +25,16 @@ static const char* JSON_PATH = "/meshcore-backup.json";
 
 bool sdMount() {
   if (s_sd) return true;
+  // No card in (a T-Deck often has none): SD.begin takes a good part of a second to
+  // give up, and the map asked once for every tile it drew, so panning crawled. After
+  // a failure, try again at most every 10 s.
+  static bool failed = false;
+  static uint32_t failedAt = 0;
+  if (failed && millis() - failedAt < 10000) return false;
   inw_spi.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, -1);   // no-op if the radio already did
   s_sd = SD.begin(PIN_SD_CS, inw_spi, 4000000, "/sd", 5, false);
+  failed = !s_sd;
+  failedAt = millis();
   return s_sd;
 }
 bool sdMounted() { return s_sd; }

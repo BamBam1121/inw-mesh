@@ -317,6 +317,9 @@ public:
     char z[40];
     if (wifi::connected() && ui_settings.tileFetch && !_layer)
       snprintf(z, sizeof(z), TOUCH ? "z%d  wifi %u" : "z%d  wifi %u tiles", _z, wifi::tilesFetched());
+    else if (!any && !wifi::connected() && !sdMounted())
+      // Nothing to draw streets from: say where they come from.
+      snprintf(z, sizeof(z), "z%d  no tiles: wi-fi or sd", _z);
     else
       snprintf(z, sizeof(z), "z%d%s%s", _z, _layer ? " topo" : "", any ? "" : TOUCH ? "  no tiles" : "  no tiles here");
     int zx = 6;

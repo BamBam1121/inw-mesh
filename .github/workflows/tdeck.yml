@@ -41,7 +41,7 @@ jobs:
           pio run -e t-deck
 
       # The web installer's files and one full image, as tools/package_tdeck.py
-      # makes them for squatchmesh.com/tdeck-beta.
+      # makes them for squatchmesh.com/t-deck.
       - name: Package
         run: |
           set -e
@@ -62,7 +62,7 @@ jobs:
           V="${GITHUB_REF_NAME#tdeck-v}"
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --prerelease \
             --title "T-Deck $V (beta)" \
-            --notes "Squatch Mesh for the LilyGo T-Deck and T-Deck Plus. Beta. Install from https://squatchmesh.com/tdeck-beta, or write squatch-mesh-tdeck-$V-full.bin at 0x0. Not for the T-Lora Pager." \
+            --notes "Squatch Mesh for the LilyGo T-Deck and T-Deck Plus. Beta. Install from https://squatchmesh.com/t-deck, or write squatch-mesh-tdeck-$V-full.bin at 0x0. Not for the T-Lora Pager." \
             release/*
 
       # Pages only deploys from main: have a main run pick this build up.
