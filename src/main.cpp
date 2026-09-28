@@ -1470,8 +1470,12 @@ void loop() {
         continue;
       }
       const bool onLock = nav.top() && nav.top()->isLock();
-      if (!onLock || te.type == TouchEvent::Swipe || te.type == TouchEvent::Tap) dimmer.note();
+      if (!onLock || te.type == TouchEvent::Swipe || te.type == TouchEvent::Tap || te.type == TouchEvent::Up) dimmer.note();
+      View* before = nav.top();
       nav.touch(te);
+      // A lift sends Up, then Swipe. When the Up has already changed the screen (the
+      // lock face unlocking), the Swipe mustn't act on the screen underneath too.
+      if (nav.top() != before) gestures.dropQueued();
     }
   }
 #endif

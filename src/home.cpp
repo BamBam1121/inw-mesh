@@ -151,8 +151,24 @@ public:
     }
     d.setTextColor(t.greenDim, t.bg);
     d.drawString(_quip, 8, L::W < 400 ? 224 : 206);
+
+    // Touchscreen: the face rides up with the finger (the status bar stays), and says
+    // so once letting go will unlock.
+    if (_lift > 0) {
+      d.scroll(0, -_lift);
+      d.fillRect(0, L::H - _lift, L::W, _lift, t.bg);
+      drawStatusBar(d, t);
+      if (_lift >= 24) {
+        d.setFont(&fonts::Font2);
+        d.setTextColor(_lift >= UNLOCK_PX ? t.green : t.dim, t.bg);
+        d.setTextDatum(textdatum_t::bottom_center);
+        d.drawString(_lift >= UNLOCK_PX ? "release to unlock" : "keep going", L::W / 2, L::H - 6);
+        d.setTextDatum(textdatum_t::top_left);
+      }
+    }
   }
   void tick() override {
+    if (dimmer.asleep()) _lift = 0;
     // Animate only while someone is looking at it: not dimmed, not off.
     if (dimmer.asleep() || dimmer.dimmed()) return;
     if (millis() - _step < 33) return;
@@ -168,12 +184,30 @@ public:
   void press() override { nav.pop(); }
   void key(char) override { if (ui_settings.wheelUnlock) hint(); else nav.pop(); }
   bool backspace() override { if (ui_settings.wheelUnlock) hint(); else nav.pop(); return true; }
-  // Touchscreen: a swipe up unlocks, like a phone. A tap alone doesn't, so a touch
-  // in a pocket can't open it; it says how instead.
+  // Touchscreen: a swipe up unlocks, like a phone. Any drag that ends UNLOCK_PX above
+  // where it began, mostly upward, however slowly: only flicks under 0.35 s used to
+  // count, and an unhurried thumb missed about half the time on a T-Deck. A tap alone
+  // doesn't unlock, so a touch in a pocket can't open it; it says how instead.
+  static constexpr int UNLOCK_PX = 36;
   bool touch(const TouchEvent& e) override {
-    if (e.type == TouchEvent::Swipe && e.dir == 'U') { nav.dismissToast(); nav.pop(); return true; }
-    if (e.type == TouchEvent::Tap) { hint(); return true; }
-    return false;
+    switch (e.type) {
+      case TouchEvent::Drag:
+        _lift = constrain(e.y0 - e.y, 0, L::H / 2);
+        return true;
+      case TouchEvent::Up:
+      case TouchEvent::Swipe: {
+        const int up = e.y0 - e.y, side = abs(e.x - e.x0);
+        _lift = 0;
+        // Within ~50 degrees of straight up: a thumb arcs.
+        if (up >= UNLOCK_PX && up * 5 >= side * 4) { nav.dismissToast(); nav.pop(); }
+        return true;
+      }
+      case TouchEvent::Tap:
+        hint();
+        return true;
+      default:
+        return false;
+    }
   }
 private:
   void hint() {
@@ -185,6 +219,7 @@ private:
   float _phase = 0, _scroll = 0;
   uint32_t _step = 0, _quipAt = 0;
   char _quip[96] = "";
+  int _lift = 0;                     // px the finger has pulled the face up
 };
 
 #ifndef BOARD_HOME_DASHBOARD

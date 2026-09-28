@@ -71,6 +71,8 @@ public:
   }
 
   bool down() const { return _down; }
+  // Forget the Swipe a lift queued behind its Up: the Up already changed the screen.
+  void dropQueued() { _queued = false; }
 
 private:
   bool emit(TouchEvent& e, TouchEvent::Type t, int16_t x, int16_t y, int16_t dx, int16_t dy) {
