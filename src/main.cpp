@@ -1676,7 +1676,16 @@ void loop() {
   // on this SPIFFS, so a write that began the moment the side button darkened the
   // screen was still running when it was tapped back on a second later, and the
   // wake stalled 1.3 s. A timeout-sleep has already been idle far longer than that.
+#if BOARD_HAS_POWER_OFF
   inwSetUserBusy(!dimmer.asleep() || dimmer.idleFor() < 15000);
+#else
+  // No software power-off here (the T-Deck's slide switch cuts the battery at
+  // once), so a save held for the screen to go dark - a minute for messages, ten
+  // for contacts - is a save lost when it's switched off with the screen on. Hold
+  // them only while someone is actually touching or typing: a few dropped frames
+  // on a screen nobody is moving beat losing a chat.
+  inwSetUserBusy(!dimmer.asleep() && dimmer.idleFor() < 3000);
+#endif
   lap(7);
   const uint32_t total = millis() - tLoop;
   if (total > 150) {
