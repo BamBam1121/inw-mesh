@@ -11,6 +11,10 @@
 #include "hwcheck.h"   // src/tdeck
 #endif
 #include "board_pins.h"
+#if BOARD_HAS_REPORTS
+#include "bugreport.h"
+#include "netwifi.h"
+#endif
 #include <SPIFFS.h>
 #include <SD.h>
 
@@ -291,6 +295,13 @@ void app::openTools() {
   m->action("touch test", [] { openTouchTest(); });
 #endif
   m->action("log", [] { logsPage(); });
+#if BOARD_HAS_REPORTS
+  // Something looks wrong and nothing crashed: send the log as it is now.
+  m->action("send log to the developer", [] {
+    if (!report::sendLog("sent from tools")) { nav.toast("can't right now - reports are full, or storage is", 3000); return; }
+    nav.toast(wifi::connected() ? "sending in a few seconds" : "it goes the next time wi-fi is on", 3000);
+  });
+#endif
   m->action("test notification", [] { app::testNotify(); });
 #if INW_DEV   // for documentation screenshots: the developer build only
   m->action("screenshot in 5 s (to sd)", [] { g_shotAt = millis() + 5000; nav.toast("go to the screen - capturing in 5 s"); });

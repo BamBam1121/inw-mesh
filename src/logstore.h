@@ -25,7 +25,12 @@ public:
         if (_count < CAP) _count++;
 
         Serial.printf("[%c] %s\n", "IWE"[level], e.text);
+        if (onAdd) onAdd(level, e.text);
     }
+
+    // Also hand each line to this (the T-Deck's problem reports keep a copy that
+    // survives a crash). Unset on the pager.
+    void (*onAdd)(LogLevel, const char*) = nullptr;
 
     uint8_t count() const { return _count; }
 

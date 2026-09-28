@@ -16,6 +16,10 @@
 #include "battery.h"
 #include "notify.h"
 #include "ota.h"
+#include "board_pins.h"
+#if BOARD_HAS_REPORTS
+#include "bugreport.h"
+#endif
 #include "logstore.h"
 #include "regional.h"
 #include "regions.h"
@@ -949,6 +953,14 @@ static void systemMenu() {
   m->toggle("install updates by itself", [] { return ota::autoInstall(); }, [] {
     ota::setAutoInstall(!ota::autoInstall());
     nav.toast(ota::autoInstall() ? "updates install when it's idle, on wi-fi" : "it will ask before updating", 3000);
+  });
+#endif
+#if BOARD_HAS_REPORTS
+  // Crashes and errors go to the developer (bugreport.h): no messages, names or places.
+  m->toggle("send problem reports", [] { return report::enabled(); }, [] {
+    report::setEnabled(!report::enabled());
+    nav.toast(report::enabled() ? "crashes and errors go to the developer - no messages, names or places"
+                                : "problem reports off", 3500);
   });
 #endif
   m->toggle("check on start (wi-fi)", [] { return ui_settings.autoUpdateCheck; },

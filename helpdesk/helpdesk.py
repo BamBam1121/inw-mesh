@@ -47,6 +47,11 @@ DEFAULTS = {
     "ip_handoffs_per_day": 4,
     "site_handoffs_per_day": 30,
     "log_days": 30,
+    # Problem reports sent by T-Decks by themselves (/api/help/report).
+    "device_reports_per_day": 10,
+    "ip_reports_per_day": 20,
+    "site_reports_per_day": 150,
+    "report_mails_per_day": 25,
     "api_url": "https://api.anthropic.com/v1/messages",
 }
 
@@ -434,7 +439,26 @@ class Handler(BaseHTTPRequestHandler):
             return self.chat(body)
         if self.path == "/api/help/handoff":
             return self.handoff(body)
+        if self.path == "/api/help/report":
+            return self.device_report(body)
         self.reply(404, {"error": "not found"})
+
+    def device_report(self, body):
+        """A crash or error report a T-Deck sent by itself (src/tdeck/bugreport.cpp).
+        Kept in logs/ like the chats, and mailed to the developer (capped per day).
+        4xx answers tell the device to drop it; it retries only on 5xx."""
+        ip = self.client_ip()
+        rep = clean_report(body)
+        if rep is None:
+            return self.reply(400, {"error": "bad report"})
+        why = allow_report(ip, rep["device"])
+        if why:
+            log_line({"event": "report_dropped", "why": why, "device": rep["device"], "kind": rep["kind"]})
+            return self.reply(429, {"error": why})
+        log_line(dict(rep, event="report", who=ip_key(ip)))
+        if allow_report_mail():
+            threading.Thread(target=mail_report, args=(rep,), daemon=True).start()
+        self.reply(200, {"ok": True})
 
     def chat(self, body):
         ip = self.client_ip()
@@ -489,6 +513,93 @@ class Handler(BaseHTTPRequestHandler):
                     rec["handoffs"] = max(0, rec["handoffs"] - 1)
             return self.reply(502, {"error": "That didn't send. Please post on GitHub instead."})
         self.reply(200, {"ok": True})
+
+
+# ---------------------------------------------------------------- device reports
+
+REPORT_KINDS = ("crash", "log")
+REPORT_BOARDS = ("t-deck",)
+_HEX = re.compile(r"^[0-9a-f]{1,16}$")
+_rep = {"day": None, "site": 0, "mails": 0, "ip": {}, "dev": {}}
+
+
+def clean_report(b):
+    """The fields a report may carry, each cut to size; None if it isn't one."""
+    if not isinstance(b, dict) or b.get("kind") not in REPORT_KINDS or b.get("board") not in REPORT_BOARDS:
+        return None
+    dev = str(b.get("device") or "")
+    if not _HEX.match(dev):
+        return None
+
+    def s(k, n):
+        return re.sub(r"[\x00-\x08\x0b-\x1f]", " ", str(b.get(k) or ""))[:n]
+
+    def i(k):
+        try:
+            return int(b.get(k) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    rep = {"kind": b["kind"], "board": b["board"], "device": dev, "version": s("version", 24),
+           "why": s("why", 80), "reset": s("reset", 24), "uptime_s": i("uptime_s"), "heap_free": i("heap_free"),
+           "heap_min": i("heap_min"), "psram_free": i("psram_free"), "battery": i("battery"),
+           "charging": bool(b.get("charging")), "radio": bool(b.get("radio")), "log": s("log", 6000)}
+    for k, n in (("task", 16), ("pc", 12), ("vaddr", 12), ("backtrace", 240), ("elf_sha", 16)):
+        if b.get(k):
+            rep[k] = s(k, n)
+    if b.get("cause") is not None:
+        rep["cause"] = i("cause")
+    return rep
+
+
+def allow_report(ip, dev):
+    with _lim_lock:
+        day = time.strftime("%Y-%m-%d")
+        if _rep["day"] != day:
+            _rep.update(day=day, site=0, mails=0, ip={}, dev={})
+        if _rep["site"] >= CFG["site_reports_per_day"]:
+            return "the site has had enough reports today"
+        if _rep["ip"].get(ip, 0) >= CFG["ip_reports_per_day"] or _rep["dev"].get(dev, 0) >= CFG["device_reports_per_day"]:
+            return "enough reports from this device today"
+        _rep["site"] += 1
+        _rep["ip"][ip] = _rep["ip"].get(ip, 0) + 1
+        _rep["dev"][dev] = _rep["dev"].get(dev, 0) + 1
+        return None
+
+
+def allow_report_mail():
+    with _lim_lock:
+        if _rep["mails"] >= CFG["report_mails_per_day"]:
+            return False
+        _rep["mails"] += 1
+        return True
+
+
+def mail_report(rep):
+    where = ""
+    if rep.get("pc"):
+        where = " in %s at %s" % (rep.get("task") or "?", rep["pc"])
+    subject = "%s %s %s%s" % ("T-Deck" if rep["board"] == "t-deck" else rep["board"],
+                              "crash" if rep["kind"] == "crash" else "report", rep["version"],
+                              where or (": " + rep["why"] if rep["why"] else ""))
+    lines = [
+        "Device %s, firmware %s" % (rep["device"], rep["version"]),
+        "Kind: %s (%s)" % (rep["kind"], rep["why"] or "-"),
+        "Last reset: %s, up %d s" % (rep["reset"], rep["uptime_s"]),
+        "Memory: %d free, lowest %d, PSRAM %d free" % (rep["heap_free"], rep["heap_min"], rep["psram_free"]),
+        "Battery %d%%%s, radio %s" % (rep["battery"], " (plugged in)" if rep["charging"] else "",
+                                       "ok" if rep["radio"] else "DOWN"),
+    ]
+    if rep.get("pc"):
+        lines += ["", "Crash: task %s, pc %s, cause %s, address %s" % (rep.get("task"), rep["pc"], rep.get("cause"),
+                                                                      rep.get("vaddr")),
+                  "Backtrace: " + (rep.get("backtrace") or "-"),
+                  "ELF sha256: %s..." % rep.get("elf_sha", "?"),
+                  "",
+                  "Turn it into file:line with that release's firmware.elf:",
+                  "  xtensa-esp32s3-elf-addr2line -pfiaC -e firmware.elf " + (rep.get("backtrace") or rep["pc"])]
+    lines += ["", "Log before it (seconds since start, I/W/E):", rep["log"] or "(none)"]
+    send_mail(subject[:120], "\n".join(lines))
 
 
 def notify(ip, handoff, messages, note, email, name, followup=False):

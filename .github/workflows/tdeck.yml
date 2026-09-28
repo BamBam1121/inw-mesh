@@ -52,6 +52,9 @@ jobs:
           fi
           mkdir -p release
           cp out/firmware/*.bin out/squatch-mesh-tdeck-*-full.bin release/
+          # For the problem reports (src/tdeck/bugreport.cpp): a crash's addresses
+          # become file and line only with this exact build's symbols.
+          cp .pio/build/t-deck/firmware.elf "release/squatch-mesh-tdeck-$VER.elf"
           ls -la release
 
       - name: Release

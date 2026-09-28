@@ -17,6 +17,9 @@
 #include <SD.h>
 #include <time.h>
 #include "board_pins.h"
+#if BOARD_HAS_REPORTS
+#include "bugreport.h"
+#endif
 #include "display_config.h"
 #include "io_expander.h"
 #if INW_DEV
@@ -1209,6 +1212,9 @@ void setup() {
                                  "interrupt watchdog", "task watchdog", "watchdog", "deep sleep",
                                  "brownout", "sdio"};
   const int rr = (int)esp_reset_reason();
+#if BOARD_HAS_REPORTS
+  report::capture();            // the last run's log lines, before this run's first one
+#endif
   logs.add(rr == ESP_RST_POWERON || rr == ESP_RST_SW ? LOG_INFO : LOG_WARN, "boot %s, last reset: %s",
            FW_VERSION, rr < 11 ? RESET[rr] : "?");
   ui_settings.load();
@@ -1301,6 +1307,9 @@ void setup() {
     display.fillRect(0, boot::ERR_Y0 - 2, L::W, 28, theme.bg);
   }
   bootStep("storage", fsOk);
+#if BOARD_HAS_REPORTS
+  if (fsOk) report::begin();       // restarted from a crash: file what happened
+#endif
   const bool sdOk = sdMount();
   bootStep("sd card", true, sdOk ? "mounted" : "none");   // no card is normal
   // NVS came up empty (wiped, or another firmware had the board): bring the
@@ -1590,6 +1599,9 @@ void loop() {
   if (s_hizUntil && (int32_t)(millis() - s_hizUntil) > 0) { s_hizUntil = 0; battery.setHiZ(false); Serial.println("[batt] charger input back on"); }
   power::tick();
   ota::tick();
+#if BOARD_HAS_REPORTS
+  report::tick();
+#endif
   ext::tick();
   nodeLoop();
   lap(3);
