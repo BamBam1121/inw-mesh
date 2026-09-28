@@ -643,6 +643,11 @@ static void usbCommands() {
         g_node->savePrefsNow();
       }
       ui_settings.save();
+      // Someone is about to flash (the web installer, or a developer). Writes that wait
+      // for the screen to go dark (inwSetUserBusy) go now: a dropped frame doesn't
+      // matter here, and with the screen on they waited past the 10 s, answered
+      // "slow", and the last minutes' changes could miss the update.
+      inwSetUserBusy(false);
       const bool landed = inwStoreFlush(10000);      // "ok" means on flash, not just queued
       Serial.printf("[save] %s contacts=%d\n", landed ? "ok" : "slow", g_node ? g_node->getNumContacts() : -1);
       continue;
