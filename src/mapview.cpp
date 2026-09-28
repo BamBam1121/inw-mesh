@@ -180,6 +180,7 @@ public:
   // A finger: drag to move the map, the buttons on the right to zoom and find
   // yourself, tap a node to pick it and its label to open it. The "<" at the top
   // left goes back (Nav's header rule: the map has no header of its own).
+  bool coasts() override { return false; }
   bool touch(const TouchEvent& e) override {
     switch (e.type) {
       case TouchEvent::Drag: {

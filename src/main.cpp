@@ -1465,6 +1465,11 @@ void loop() {
     bool down; int16_t tx, ty;
     touchPanel.poll(down, tx, ty);
     TouchEvent te;
+    // A glide belongs to the screen it started on: any change of screen (a message
+    // opening one, the trackball) ends it.
+    static View* coastOn = nullptr;
+    if (nav.top() != coastOn) { gestures.stopCoast(); coastOn = nav.top(); }
+    gestures.allowCoast(!dimmer.asleep() && nav.top() && nav.top()->coasts());
     while (gestures.feed(down, tx, ty, millis(), te)) {
       if (dimmer.asleep()) {
         // Double tap to wake, if it's on (Settings > Display): two taps close together.
@@ -1481,7 +1486,7 @@ void loop() {
       nav.touch(te);
       // A lift sends Up, then Swipe. When the Up has already changed the screen (the
       // lock face unlocking), the Swipe mustn't act on the screen underneath too.
-      if (nav.top() != before) gestures.dropQueued();
+      if (nav.top() != before) { gestures.dropQueued(); gestures.stopCoast(); }
     }
   }
 #endif

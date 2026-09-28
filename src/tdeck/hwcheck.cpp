@@ -103,6 +103,7 @@ public:
   // Letters are for testing the keyboard here, not shortcuts. Del still goes back.
   bool wantsAllKeys() override { return true; }
   void key(char) override { dirty = true; }
+  bool coasts() override { return false; }
   bool touch(const TouchEvent& e) override {                // shown, not acted on: nothing to open here
     _touched = true;
     _fx = e.x; _fy = e.y;
@@ -168,6 +169,7 @@ public:
     g.drawString(hint, (L::W - g.textWidth(hint)) / 2, cy + 18);
   }
 
+  bool coasts() override { return false; }
   bool touch(const TouchEvent& e) override {
     switch (e.type) {
       case TouchEvent::Down:

@@ -75,10 +75,15 @@ private:
     }
     _fails = 0;
     if (!(st & 0x80)) {                           // nothing new
-      if (_down && now - _frameAt > 250) _down = false;   // the lift frame was lost
+      // The lift frame was lost: a quarter second AND several reads with nothing.
+      // Time alone isn't enough - after a slow loop (a map tile, a full redraw)
+      // the first read finds nothing yet, and letting go there split one scroll
+      // into two touches, the second of which could end as a tap and open a row.
+      if (_down && ++_empty >= 4 && now - _frameAt > 250) _down = false;
       return;
     }
     _frameAt = now;
+    _empty = 0;
     uint8_t p[4];
     if ((st & 0x0F) && rd(0x8150, p, 4)) {
       const uint16_t rx = p[0] | (p[1] << 8), ry = p[2] | (p[3] << 8);
@@ -124,7 +129,7 @@ private:
   }
 
   TwoWire* _w = nullptr;
-  uint8_t  _addr = 0, _fails = 0;
+  uint8_t  _addr = 0, _fails = 0, _empty = 0;
   bool     _ok = false, _down = false, _phantom = false, _jitter = false, _mx = false, _my = false;
   uint32_t _count = 0;
   int16_t  _x = 0, _y = 0;

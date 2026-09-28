@@ -51,6 +51,9 @@ public:
   // A swipe in from the left edge goes back. A screen that must not be left that
   // way (the SOS countdown: leaving isn't cancelling) says no.
   virtual bool swipeBack() { return true; }
+  // A flicked list keeps gliding after the finger lifts. Screens that follow the
+  // finger itself (a map, the lock face, the touch test) say no.
+  virtual bool coasts() { return !isLock(); }
   bool dirty = true;
 };
 
