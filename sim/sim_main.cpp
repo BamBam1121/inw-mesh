@@ -14,6 +14,7 @@
 #include "touch.h"
 #include "bootscreen.h"
 #include "regions.h"
+#include "battery.h"
 void startSetup();   // settings_ui.cpp
 #if BOARD_HAS_TOUCH
 #include "hwcheck.h"
@@ -171,6 +172,60 @@ int main(int argc, char** argv) {
   nav.begin(&display, &theme);
   static const char* THEME_NAMES[] = {"squatch", "blocks", "hero", "aurora"};
 #if BOARD_HAS_TOUCH
+  // "squatch_sim OUT promo": pictures of the sasquatch for posting - Aurora, each
+  // moment as a still (st_*), and one run recorded at 15 frames a second (gif_NNN).
+  if (argc > 2 && !strcmp(argv[2], "promo")) {
+    ui_settings.themeId = 3;                          // Aurora
+    app::applyTheme();
+    populateHistory();
+    {                                                 // all read: his eyes go amber only for the new one
+      ConvKey keys[64];
+      const uint16_t n = history.conversations(keys, 64);
+      for (uint16_t i = 0; i < n; i++) history.markRead(keys[i]);
+    }
+    nav.push(makeHomeView());
+    int frame = 0;
+    auto rec = [&](uint32_t ms) {                     // record ms of it, a frame every 66 ms
+      for (uint32_t t = 0; t < ms; t += 66) { run(66); char n[32]; snprintf(n, sizeof(n), "gif_%03d", frame++); shot(n); }
+    };
+    auto finger = [&](int x, int y) {                 // a tap, recorded
+      feedTouch(true, x, y); rec(66); feedTouch(false, x, y);
+    };
+    const uint32_t morning = sim::epoch;              // 9:41 am
+    // The recorded run: he wakes and waves hello, walks a little, gets poked, then
+    // poked three times and sees stars.
+    sim::advance(20UL * 60UL * 1000UL);
+    nav.push(makeLockView());
+    rec(5200);
+    rec(1500);
+    finger(255, 125); rec(3000);
+    rec(5600);                                        // past the 8 s window: the next three count afresh
+    finger(255, 125); rec(400); finger(255, 125); rec(400); finger(255, 125); rec(3600);
+    nav.pop();
+    // Stills, each from a fresh wake so he has something to say.
+    auto wake = [&]() { sim::advance(20UL * 60UL * 1000UL); nav.push(makeLockView()); };
+    wake(); run(1300); shot("st_1_morning_wave"); run(8000);
+    run(1000); tap(255, 125); run(200); shot("st_2_poke");
+    run(9000); tap(255, 125); tap(255, 125); tap(255, 125); run(600); shot("st_3_dizzy");
+    run(9000);
+    const ConvKey trail = ConvKey::contact(g_node->contacts[3].id.pub_key);
+    history.add(trail, 0, ST_RECV, "Trailhead", "Made it to the top!", app::now(), 1, 30);
+    run(1100); shot("st_4_message"); run(9000);
+    battery.plugged = true; run(2300); shot("st_5_charger"); run(9000);
+    nav.pop();
+    battery.plugged = false;
+    history.markRead(trail);
+    sim::epoch = morning + 14UL * 3600UL;             // 11:41 pm
+    wake(); run(700); shot("st_6_late_yawn"); run(1500); shot("st_7_late_said"); run(8000);
+    nav.pop();
+    sim::epoch = morning + 5UL * 3600UL;              // 2:41 pm, and nearly flat
+    battery.pct = 12;
+    wake(); run(1500); shot("st_8_low_battery");
+    nav.pop();
+    battery.pct = 87;
+    printf("%d gif frames\n", frame);
+    return 0;
+  }
   // "squatch_sim OUT squatch": the lock face's sasquatch only - hello on waking, a
   // poke, three pokes (stars), a tap somewhere else - in each theme.
   if (argc > 2 && !strcmp(argv[2], "squatch")) {

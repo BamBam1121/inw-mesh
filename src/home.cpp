@@ -306,7 +306,8 @@ private:
       else if (app::batteryPct() < 15 && !plugged) say(talk::LOW_BATT, 400);
       else if (gap > 15UL * 60UL * 1000UL || random(4) == 0) {
         const int h = localHour();
-        say(h >= 5 && h < 11 ? talk::MORNING : h < 17 ? talk::DAY : h < 22 ? talk::EVENING : talk::LATE, 400);
+        // Late runs 10 pm to 5 am: the small hours are late, not the middle of the day.
+        say(h >= 5 && h < 11 ? talk::MORNING : h >= 11 && h < 17 ? talk::DAY : h >= 17 && h < 22 ? talk::EVENING : talk::LATE, 400);
       }
       _seenUnread = un;
       _wasPlugged = plugged;
