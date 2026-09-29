@@ -469,7 +469,11 @@ static void gpsSchedule() {
   if (field::wantsGps()) { fieldHad = true; gpsPower(true); return; }
   if (fieldHad) { fieldHad = false; if (!ui_settings.gpsOn || power::saver()) gpsPower(false); }
   if (!ui_settings.gpsOn || power::saver()) return;   // those paths switch it themselves
+#if BOARD_RADIO_ONLY_WHEN_DARK
+  const bool window = false;            // dark means dark: the fix comes back with the screen
+#else
   const bool window = millis() % 1800000UL < 120000UL;
+#endif
   gpsPower(!dimmer.asleep() || window);
 }
 
@@ -1637,6 +1641,22 @@ void loop() {
       if (s_panelOff) { display.wakeup(); s_panelOff = false; nav.invalidate(); }
     }
   }
+#if BOARD_RADIO_ONLY_WHEN_DARK
+  // Wi-Fi parks a minute into the dark on battery, and is back the moment the screen
+  // wakes. ui_settings.wifiOn (the user's switch) is left alone; plugged in it stays
+  // up, so updates and problem reports still go while it charges.
+  {
+    static bool parked = false;
+    static uint32_t darkAt = 0;
+    if (dimmer.asleep()) { if (!darkAt) darkAt = millis() | 1; } else darkAt = 0;
+    const bool park = ui_settings.wifiOn && darkAt && (int32_t)(millis() - darkAt) > 60000 && !app::pluggedIn();
+    if (park != parked && !power::saver()) {   // battery saver switches Wi-Fi itself meanwhile
+      parked = park;
+      wifi::setEnabled(!park && ui_settings.wifiOn);
+      logs.add(LOG_INFO, park ? "wifi parked: screen dark on battery" : "wifi back");
+    }
+  }
+#endif
   // Woken onto the lock screen and left alone (a message, a bump of the button):
   // back to sleep in 10 s instead of waiting out the dim and sleep timers.
   if (!dimmer.asleep() && nav.top() && nav.top()->isLock() && dimmer.idleFor() > 10000UL) dimmer.sleepNow();

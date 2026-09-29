@@ -34,6 +34,10 @@
 // while the screen is dark (main.cpp).
 #define BOARD_GPS_SLEEP_BY_COMMAND 1
 #define BOARD_SLOW_CPU_WHEN_DARK   1
+// Screen dark on battery: the LoRa radio is the only thing left running - the GPS
+// stays asleep (no half-hourly fix windows) and Wi-Fi is switched off a minute in.
+// Plugged in, Wi-Fi stays on so updates still install while it charges.
+#define BOARD_RADIO_ONLY_WHEN_DARK 1
 #define REPORT_BOARD           "t-deck"
 
 // ---- Power: one switch for the keyboard, radio, display and SD --------------------
