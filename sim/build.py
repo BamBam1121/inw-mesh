@@ -20,7 +20,7 @@ LGFX = os.path.join(ROOT, ".pio", "libdeps", "t-lora-pager", "LovyanGFX", "src")
 FIRMWARE = ["ui.cpp", "home.cpp", "quips.cpp", "regional.cpp", "settings.cpp", "history.cpp", "regions.cpp",
             "chats.cpp", "notify.cpp", "fx.cpp", "fx_squatch.cpp", "fx_blocks.cpp", "fx_hero.cpp",
             "fx_aurora.cpp", "bootscreen.cpp"]
-SIM = ["sim_stubs.cpp", "sim_main.cpp"]
+SIM = ["sim_stubs.cpp", "sim_main.cpp", "serve_net.cpp"]
 # The T-Deck's own screens (src/tdeck); the pager build doesn't have them.
 BOARD_UI = [] if "--pager" in sys.argv else ["dashboard.cpp", "hwcheck.cpp"]
 # Firmware screens with more behind them, T-Deck sim only for now (stubs in sim_stubs.cpp).
@@ -91,7 +91,7 @@ def main():
             print("cc", os.path.basename(src)); run([GXX] + FLAGS + INC + ["-c", src, "-o", o])
         objs.append(o)
     exe = os.path.join(OUT, "squatch_sim" + ("_pager" if "--pager" in sys.argv else "") + ".exe")
-    run([GXX] + objs + ["-o", exe, "-static"])
+    run([GXX] + objs + ["-o", exe, "-static", "-lws2_32"])   # ws2_32: the live mode's server (serve_net.cpp)
     print("built", exe)
 
 

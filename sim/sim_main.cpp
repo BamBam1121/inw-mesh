@@ -15,6 +15,9 @@
 #include "bootscreen.h"
 #include "regions.h"
 #include "battery.h"
+#include "serve_net.h"
+// LovyanGFX's PNG writer (utility/lgfx_miniz.c), declared only in that file.
+extern "C" void* tdefl_write_image_to_png_file_in_memory_ex(const void* img, int w, int h, int chans, size_t* len, unsigned int level, int flip);
 void startSetup();   // settings_ui.cpp
 #if BOARD_HAS_TOUCH
 #include "hwcheck.h"
@@ -172,6 +175,149 @@ int main(int argc, char** argv) {
   nav.begin(&display, &theme);
   static const char* THEME_NAMES[] = {"squatch", "blocks", "hero", "aurora"};
 #if BOARD_HAS_TOUCH
+  // "squatch_sim OUT serve PORT": the T-Deck live, in a browser. The screens run in
+  // real time; the page shows each frame as a PNG and sends back touches, keys and
+  // the trackball. Listens on 127.0.0.1 only (reach it through `tailscale serve`).
+  if (argc > 2 && !strcmp(argv[2], "serve")) {
+    const int port = argc > 3 ? atoi(argv[3]) : 8124;
+    if (!net_listen(port)) { printf("can't listen on 127.0.0.1:%d\n", port); return 1; }
+    printf("live on 127.0.0.1:%d\n", port);
+    ui_settings.themeId = 3;                           // Aurora, as posted
+    app::applyTheme();
+    populateHistory();
+    View* base = makeHomeView();
+    nav.push(base);
+    nav.push(makeLockView());                          // starts locked: swipe up
+    static const char PAGE[] = R"HTML(<!doctype html><html><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>T-Deck simulator</title><style>
+body{margin:0;background:#0b0f1a;color:#cfd8ff;font:15px system-ui,sans-serif;display:flex;flex-direction:column;align-items:center}
+h1{font-size:15px;font-weight:600;margin:10px 0 0;color:#8f9bd6}
+#s{width:min(96vw,960px);image-rendering:pixelated;touch-action:none;display:block;margin-top:8px;border-radius:10px;box-shadow:0 0 0 2px #2a3150;background:#040716}
+.row{display:flex;gap:8px;margin:6px;flex-wrap:wrap;justify-content:center}
+button{background:#1b2340;color:#dfe6ff;border:1px solid #33406b;border-radius:10px;padding:11px 15px;font-size:17px;min-width:50px;touch-action:manipulation}
+button:active{background:#2c3a6b}
+input{font-size:17px;padding:10px;border-radius:10px;border:1px solid #33406b;background:#111830;color:#fff;width:58vw;max-width:520px}
+p{color:#7f89b8;font-size:13px;margin:4px 12px;text-align:center;max-width:640px}
+</style></head><body>
+<h1>Squatch Mesh T-Deck simulator</h1>
+<canvas id=s width=320 height=240></canvas>
+<div class=row><button data-r=-1>&#9650;</button><button data-r=1>&#9660;</button><button data-p=1>&#9679; click</button><button data-k=8>&#9003; back</button></div>
+<div class=row><input id=tx placeholder="type, then Enter" autocomplete=off autocapitalize=off><button id=go>&#9166;</button></div>
+<div class=row><button data-u="/lock">lock</button><button data-u="/home">home</button><button data-u="/msg">new message</button><button data-u="/plug">charger</button><button data-u="/theme">theme</button></div>
+<p>The screen is the touchscreen: tap, drag, swipe up to unlock. Poke the sasquatch. On a computer, arrow keys are the trackball and typing goes to the keyboard.</p>
+<script>
+const c=document.getElementById('s'),g=c.getContext('2d');
+async function frame(){try{const r=await fetch('/f?'+Date.now());if(r.ok){const im=await createImageBitmap(await r.blob());g.drawImage(im,0,0);}}catch(e){}setTimeout(frame,30);}
+frame();
+// One request at a time, in order; a run of drags collapses to the latest.
+const q=[];let sending=false;
+function send(u,move){if(move&&q.length&&q[q.length-1].m)q[q.length-1]={u,m:true};else q.push({u,m:!!move});pump();}
+async function pump(){if(sending)return;sending=true;while(q.length){const x=q.shift();try{await fetch(x.u);}catch(e){}}sending=false;}
+function pos(e){const r=c.getBoundingClientRect();return[Math.max(0,Math.min(319,Math.round((e.clientX-r.left)*320/r.width))),Math.max(0,Math.min(239,Math.round((e.clientY-r.top)*240/r.height)))];}
+let down=false;
+c.addEventListener('pointerdown',e=>{down=true;c.setPointerCapture(e.pointerId);const[x,y]=pos(e);send(`/t?d=1&x=${x}&y=${y}`);e.preventDefault();});
+c.addEventListener('pointermove',e=>{if(!down)return;const[x,y]=pos(e);send(`/t?d=1&x=${x}&y=${y}`,true);e.preventDefault();});
+function up(e){if(!down)return;down=false;const[x,y]=pos(e);send(`/t?d=0&x=${x}&y=${y}`);}
+c.addEventListener('pointerup',up);c.addEventListener('pointercancel',up);
+document.querySelectorAll('button[data-r]').forEach(b=>b.onclick=()=>send('/b?r='+b.dataset.r));
+document.querySelectorAll('button[data-p]').forEach(b=>b.onclick=()=>send('/b?p=1'));
+document.querySelectorAll('button[data-k]').forEach(b=>b.onclick=()=>send('/k?c='+b.dataset.k));
+document.querySelectorAll('button[data-u]').forEach(b=>b.onclick=()=>send(b.dataset.u));
+const tx=document.getElementById('tx');
+function typeOut(){for(const ch of tx.value)send('/k?c='+ch.charCodeAt(0));send('/k?c=13');tx.value='';}
+document.getElementById('go').onclick=typeOut;
+tx.addEventListener('keydown',e=>{if(e.key==='Enter'){typeOut();e.preventDefault();}});
+document.addEventListener('keydown',e=>{if(e.target===tx)return;
+ const m={ArrowUp:'/b?r=-1',ArrowLeft:'/b?r=-1',ArrowDown:'/b?r=1',ArrowRight:'/b?r=1',Enter:'/k?c=13',Backspace:'/k?c=8',Escape:'/k?c=8'};
+ if(m[e.key]){send(m[e.key]);e.preventDefault();}else if(e.key.length===1&&!e.ctrlKey&&!e.metaKey){send('/k?c='+e.key.charCodeAt(0));e.preventDefault();}});
+</script></body></html>)HTML";
+    static const char* MSGS[][2] = {
+        {"Ridge Runner", "Anyone up on Mt Spokane?"}, {"Trailhead", "Made it to the top!"},
+        {"Pine Marten", "Browne Mtn repeater looks good"}, {"Basecamp", "Coffee's on"},
+        {"Ridge Runner", "Heard you 3 hops out"}};
+    int msgN = 0;
+    auto arg = [](const char* req, const char* key) -> int {
+      const char* p = strstr(req, key);
+      return p ? atoi(p + strlen(key)) : 0;
+    };
+    uint32_t last = net_ms(), acc = 0;
+    char req[2048];
+    for (;;) {
+      // Real time, in the same 16 ms steps the other runs use.
+      const uint32_t now = net_ms();
+      acc += now - last > 250 ? 250 : now - last;
+      last = now;
+      while (acc >= 16) { sim::advance(16); nav.tick(); if (nav.top()) nav.top()->tick(); acc -= 16; }
+      const int fd = net_poll(8, req, sizeof(req));
+      if (fd < 0) continue;
+      const char* path = req + 4;                      // after "GET "
+      if (!strncmp(req, "GET / ", 6)) { net_reply(fd, 200, "text/html; charset=utf-8", PAGE, (int)strlen(PAGE)); continue; }
+      if (!strncmp(path, "/f", 2)) {                   // the screen, as the panel would show it
+        View* v = nav.top();
+        Canvas& g = nav.canvas();
+        g.fillScreen(theme.bg);
+        if (v && !v->isLock()) drawStatusBar(g, theme);
+        if (v) v->draw(g);
+        nav.drawOverlays(g);
+        // RGB888 rows for LovyanGFX's own PNG encoder (lgfx_miniz.c); a BMP if it fails.
+        const int w = g.width(), h = g.height();
+        static uint8_t* rgb = nullptr;
+        if (!rgb) rgb = (uint8_t*)malloc((size_t)w * h * 3);
+        for (int y = 0; y < h; y++)
+          for (int x = 0; x < w; x++) {
+            const uint16_t px = g.readPixel(x, y);
+            uint8_t* o = rgb + ((size_t)y * w + x) * 3;
+            o[0] = ((px >> 11) & 31) * 255 / 31; o[1] = ((px >> 5) & 63) * 255 / 63; o[2] = (px & 31) * 255 / 31;
+          }
+        size_t len = 0;
+        void* png = tdefl_write_image_to_png_file_in_memory_ex(rgb, w, h, 3, &len, 3, 0);
+        if (png) { net_reply(fd, 200, "image/png", png, (int)len); free(png); continue; }
+        static uint8_t* bmp = nullptr;
+        const int row = w * 3, size = 54 + row * h;
+        if (!bmp) bmp = (uint8_t*)malloc(size);
+        memset(bmp, 0, 54);
+        bmp[0] = 'B'; bmp[1] = 'M'; memcpy(bmp + 2, &size, 4); bmp[10] = 54; bmp[14] = 40;
+        memcpy(bmp + 18, &w, 4); const int nh = -h; memcpy(bmp + 22, &nh, 4); bmp[26] = 1; bmp[28] = 24;
+        for (int y = 0; y < h; y++)
+          for (int x = 0; x < w; x++) {
+            const uint8_t* i = rgb + ((size_t)y * w + x) * 3; uint8_t* o = bmp + 54 + y * row + x * 3;
+            o[0] = i[2]; o[1] = i[1]; o[2] = i[0];
+          }
+        net_reply(fd, 200, "image/bmp", bmp, size);
+        continue;
+      }
+      if (!strncmp(path, "/t?", 3)) {                  // a finger: d=1 down or moving, d=0 lifted
+        feedTouch(arg(path, "d=") != 0, arg(path, "x="), arg(path, "y="));
+      } else if (!strncmp(path, "/k?", 3)) {           // a key: 8 backspace, 13 enter
+        const int k = arg(path, "c=");
+        View* v = nav.top();
+        if (k == 8) nav.backspace();
+        else if (k == 13 || k == 10) {
+          if (v && !v->wantsAllKeys() && !v->isHome() && !v->isLock()) nav.press();
+          else nav.key('\n');
+        } else if (k >= 32 && k < 127) nav.key((char)k);
+      } else if (!strncmp(path, "/b?", 3)) {           // the trackball: r=+-1 rolls, p=1 clicks
+        if (strstr(path, "p=1")) nav.press();
+        else nav.rotate(arg(path, "r=") < 0 ? -1 : 1);
+      } else if (!strncmp(path, "/lock", 5)) {
+        if (!(nav.top() && nav.top()->isLock())) { sim::advance(60000); nav.push(makeLockView()); }
+      } else if (!strncmp(path, "/home", 5)) {
+        clearTo(base);
+      } else if (!strncmp(path, "/msg", 4)) {          // a new message from someone
+        const auto& m = MSGS[msgN++ % 5];
+        const ConvKey k = ConvKey::contact(g_node->contacts[3 + msgN % 2].id.pub_key);
+        history.add(k, 0, ST_RECV, m[0], m[1], app::now(), 1, 30);
+        nav.banner(m[0], m[1], 4000);
+      } else if (!strncmp(path, "/plug", 5)) {
+        battery.plugged = !battery.plugged;
+      } else if (!strncmp(path, "/theme", 6)) {
+        ui_settings.themeId = (ui_settings.themeId + 1) % (THEME_COUNT < 4 ? THEME_COUNT : 4);
+        app::applyTheme();
+      } else { net_reply(fd, 404, "text/plain", "", 0); continue; }
+      net_reply(fd, 204, "text/plain", "", 0);
+    }
+  }
   // "squatch_sim OUT promo": pictures of the sasquatch for posting - Aurora, each
   // moment as a still (st_*), and one run recorded at 15 frames a second (gif_NNN).
   if (argc > 2 && !strcmp(argv[2], "promo")) {
