@@ -509,6 +509,7 @@ void Nav::push(View* v) {
 
 void Nav::pop() {
   if (_depth <= 1) return;                 // the home view is never popped
+  if (top()->isLock() && _afterUnlock) _afterUnlockDue = true;   // run on the next tick
   beginTransition((uint8_t)(top()->isLock() ? fx::Trans::Unlock : fx::Trans::Back));
   s_graveyard.push_back(_stack[--_depth]);
   _stack[_depth] = nullptr;
@@ -531,6 +532,32 @@ void Nav::replaceTop(View* v) {
 bool Nav::touch(const TouchEvent& e) {
   View* v = top();
   if (!v) return false;
+  // A touch that starts on the banner is the banner's, all of it, so nothing under it
+  // gets a tap or a scroll (and the lock face no swipe): a tap opens what it's about,
+  // a swipe up puts it away. On the lock face a tap can't unlock - a pocket taps too -
+  // so the banner's conversation opens once the swipe up does.
+  if (e.type == TouchEvent::Down) _bannerTouch = onBanner(e.x, e.y);
+  if (_bannerTouch) {
+    if (e.type == TouchEvent::Tap) {
+      _bannerTouch = false;
+      if (_bannerTap) {
+        if (v->isLock()) {
+          _afterUnlock = _bannerTap;
+          _afterUnlockAt = millis();
+          toast("swipe up to open it");
+        } else {
+          std::function<void()> f = std::move(_bannerTap);
+          _bannerUntil = 0; _bannerAt = 0; _bannerTap = nullptr;
+          f();
+        }
+      } else { _bannerUntil = 0; _bannerAt = 0; }
+      invalidate();
+    } else if (e.type == TouchEvent::Swipe || e.type == TouchEvent::Up) {
+      _bannerTouch = false;
+      if (e.type == TouchEvent::Swipe && e.dir == 'U') { _bannerUntil = 0; _bannerAt = 0; _bannerTap = nullptr; invalidate(); }
+    }
+    return true;
+  }
   if (_depth > 1 && !v->isLock() && !v->isHome()) {
     const bool headerTap = e.type == TouchEvent::Tap && v->headerBack() && e.x < 64 &&
                            e.y >= L::HEAD_Y && e.y < L::HEAD_Y + L::HEAD_H;
@@ -555,11 +582,12 @@ void Nav::toast(const char* msg, uint16_t ms) {
   invalidate();
 }
 
-void Nav::banner(const char* title, const char* text, uint16_t ms) {
+void Nav::banner(const char* title, const char* text, uint16_t ms, std::function<void()> onTap) {
   strlcpy(_bannerTitle, title, sizeof(_bannerTitle));
   sanitize(text, _bannerText, sizeof(_bannerText) - 4);
   if (!_bannerUntil) _bannerAt = millis() | 1;
   _bannerUntil = millis() + ms;
+  _bannerTap = std::move(onTap);
   invalidate();
 }
 
@@ -585,12 +613,32 @@ static bool overlayMoving(uint32_t at, uint32_t until) {
   return until && ((at && (int32_t)(now - at) < (int32_t)OVL_IN + 40) || (int32_t)(until - now) < (int32_t)OVL_OUT + 40);
 }
 
+// Where the banner is right now (drawOverlays): full width, 42 px, dropping in from
+// the top. A finger that lands there is the banner's.
+bool Nav::onBanner(int x, int y) const {
+  if (!_bannerUntil) return false;
+  const int top = 20 - (int)((1 - overlayShow(_bannerAt, _bannerUntil)) * (42 + 26));
+  return x >= 6 && x < L::W - 6 && y >= top - 4 && y < top + 42 + 6;
+}
+
 void Nav::tick() {
   for (View* v : s_graveyard) delete v;
   s_graveyard.clear();
   const uint32_t now = millis();
   if (_toastUntil && (int32_t)(now - _toastUntil) >= 0) { _toastUntil = 0; _toastAt = 0; invalidate(); }
-  if (_bannerUntil && (int32_t)(now - _bannerUntil) >= 0) { _bannerUntil = 0; _bannerAt = 0; invalidate(); }
+  if (_bannerUntil && (int32_t)(now - _bannerUntil) >= 0) { _bannerUntil = 0; _bannerAt = 0; _bannerTap = nullptr; invalidate(); }
+  // A banner tapped on the lock face: what it opens, now that the face has gone -
+  // if the unlock came within a minute of the tap.
+  if (_afterUnlockDue) {
+    _afterUnlockDue = false;
+    std::function<void()> f = std::move(_afterUnlock);
+    _afterUnlock = nullptr;
+    if (f && now - _afterUnlockAt < 60000) {
+      _bannerUntil = 0; _bannerAt = 0; _bannerTap = nullptr;   // it's open now: the banner has done its job
+      invalidate();
+      f();
+    }
+  }
   if (overlayMoving(_toastAt, _toastUntil) || overlayMoving(_bannerAt, _bannerUntil)) invalidate();
   if (now - _lastStatus > 15000) { _lastStatus = now; _statusDirty = true; }
   if (top()) top()->tick();

@@ -73,7 +73,9 @@ public:
   // Puts a notice on screen right away, before a slow blocking job starts.
   // Shown at once (no slide-in): the caller is about to block.
   void busy(const char* msg) { toast(msg, 60000); _toastAt = 0; draw(); }
-  void banner(const char* title, const char* text, uint16_t ms = 4500);
+  // onTap: what tapping it opens (a message: its conversation). Touchscreens only;
+  // on the lock face it waits for the swipe that unlocks.
+  void banner(const char* title, const char* text, uint16_t ms = 4500, std::function<void()> onTap = nullptr);
   void invalidate() { if (top()) top()->dirty = true; _statusDirty = true; }
   void statusChanged() { _statusDirty = true; }
 
@@ -107,6 +109,10 @@ private:
   uint32_t _toastUntil = 0, _toastAt = 0;
   char _bannerTitle[48] = "", _bannerText[128] = "";
   uint32_t _bannerUntil = 0, _bannerAt = 0;
+  std::function<void()> _bannerTap, _afterUnlock;   // the banner's tap; one to run once unlocked
+  uint32_t _afterUnlockAt = 0;
+  bool _bannerTouch = false, _afterUnlockDue = false;
+  bool onBanner(int x, int y) const;
   bool _statusDirty = true;
   uint32_t _lastStatus = 0;
   // A push or pop since the last frame: the old picture is saved (fx::scratch) and

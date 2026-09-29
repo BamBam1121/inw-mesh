@@ -306,9 +306,12 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
         clearTo(base);
       } else if (!strncmp(path, "/msg", 4)) {          // a new message from someone
         const auto& m = MSGS[msgN++ % 5];
-        const ConvKey k = ConvKey::contact(g_node->contacts[3 + msgN % 2].id.pub_key);
+        const int ci = 3 + msgN % 2;
+        const ConvKey k = ConvKey::contact(g_node->contacts[ci].id.pub_key);
         history.add(k, 0, ST_RECV, m[0], m[1], app::now(), 1, 30);
-        nav.banner(m[0], m[1], 4000);
+        uint8_t pub[PUB_KEY_SIZE];                     // tapping it opens the conversation, as on the T-Deck
+        memcpy(pub, g_node->contacts[ci].id.pub_key, sizeof(pub));
+        nav.banner(g_node->contacts[ci].name, m[1], 4500, [pub] { app::openThreadForContact(pub); });
       } else if (!strncmp(path, "/plug", 5)) {
         battery.plugged = !battery.plugged;
       } else if (!strncmp(path, "/theme", 6)) {

@@ -490,12 +490,14 @@ static bool quietHours() {
 
 enum class AlertKind : uint8_t { Msg, Dm, Mention };
 
-static void alert(const char* title, const char* text, AlertKind kind, bool silent = false) {
+// open: what tapping its banner opens (touchscreens), usually its conversation.
+static void alert(const char* title, const char* text, AlertKind kind, bool silent = false,
+                  std::function<void()> open = nullptr) {
   const ThemeSpec& th = app::themeSpec();
   const Jingle* sound = kind == AlertKind::Dm ? th.dm : kind == AlertKind::Mention ? th.mention : th.msg;
   const VibePattern& vibe = kind == AlertKind::Dm ? th.vibeDm : kind == AlertKind::Mention ? th.vibeMention : th.vibeMsg;
   if (ui_settings.wakeOnMessage && !silent) dimmer.wake();
-  nav.banner(title, text);
+  nav.banner(title, text, 4500, std::move(open));
   if (silent || quietHours()) return;
   if (ui_settings.vibrate) haptic.pattern(vibe.seq, vibe.n);
   if (ui_settings.sound) jingle.play(sound);
@@ -521,7 +523,10 @@ static void onNodeEvent(NodeEvent e, const void* arg) {
       char text[200];
       if (room) snprintf(text, sizeof(text), "%s: %s", m->sender, m->text);
       else strlcpy(text, m->text, sizeof(text));
-      alert(c->name, text, room ? AlertKind::Msg : AlertKind::Dm, mode == NM_SILENT);
+      uint8_t pub[PUB_KEY_SIZE];
+      memcpy(pub, c->id.pub_key, sizeof(pub));
+      alert(c->name, text, room ? AlertKind::Msg : AlertKind::Dm, mode == NM_SILENT,
+            [pub] { app::openThreadForContact(pub); });
       break;
     }
     case NodeEvent::ChannelMsg: {
@@ -544,11 +549,12 @@ static void onNodeEvent(NodeEvent e, const void* arg) {
       char title[48], text[200];
       snprintf(title, sizeof(title), "%s%s", ch.name, mention ? "  @you" : "");
       snprintf(text, sizeof(text), "%s: %s", m->sender, m->text);
-      alert(title, text, mention ? AlertKind::Mention : AlertKind::Msg, mode == NM_SILENT);
+      alert(title, text, mention ? AlertKind::Mention : AlertKind::Msg, mode == NM_SILENT,
+            [idx] { app::openThreadForChannel(idx); });
       break;
     }
     case NodeEvent::NewContact:
-      if (ui_settings.notifyNewContact) nav.banner("New contact", ((const ContactInfo*)arg)->name, 3000);
+      if (ui_settings.notifyNewContact) nav.banner("New contact", ((const ContactInfo*)arg)->name, 3000, [] { app::openContacts(); });
       break;
     case NodeEvent::Failed: {
       HistMsg* m = history.find(*(const uint32_t*)arg);
