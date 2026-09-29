@@ -39,6 +39,20 @@ struct TileSlot {
   lgfx::LGFX_Sprite* spr = nullptr;
 };
 
+// The card, for the map: tried at most every 20 s while it isn't there. Each try is
+// a whole SD.begin - allocations, a file system registration, SPI traffic on the bus
+// the screen and radio share - and with no card the map used to make one for every
+// tile it looked at and every tile that came in, inside the draw.
+static bool mapCard() {
+  static uint32_t triedAt = 0;
+  static bool tried = false;
+  if (sdMounted()) return true;
+  if (tried && millis() - triedAt < 20000) return false;
+  tried = true;
+  triedAt = millis();
+  return sdMount();
+}
+
 class TileCache {
 public:
   static constexpr int N = 12;
@@ -71,6 +85,27 @@ public:
     return victim->missing ? nullptr : victim->spr;
   }
 
+  // No card: a downloaded tile goes straight into a slot, decoded, and shows from there.
+  bool put(int z, int x, int y, const uint8_t* data, size_t len, bool png) {
+    TileSlot* victim = &slots[0];
+    for (auto& s : slots) {
+      if (s.z == z && s.x == x && s.y == y && s.layer == 0) { victim = &s; break; }
+      if (s.used < victim->used) victim = &s;
+    }
+    if (!victim->spr) {
+      victim->spr = new lgfx::LGFX_Sprite();
+      victim->spr->setPsram(true);
+      victim->spr->setColorDepth(16);
+      if (!victim->spr->createSprite(TILE, TILE)) { delete victim->spr; victim->spr = nullptr; return false; }
+    }
+    victim->spr->fillScreen(0);
+    const bool ok = png ? victim->spr->drawPng(data, len, 0, 0) : victim->spr->drawJpg(data, len, 0, 0);
+    victim->z = z; victim->x = x; victim->y = y; victim->layer = 0;
+    victim->used = millis();
+    victim->missing = !ok;
+    return ok;
+  }
+
   // A tile just landed on the card: forget that we thought it was missing.
   void forget(int z, int x, int y) {
     for (auto& s : slots) if (s.z == z && s.x == x && s.y == y && s.layer == 0) { s.z = -1; s.used = 0; }
@@ -78,7 +113,7 @@ public:
 
 private:
   bool load(TileSlot& s) {
-    if (!sdMount()) return false;
+    if (!mapCard()) return false;
     if (!fileBuf) fileBuf = (uint8_t*)heap_caps_malloc(FILE_MAX, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!fileBuf) return false;
     char path[64];
@@ -223,7 +258,7 @@ public:
     // the SPI bus with the panel and radio, so no other task may touch it.
     wifi::TileDone d;
     while (wifi::pollTile(d)) {
-      if (sdMount()) {
+      if (mapCard()) {
         char dir[40], path[64];
         snprintf(dir, sizeof(dir), "/tiles/%u", d.z);
         if (!SD.exists("/tiles")) SD.mkdir("/tiles");
@@ -235,6 +270,8 @@ public:
         if (f) { f.write(d.data, d.len); f.close(); }
         _cache->forget(d.z, d.x, d.y);
         dirty = true;
+      } else if (_cache->put(d.z, d.x, d.y, d.data, d.len, d.png)) {
+        dirty = true;                     // no card: shown from memory until it's pushed out
       }
       free(d.data);
     }
