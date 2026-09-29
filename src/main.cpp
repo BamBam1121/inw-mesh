@@ -448,8 +448,14 @@ static bool s_gpsRail = true;   // bringup powers every rail
 void gpsPower(bool on) {
   if (on == s_gpsRail) return;
   s_gpsRail = on;
+#if BOARD_GPS_SLEEP_BY_COMMAND
+  // No switch for the GPS on this board: ask the module itself to sleep (gps.h).
+  // Before this the "off" below did nothing here and the GPS ran around the clock.
+  if (on) gps.wakeByCommand(); else gps.sleepByCommand();
+#else
   if (on) { expander.enableRail(EXP_GPS_EN, 20); gps.begin(); }
   else expander.digitalWrite(EXP_GPS_EN, LOW);
+#endif
 }
 
 // GPS draws ~25 mA, more than the rest of the pager put together once the screen
@@ -1635,6 +1641,9 @@ void loop() {
   // back to sleep in 10 s instead of waiting out the dim and sleep timers.
   if (!dimmer.asleep() && nav.top() && nav.top()->isLock() && dimmer.idleFor() > 10000UL) dimmer.sleepNow();
   gpsSchedule();
+#if BOARD_GPS_SLEEP_BY_COMMAND
+  gps.wakeTick();                       // a woken GPS gets nudged until it talks again
+#endif
 
   // Keyboard light follows the screen (or flashes for a message).
   {
@@ -1698,5 +1707,15 @@ void loop() {
   // the screen dark. The radio holds a received packet until it's read, so 30 ms
   // loses nothing and the CPU idles in between. A connected phone keeps the fast
   // pace so syncing stays quick.
-  delay(dimmer.asleep() && !jingle.playing() && !bleConnected() ? 30 : 2);
+  const bool idleDark = dimmer.asleep() && !jingle.playing() && !bleConnected();
+#if BOARD_SLOW_CPU_WHEN_DARK
+  // And run the main chip at 80 MHz meanwhile: a third of the speed for ~15 mA less,
+  // and still enough for Wi-Fi, the radio and flash writes (the peripherals' own
+  // 80 MHz clock doesn't change). Back to 240 the moment the screen wakes.
+  {
+    static bool slow = false;
+    if (idleDark != slow) { setCpuFrequencyMhz(idleDark ? 80 : 240); slow = idleDark; }
+  }
+#endif
+  delay(idleDark ? 30 : 2);
 }

@@ -68,6 +68,52 @@ public:
         return parsed;
     }
 
+    // Sleep and wake by command, for a board with no power switch for its GPS (the
+    // T-Deck: the pager cuts the module's rail instead). The u-blox M10 takes
+    // UBX-RXM-PMREQ: backup mode, until anything arrives on its serial line. Only
+    // done once it has been heard at 38400 - the u-blox speed; the L76K some T-Deck
+    // Plus batches carry (9600) doesn't know the message and simply stays on.
+    bool sleepByCommand() {
+        if (!_uart || !goodSentences) return false;
+#ifdef GPS_BAUD_ALT
+        if (_alt) return false;
+#endif
+        uint8_t m[8 + 16] = {0xB5, 0x62, 0x02, 0x41, 16, 0,
+                             0, 0, 0, 0,          // version 0, reserved
+                             0, 0, 0, 0,          // duration 0 = until woken
+                             0x06, 0, 0, 0,       // flags: backup, force
+                             0x08, 0, 0, 0};      // wake on UART RX
+        uint8_t a = 0, b = 0;
+        for (size_t i = 2; i < 6 + 16; i++) { a += m[i]; b += a; }
+        m[22] = a;
+        m[23] = b;
+        _uart->write(m, sizeof(m));
+        _uart->flush();
+        _asleep = true;
+        _wokeAt = 0;
+        return true;
+    }
+    // Any byte wakes it; the first may be lost while it comes up, so keep nudging
+    // (from tick) until sentences flow again.
+    void wakeByCommand() {
+        if (!_uart || !_asleep) return;
+        static const uint8_t nudge[] = {0xFF, 0xFF, 0xFF, 0xFF};
+        _uart->write(nudge, sizeof(nudge));
+        _asleep = false;
+        _wokeAt = millis();
+        _wakeFrom = goodSentences;
+    }
+    void wakeTick() {
+        if (!_uart || _asleep || !_wokeAt) return;
+        if (goodSentences != _wakeFrom) { _wokeAt = 0; return; }        // talking again
+        if (millis() - _wokeAt > 2000) {                                 // not yet: nudge again
+            static const uint8_t nudge[] = {0xFF, 0xFF, 0xFF, 0xFF};
+            _uart->write(nudge, sizeof(nudge));
+            _wokeAt = millis();
+        }
+    }
+    bool asleep() const { return _asleep; }
+
     const GpsFix& fix() const { return _fix; }
     bool hasFix() const { return _fix.valid; }
     bool started() const { return _started; }
@@ -155,6 +201,8 @@ private:
     }
 
     HardwareSerial* _uart = nullptr;
+    bool     _asleep = false;
+    uint32_t _wokeAt = 0, _wakeFrom = 0;
     char     _line[100] = {0};
     uint8_t  _len = 0;
     bool     _started = false;

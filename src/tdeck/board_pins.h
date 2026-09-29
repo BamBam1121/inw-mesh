@@ -29,6 +29,11 @@
 #define OTA_BOARD              "t-deck"
 // Crashes and errors go back to the developer over Wi-Fi (src/tdeck/bugreport.h).
 #define BOARD_HAS_REPORTS      1
+// Battery (2026-09-28, 536's T-Deck flat in 4 h): no switch for the GPS on this
+// board, so it's put to sleep by command (gps.h); and the main chip drops to 80 MHz
+// while the screen is dark (main.cpp).
+#define BOARD_GPS_SLEEP_BY_COMMAND 1
+#define BOARD_SLOW_CPU_WHEN_DARK   1
 #define REPORT_BOARD           "t-deck"
 
 // ---- Power: one switch for the keyboard, radio, display and SD --------------------
