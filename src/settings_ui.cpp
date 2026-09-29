@@ -698,6 +698,9 @@ static void displayMenu() {
 #endif
   m->toggle("wake screen on message", [] { return ui_settings.wakeOnMessage; },
             [] { ui_settings.wakeOnMessage = !ui_settings.wakeOnMessage; markUiDirty(); });
+  // The lock screen's sasquatch and his speech bubble (squatch_talk.h).
+  m->toggle("sasquatch talks", [] { return !ui_settings.squatchQuiet; },
+            [] { ui_settings.squatchQuiet = !ui_settings.squatchQuiet; markUiDirty(); });
 #if BOARD_HAS_TOUCH
   // For a unit that comes out different from the ones this was made from: put it
   // right here instead of needing another build. The touch test shows the result.

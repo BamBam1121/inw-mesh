@@ -170,6 +170,32 @@ int main(int argc, char** argv) {
   populate();
   nav.begin(&display, &theme);
   static const char* THEME_NAMES[] = {"squatch", "blocks", "hero", "aurora"};
+#if BOARD_HAS_TOUCH
+  // "squatch_sim OUT squatch": the lock face's sasquatch only - hello on waking, a
+  // poke, three pokes (stars), a tap somewhere else - in each theme.
+  if (argc > 2 && !strcmp(argv[2], "squatch")) {
+    nav.push(makeHomeView());
+    for (int t = 0; t < THEME_COUNT && t < 4; t++) {
+      ui_settings.themeId = t;
+      app::applyTheme();
+      const char* tn = THEME_NAMES[t];
+      char n[64];
+      sim::advance(20UL * 60UL * 1000UL);            // dark a good while: he says hello
+      nav.push(makeLockView());
+      run(1100);  snprintf(n, sizeof(n), "sq_%s_1_hello", tn); shot(n);
+      run(5000);  snprintf(n, sizeof(n), "sq_%s_2_walking", tn); shot(n);
+      tap(255, 125); snprintf(n, sizeof(n), "sq_%s_3_poke", tn); shot(n);
+      run(900);   snprintf(n, sizeof(n), "sq_%s_4_poke_said", tn); shot(n);
+      tap(255, 125); tap(255, 125);
+      run(300);   snprintf(n, sizeof(n), "sq_%s_5_dizzy", tn); shot(n);
+      run(6000);
+      tap(60, 110); snprintf(n, sizeof(n), "sq_%s_6_tap_elsewhere", tn); shot(n);
+      run(4000);
+      nav.pop();
+    }
+    return 0;
+  }
+#endif
   // The boot screen, half way through starting, and the power-off teardown.
   for (int t = 0; t < THEME_COUNT && t < 4; t++) {
     ui_settings.themeId = t;

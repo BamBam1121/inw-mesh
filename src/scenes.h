@@ -25,6 +25,13 @@ inline uint32_t hash(int32_t x) {
   return h;
 }
 
+// How far the sasquatch is off the ground right now, px: the lock screen makes him
+// hop when he's poked (home.cpp). 0 the rest of the time.
+inline int& mascotLift() { static int v = 0; return v; }
+// What he's doing besides walking (mascot.h): the lock screen sets it for its frame
+// (blinking, talking, waving) and puts the plain walk back after.
+inline SquatchPose& mascotPose() { static SquatchPose p; return p; }
+
 // The pager's 480 px sky, scaled to the screen: the same stars at 480, the same
 // density on a narrower one (the T-Deck's 320).
 inline int starCount(int count) { return count * SCREEN_W / 480; }
@@ -52,7 +59,7 @@ inline void inw(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll, b
     d.fillTriangle(px, GROUND - 4, px + 9, GROUND - 4 - ph, px + 18, GROUND - 4, t.greenDim);
   }
   d.drawFastHLine(0, GROUND, 480, t.greenDim);
-  drawSasquatch(d, t, 250, GROUND, 88, phase, unread ? t.amber : t.green);
+  drawSasquatch(d, t, 250, GROUND - mascotLift(), 88, phase, unread ? t.amber : t.green, mascotPose());
 }
 
 // ---- Blocks: block terrain, square moon, a blocky explorer -----------------------------
@@ -219,7 +226,7 @@ inline void auroraGround(lgfx::LovyanGFX& d, const Theme& t, float phase, float 
     d.fillTriangle(x, GROUND + dy, x + 7, GROUND - h + dy, x + 14, GROUND + dy, pine);
   }
   d.drawFastHLine(0, GROUND + dy, 480, t.line);
-  drawSasquatch(d, t, 250, GROUND + dy, 80, phase, unread ? t.amber : t.green);   // walking, like INW: the pines scroll past
+  drawSasquatch(d, t, 250, GROUND + dy - mascotLift(), 80, phase, unread ? t.amber : t.green, mascotPose());   // walking, like INW: the pines scroll past
 }
 
 inline void aurora(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll, bool unread) {

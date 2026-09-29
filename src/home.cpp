@@ -8,6 +8,8 @@
 #include "backlight.h"
 #include "quips.h"
 #include "power.h"
+#include "squatch_talk.h"
+#include "regional.h"
 
 static Carousel s_carousel;
 
@@ -108,17 +110,24 @@ private:
 // ---------------------------------------------------------------------------------
 class LockView : public View {
 public:
+  // What's already waiting when it locks isn't news to the sasquatch.
+  LockView() : _wasPlugged(app::pluggedIn()), _seenUnread(app::unread()) {}
   bool isLock() override { return true; }
   void draw(Canvas& d) override {
     const Theme& t = nav.theme();
     drawStatusBar(d, t, false);          // the big clock below is the time here
     const bool hasUnread = app::unread() > 0;
+    scenes::mascotLift() = _hop;          // mid-hop after a poke
+    scenes::mascotPose() = pose();        // blinking, talking, waving...
     switch (t.style) {
       case STYLE_BLOCKS: scenes::blocks(d, t, _phase, _scroll, hasUnread); break;
       case STYLE_HERO:   scenes::hero(d, t, _phase, _scroll, hasUnread, app::batteryPct(), app::unread()); break;
       case STYLE_AURORA: scenes::aurora(d, t, _phase, _scroll, hasUnread); break;
       default:           scenes::inw(d, t, _phase, _scroll, hasUnread); break;
     }
+    scenes::mascotLift() = 0;
+    scenes::mascotPose() = SquatchPose();
+    drawTalk(d, t);
     d.fillRect(0, 172, L::W, L::H - 172, t.bg);
 
     d.setFont(&fonts::Font4);
@@ -173,8 +182,19 @@ public:
     if (dimmer.asleep() || dimmer.dimmed()) return;
     if (millis() - _step < 33) return;
     _step = millis();
-    _phase += 0.32f;
-    _scroll += 2.0f;
+    // How long the lock face had been dark (or dim): across lock screens, since a new
+    // one is made each time it locks again.
+    const uint32_t gap = litAt() ? _step - litAt() : 0xFFFFFFFFUL;
+    litAt() = _step;
+    if (!ui_settings.squatchQuiet) chatter(gap);
+    hopTick();
+    // He blinks every few seconds, now and then twice.
+    if ((int32_t)(_step - _blinkAt) >= (int32_t)BLINK_MS)
+      _blinkAt = _step + (random(5) == 0 ? 250 : 2000 + random(4000));
+    // A low battery shows: he trudges along at a tired pace.
+    const float pace = tired() ? 0.6f : 1.0f;
+    _phase += 0.32f * pace;
+    _scroll += 2.0f * pace;
     if (_scroll > 10000.0f) _scroll = 0;
     dirty = true;
   }
@@ -203,7 +223,10 @@ public:
         return true;
       }
       case TouchEvent::Tap:
-        hint();
+        // A tap on him is a poke: he hops and has something to say. Anywhere else
+        // says how to unlock, as before.
+        if (onMascot(e.x, e.y)) poke();
+        else hint();
         return true;
       default:
         return false;
@@ -215,11 +238,122 @@ private:
     _hintAt = millis();
     nav.toast(BOARD_HAS_TOUCH ? "swipe up to unlock" : "press the wheel to unlock");
   }
+  // ---- the sasquatch talks (squatch_talk.h) ------------------------------------------
+  static constexpr uint32_t QUIET_MS = 6000, HOP_MS = 380, BLINK_MS = 120;
+
+  // Start a line of kind k `delayMs` from now (n: how many messages, for MESSAGE). A
+  // poke always gets its say; anything else waits for the bubble on screen and a few
+  // quiet seconds after it.
+  void say(talk::Kind k, uint32_t delayMs = 0, bool force = false, unsigned n = 0) {
+    const uint32_t now = millis();
+    if (!force && (_saying || (int32_t)(now - _quietUntil) < 0)) return;
+    strlcpy(_say, talk::line(k, n), sizeof(_say));
+    _sayKind = k;
+    _sayMs = talk::sayMs(_say);
+    _sayAt = now + delayMs;
+    _saying = true;
+    dirty = true;
+  }
+
+  static uint32_t& litAt() { static uint32_t v = 0; return v; }   // the lock face's last lit frame
+  static bool tired() { return app::batteryPct() < 15 && !app::pluggedIn(); }
+
+  static int localHour() {
+    if (!app::timeValid()) return 12;
+    const time_t t = (time_t)app::now() + (time_t)regional::offsetMin(app::now()) * 60;
+    struct tm tm;
+    gmtime_r(&t, &tm);
+    return tm.tm_hour;
+  }
+
+  // Where he is on the lock face (scenes.h): a finger-sized box round him, and round
+  // the other themes' characters, who stand in the same spot.
+  bool onMascot(int x, int y) const { return x >= 205 && x <= 305 && y >= 60 - _hop && y <= 176; }
+
+  // A poke: he hops and says so. Three in a few seconds and he's seeing stars.
+  void poke() {
+    const uint32_t now = millis();
+    if (now - _pokeWinAt > 8000) { _pokes = 0; _pokeWinAt = now; }
+    const bool again = ++_pokes >= 3;
+    if (again) _pokes = 0;
+    if (!ui_settings.squatchQuiet) say(again ? talk::POKE_AGAIN : talk::POKE, 0, true);
+    _hopAt = now;
+    _hops = 1;
+    dirty = true;
+  }
+
+  // How he looks this frame (mascot.h): blinking, tired, and whatever goes with the
+  // line he's saying.
+  SquatchPose pose() const {
+    SquatchPose p;
+    const uint32_t now = millis();
+    p.blink = (int32_t)(now - _blinkAt) >= 0 && now - _blinkAt < BLINK_MS;
+    if (tired()) p.slump = 1;
+    if (_saying && !ui_settings.squatchQuiet && (int32_t)(now - _sayAt) >= 0 && now - _sayAt < _sayMs)
+      talk::pose(_sayKind, _say, now - _sayAt, _sayMs, p);
+    return p;
+  }
+
+  // Once a frame while the lock face is lit. gap: how long it had been dark (or dim).
+  void chatter(uint32_t gap) {
+    const uint32_t now = millis();
+    const uint16_t un = app::unread();
+    const bool plugged = app::pluggedIn();
+    if (gap > 3000) {
+      // Just lit up. A message that woke it, a low battery, or - after a good while
+      // dark (or now and then) - hello for the time of day. After the wake animation.
+      if (un > _seenUnread) say(talk::MESSAGE, 400, false, un - _seenUnread);
+      else if (app::batteryPct() < 15 && !plugged) say(talk::LOW_BATT, 400);
+      else if (gap > 15UL * 60UL * 1000UL || random(4) == 0) {
+        const int h = localHour();
+        say(h >= 5 && h < 11 ? talk::MORNING : h < 17 ? talk::DAY : h < 22 ? talk::EVENING : talk::LATE, 400);
+      }
+      _seenUnread = un;
+      _wasPlugged = plugged;
+    }
+    if (un > _seenUnread) say(talk::MESSAGE, 0, false, un - _seenUnread);
+    _seenUnread = un;
+    if (plugged && !_wasPlugged) say(talk::PLUG, 900);   // after the charging splash
+    _wasPlugged = plugged;
+    // The bubble ends; a few quiet seconds before the next unforced line.
+    if (_saying && (int32_t)(now - (_sayAt + _sayMs)) >= 0) { _saying = false; _quietUntil = now + QUIET_MS; }
+  }
+
+  // The hop: a quick arc off the ground after a poke.
+  void hopTick() {
+    if (!_hops) return;
+    const uint32_t e = millis() - _hopAt;
+    if (e >= HOP_MS * _hops) { _hops = 0; _hop = 0; }
+    else _hop = (int)(14.0f * sinf(3.14159f * (float)(e % HOP_MS) / HOP_MS));
+  }
+
+  void drawTalk(Canvas& d, const Theme& t) {
+    if (!_saying || ui_settings.squatchQuiet) return;
+    const uint32_t now = millis();
+    if ((int32_t)(now - _sayAt) < 0) return;                 // not started yet
+    const uint32_t e = now - _sayAt;
+    if (e >= _sayMs) return;
+    int ax, ay;                                              // just above his head
+    talk::anchor(t.style, _hop, ax, ay);
+    const uint32_t pop = talk::POP_MS;
+    const float grow = e < pop ? (float)e / pop : e > _sayMs - pop ? (float)(_sayMs - e) / pop : 1.0f;
+    talk::bubble(d, t, ax, ay, _say, grow, talk::typed(_say, e));
+  }
+
   uint32_t _hintAt = 0;
   float _phase = 0, _scroll = 0;
   uint32_t _step = 0, _quipAt = 0;
   char _quip[96] = "";
   int _lift = 0;                     // px the finger has pulled the face up
+  // the talking sasquatch
+  char _say[40] = "";
+  talk::Kind _sayKind = talk::DAY;
+  bool _saying = false, _wasPlugged = false;
+  uint32_t _sayAt = 0, _sayMs = 0, _quietUntil = 0, _pokeWinAt = 0, _hopAt = 0;
+  uint32_t _blinkAt = millis() + 1500;
+  uint16_t _seenUnread = 0;
+  uint8_t _pokes = 0, _hops = 0;
+  int _hop = 0;                      // px he's off the ground mid-hop
 };
 
 #ifndef BOARD_HOME_DASHBOARD

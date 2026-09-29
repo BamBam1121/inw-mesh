@@ -102,21 +102,18 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
   int x = 6;
   // A narrow screen (the T-Deck's 320) can't fit the name, the badge, a centred
   // clock and the icons: the clock takes the name's place, and the name stays on
-  // the home screen's footer.
+  // the home screen's footer. Where the screen shows the time already (the lock
+  // face's big clock), the name goes back there instead: the time once.
   constexpr bool NARROW = L::W < 400;
-  if (NARROW) {
-    if (app::timeValid()) {
-      d.setTextColor(t.txt, t.panel);
-      x += d.drawString(clockText(app::now()), 6, 1);
-      d.setTextColor(t.green, t.panel);
-    } else {
-      x += d.drawString("SQUATCH", 6, 1);
-    }
+  if (NARROW && withClock && app::timeValid()) {
+    d.setTextColor(t.txt, t.panel);
+    x += d.drawString(clockText(app::now()), 6, 1);
+    d.setTextColor(t.green, t.panel);
   } else {
     const char* name = g_node ? g_node->prefs().node_name : "";
     char keyName[10] = "";
     if (g_node) mesh::Utils::toHex(keyName, g_node->self_id.pub_key, 4);
-    if (name[0] && strcmp(name, keyName) && strcmp(name, "NONAME")) x = drawUtf8(d, name, 6, 1, 140);
+    if (name[0] && strcmp(name, keyName) && strcmp(name, "NONAME")) x = drawUtf8(d, name, 6, 1, NARROW ? 110 : 140);
     else x += d.drawString("SQUATCH", 6, 1);
   }
   x += 8;

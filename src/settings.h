@@ -95,6 +95,7 @@ struct UiSettings {
   // pocket taps too; the trackball always wakes it. (In what 1.2.2-beta1 saved as
   // padding, so it reads back off.)
   bool     tapWake       = false;
+  bool     squatchQuiet  = false;     // lock screen: the sasquatch's speech bubble off (it talks by default)
 
   void load();
   void save();

@@ -105,7 +105,8 @@ void moon(const Strip& s, const Theme& t, int dy) {
 }
 // The ridge and the sasquatch (whose limbs are drawWideLine: see Strip).
 void ground(const Strip& s, const Theme& t, float phase, float scroll, bool unread, int dy) {
-  if (touches(s, 104 + dy - 2, scenes::GROUND + dy + 2)) scenes::auroraGround(s.band, t, phase, scroll, unread, dy - s.bandY);
+  // From the top of his head (the crest reaches ~88 px above the ground) down.
+  if (touches(s, scenes::GROUND - 92 + dy, scenes::GROUND + dy + 2)) scenes::auroraGround(s.band, t, phase, scroll, unread, dy - s.bandY);
 }
 
 // The strip's rows of src with red from `cr` rows below and blue from `cr` rows above:

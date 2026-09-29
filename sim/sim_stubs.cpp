@@ -202,6 +202,16 @@ namespace ota {
 bool supported() { return true; }
 Info check() { Info i; strlcpy(i.error, "simulator", sizeof(i.error)); return i; }
 const char* install(const Info&) { return "simulator"; }
+static bool s_auto = true;
+bool autoInstall() { return s_auto; }
+void setAutoInstall(bool on) { s_auto = on; }
+}
+#include "bugreport.h"
+namespace report {
+static bool s_on = true;
+bool enabled() { return s_on; }
+void setEnabled(bool on) { s_on = on; }
+bool sendLog(const char*) { return true; }
 }
 #include "dataio.h"
 #include "fieldtools.h"

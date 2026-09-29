@@ -27,7 +27,7 @@ static void adopt(UiSettings* s, const uint8_t* buf, size_t len) {
     // settings read here lost everything from tzZone on (a pager given T-Deck
     // firmware by mistake came back without its time zone).
     static const size_t ADDED[] = {offsetof(UiSettings, wifiOn), offsetof(UiSettings, tzZone),
-                                   offsetof(UiSettings, orient)};
+                                   offsetof(UiSettings, orient), offsetof(UiSettings, squatchQuiet)};
     for (size_t b : ADDED) if (len >= b) n = b;
   }
   memcpy((void*)s, buf, min(n, sizeof(UiSettings)));
