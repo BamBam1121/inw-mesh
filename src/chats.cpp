@@ -217,7 +217,7 @@ public:
         snprintf(sub, sizeof(sub), "room  %s", ls == 2 ? "logged in" : ls == 1 ? "logging in" : ls == 3 ? "login failed" : "");
       } else if (c->out_path_len == OUT_PATH_UNKNOWN) snprintf(sub, sizeof(sub), "flood  %s", timeAgo(c->lastmod));
       else if ((c->out_path_len & 63) == 0) snprintf(sub, sizeof(sub), "direct  %s", timeAgo(c->lastmod));
-      else snprintf(sub, sizeof(sub), "%u hops  %s", c->out_path_len & 63, timeAgo(c->lastmod));
+      else snprintf(sub, sizeof(sub), "%u hop%s  %s", c->out_path_len & 63, (c->out_path_len & 63) == 1 ? "" : "s", timeAgo(c->lastmod));
     }
     drawHeader(g, title, sub);
 
@@ -676,7 +676,7 @@ static void openMessageActions(ThreadView* tv, uint32_t id) {
   m->info("time", [id]() -> String { HistMsg* x = history.find(id); return String(x && x->ts ? clockText(x->ts, true) : "unknown"); });
   if (!out) {
     m->info("route", [id]() -> String { HistMsg* x = history.find(id); if (!x) return String("");
-      return x->hops == 0xFF || !x->hops ? String("direct") : String(x->hops) + " hops"; });
+      return x->hops == 0xFF || !x->hops ? String("direct") : String(x->hops) + (x->hops == 1 ? " hop" : " hops"); });
     // One row per repeater that carried it, named from contacts where we know them:
     // by full hash where it was kept, else by the one byte older messages have.
     const Route* rt = history.route(id);

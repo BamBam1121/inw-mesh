@@ -26,8 +26,18 @@ BOARD_UI = [] if "--pager" in sys.argv else ["dashboard.cpp", "hwcheck.cpp"]
 # Firmware screens with more behind them, T-Deck sim only for now (stubs in sim_stubs.cpp).
 SCREENS = [] if "--pager" in sys.argv else ["contacts.cpp", "mapview.cpp", "settings_ui.cpp", "tools.cpp"]
 
+def fw_version():
+    # The version the board's build stamps (platformio.ini), so screens show the real one.
+    import re
+    ini = open(os.path.join(ROOT, "platformio.ini"), encoding="utf-8").read()
+    env = "t-lora-pager" if "--pager" in sys.argv else "t-deck"
+    sec = ini.split("[env:%s]" % env, 1)[-1].split("\n[env:", 1)[0]
+    m = re.search(r'FW_VERSION=\\"([^"\\]+)', sec) or re.search(r'FW_VERSION=\\"([^"\\]+)', ini)
+    return m.group(1) if m else "sim"
+
+
 FLAGS = ["-std=gnu++14", "-O1", "-w", "-DARDUINO=10819", "-DLGFX_USE_V1", "-DINW_SIM=1",
-         '-DFW_VERSION="1.2.1"', "-DMAX_CONTACTS=2000", "-DMAX_GROUP_CHANNELS=40"]
+         '-DFW_VERSION="%s"' % fw_version(), "-DMAX_CONTACTS=2000", "-DMAX_GROUP_CHANNELS=40"]
 if "--pager" in sys.argv:
     FLAGS.append("-DSIM_PAGER=1")
 INC = ["-I" + p for p in (SRC, os.path.join(ROOT, "sim", "board"), os.path.join(ROOT, "sim", "overlay"), LGFX)]

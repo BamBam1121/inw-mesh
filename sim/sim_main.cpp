@@ -311,7 +311,7 @@ int main(int argc, char** argv) {
 
 #if BOARD_HAS_TOUCH
   // A finger's tour, in the first theme: every step is a picture to check.
-  ui_settings.themeId = 0;
+  ui_settings.themeId = (argc > 2 && !strcmp(argv[2], "aurora")) ? 3 : 0;   // "squatch_sim OUT aurora": the tour in Aurora
   app::applyTheme();
   populateHistory();
   home = nullptr;

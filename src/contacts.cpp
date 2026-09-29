@@ -415,7 +415,7 @@ static void tracePage(const uint8_t* pubIn) {
     const TraceResult& r = g_node->lastTrace();
     if (!r.valid) { out.push_back(millis() - started > 25000 ? "no answer - a hop is down or out of range" : "tracing..."); return; }
     char b[64];
-    snprintf(b, sizeof(b), "%u hops, %lu ms round trip", r.hops, (unsigned long)r.rtt); out.push_back(b);
+    snprintf(b, sizeof(b), "%u hop%s, %lu ms round trip", r.hops, r.hops == 1 ? "" : "s", (unsigned long)r.rtt); out.push_back(b);
     for (uint8_t i = 0; i < r.hops; i++) {
       ContactInfo* c = g_node->contactByPrefix(&r.hashes[i], 1);
       snprintf(b, sizeof(b), "%2u  %02x %-18.18s  snr %5.1f dB", i + 1, r.hashes[i], c ? c->name : "", r.snr4[i] / 4.0);
