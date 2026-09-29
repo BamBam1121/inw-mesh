@@ -111,7 +111,7 @@ public:
   bool isLock() override { return true; }
   void draw(Canvas& d) override {
     const Theme& t = nav.theme();
-    drawStatusBar(d, t);
+    drawStatusBar(d, t, false);          // the big clock below is the time here
     const bool hasUnread = app::unread() > 0;
     switch (t.style) {
       case STYLE_BLOCKS: scenes::blocks(d, t, _phase, _scroll, hasUnread); break;
@@ -137,8 +137,8 @@ public:
       else d.drawString(sub, 140, 192);
       d.setTextColor(t.dim, t.bg);
     }
-    if (app::timeValid()) {
-      const char* date = clockText(app::now(), true);
+    if (app::timeValid()) {                // the date, once: the time is the big clock's
+      const char* date = dateText(app::now());
       d.drawString(date, L::W - 8 - d.textWidth(date), 192);
     }
     // A new line on every wake, and every half hour while it sits here.

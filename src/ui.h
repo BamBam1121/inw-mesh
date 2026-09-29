@@ -143,6 +143,7 @@ int emojiFind(uint32_t cp);
 int wrapText(Canvas& g, const char* text, int w, uint16_t* starts, uint8_t* lens, int maxLines);
 const char* timeAgo(uint32_t epoch);
 const char* clockText(uint32_t epoch, bool withDate = false);
+const char* dateText(uint32_t epoch);   // "Mon, Sep 28"
 uint16_t nameColor(const char* name);      // stable per-name avatar colour
 void drawAvatar(Canvas& g, int cx, int cy, int r, const char* name, uint8_t kind);
 

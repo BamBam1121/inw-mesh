@@ -91,7 +91,7 @@ void animateBatteryIcon(lgfx::LovyanGFX* panel, const Theme& t) {
   s.pushSprite(panel, battX() - 1, BATT_Y - 2);
 }
 
-void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t) {
+void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
   d.setFont(&fonts::Font2);
   d.fillRect(0, 0, L::W, 17, t.panel);
   d.drawFastHLine(0, 17, L::W, t.line);
@@ -129,7 +129,7 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t) {
     d.drawString(b, x + 4, 1);
     x += d.textWidth(b) + 14;
   }
-  if (!NARROW && app::timeValid()) {
+  if (withClock && !NARROW && app::timeValid()) {
     const char* c = clockText(app::now());
     d.setTextColor(t.txt, t.panel);
     d.drawString(c, (L::W - d.textWidth(c)) / 2, 1);
@@ -426,6 +426,18 @@ const char* clockText(uint32_t epoch, bool withDate) {
   } else {
     strlcpy(b, hm, sizeof(b));
   }
+  return b;
+}
+
+// "Mon, Sep 28": the lock face's date line (its big clock has the time).
+const char* dateText(uint32_t epoch) {
+  static char b[20];
+  const time_t t = (time_t)epoch + (time_t)regional::offsetMin(epoch) * 60;
+  struct tm tm;
+  gmtime_r(&t, &tm);
+  static const char* DAY[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
+  static const char* MON[] = {"Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"};
+  snprintf(b, sizeof(b), "%s, %s %d", DAY[tm.tm_wday % 7], MON[tm.tm_mon % 12], tm.tm_mday);
   return b;
 }
 
