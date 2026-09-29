@@ -174,6 +174,30 @@ int main(int argc, char** argv) {
   populate();
   nav.begin(&display, &theme);
   static const char* THEME_NAMES[] = {"squatch", "blocks", "hero", "aurora"};
+  // "squatch_sim OUT lockphoto THEME NAME": the lock face for a photo - everything read,
+  // the node named NAME, and six wakes of him saying hello (lockphoto_0..5).
+  if (argc > 2 && !strcmp(argv[2], "lockphoto")) {
+    ui_settings.themeId = argc > 3 ? atoi(argv[3]) : 3;
+    app::applyTheme();
+    populateHistory();
+    {
+      ConvKey keys[64];
+      const uint16_t n = history.conversations(keys, 64);
+      for (uint16_t i = 0; i < n; i++) history.markRead(keys[i]);
+    }
+    if (argc > 4) strlcpy(g_node->prefs().node_name, argv[4], sizeof(g_node->prefs().node_name));
+    nav.push(makeHomeView());
+    for (int k = 0; k < 6; k++) {
+      sim::advance(20UL * 60UL * 1000UL);            // dark a good while: hello, with a wave
+      nav.push(makeLockView());
+      run(1200 + k * 200);
+      char n[32];
+      snprintf(n, sizeof(n), "lockphoto_%d", k);
+      shot(n);
+      nav.pop();
+    }
+    return 0;
+  }
 #if BOARD_HAS_TOUCH
   // "squatch_sim OUT serve PORT": the T-Deck live, in a browser. The screens run in
   // real time; the page shows each frame as a PNG and sends back touches, keys and

@@ -161,6 +161,9 @@ void openContacts() {}
 void openContactDetail(const uint8_t*) {}
 #endif
 }  // namespace app
+#ifdef SIM_PAGER
+void openChannelRegionScope(const uint8_t*) {}   // settings_ui.cpp, which the pager sim doesn't build
+#endif
 
 void markUiDirty() {}
 void markPrefsDirty() {}
