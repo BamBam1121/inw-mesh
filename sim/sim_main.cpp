@@ -174,6 +174,48 @@ int main(int argc, char** argv) {
   populate();
   nav.begin(&display, &theme);
   static const char* THEME_NAMES[] = {"squatch", "blocks", "hero", "aurora"};
+  // "squatch_sim OUT homes NAME": each theme's home screen, the node named NAME
+  // (home_squatch, home_blocks, home_hero, home_aurora) - the README's pictures.
+  if (argc > 2 && !strcmp(argv[2], "homes")) {
+    if (argc > 3) strlcpy(g_node->prefs().node_name, argv[3], sizeof(g_node->prefs().node_name));
+    View* home = makeHomeView();
+    nav.push(home);
+    for (int t = 0; t < THEME_COUNT && t < 4; t++) {
+      ui_settings.themeId = t;
+      app::applyTheme();
+      populateHistory();
+      home->resume();
+      run(900);
+      char n[32];
+      snprintf(n, sizeof(n), "home_%s", THEME_NAMES[t]);
+      shot(n);
+    }
+    return 0;
+  }
+  // "squatch_sim OUT anim THEME NAME": the lock face as the site's animation - woken
+  // after a good while, so he says hello - 110 frames, one every 50 ms (anim_NNN).
+  if (argc > 2 && !strcmp(argv[2], "anim")) {
+    ui_settings.themeId = argc > 3 ? atoi(argv[3]) : 0;
+    randomSeed(1000 + ui_settings.themeId * 7919);    // a different hello for each theme
+    app::applyTheme();
+    populateHistory();
+    {
+      ConvKey keys[64];
+      const uint16_t n = history.conversations(keys, 64);
+      for (uint16_t i = 0; i < n; i++) history.markRead(keys[i]);
+    }
+    if (argc > 4) strlcpy(g_node->prefs().node_name, argv[4], sizeof(g_node->prefs().node_name));
+    nav.push(makeHomeView());
+    sim::advance(20UL * 60UL * 1000UL);
+    nav.push(makeLockView());
+    for (int k = 0; k < 110; k++) {
+      run(50);
+      char n[32];
+      snprintf(n, sizeof(n), "anim_%03d", k);
+      shot(n);
+    }
+    return 0;
+  }
   // "squatch_sim OUT lockphoto THEME NAME": the lock face for a photo - everything read,
   // the node named NAME, and six wakes of him saying hello (lockphoto_0..5).
   if (argc > 2 && !strcmp(argv[2], "lockphoto")) {
