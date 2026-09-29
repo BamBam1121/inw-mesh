@@ -7,6 +7,8 @@
 #include <esp_heap_caps.h>
 #include "settings.h"
 #include "logstore.h"
+#include "backlight.h"
+#include "app.h"           // dimmer.asleep(): back off harder while nobody's looking
 
 extern LogStore logs;
 namespace app { void setTime(uint32_t epoch); }
@@ -21,7 +23,19 @@ static bool s_on = false, s_scanning = false;
 static int s_scanResults = -1;
 static uint8_t s_try = 0;
 static uint32_t s_nextTry = 0;
+static uint8_t s_misses = 0;                 // joins that failed in a row (none of ours in range)
 static bool s_wasConnected = false;
+
+// When to try again after a failed join. Each try scans for up to 15 s, and Wi-Fi
+// scanning is about the hungriest thing the chip does: retrying every 20 s forever
+// with none of the saved networks around flattened a T-Deck in 4 h (2026-09-28).
+// So it backs off - 20 s, 40 s, ... up to 15 minutes while the screen is dark, and
+// at most a minute while someone is looking at it (and so maybe waiting on it).
+static uint32_t retryDelay() {
+  const uint32_t d = 20000UL << (s_misses < 6 ? s_misses : 6);   // 20 s .. ~21 min
+  const uint32_t cap = dimmer.asleep() ? 900000UL : 60000UL;
+  return d < cap ? d : cap;
+}
 static volatile bool s_ntpSynced = false;
 
 // Scans. The core gives up on an async scan after 6 s and from then on reports
@@ -150,6 +164,7 @@ void begin() {
 void setEnabled(bool on) {
   if (on == s_on) return;
   s_on = on;
+  s_misses = 0;                          // a fresh start: try straight away again
   if (on) {
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
@@ -215,15 +230,20 @@ void tick() {
     if (c) {
       s_result[s_joinSlot] = J_OK;
       s_joinSlot = -1;
+      s_misses = 0;
     } else if (r || (int32_t)(millis() - s_joinAt) > 15000) {
       const Result res = r ? classify(r) : s_assoc ? J_NO_IP : J_WEAK;
       s_result[s_joinSlot] = res;
       logs.add(LOG_WARN, "wifi %s: %s (reason %u)", net(s_joinSlot).ssid, resultText(res), r);
       s_joinSlot = -1;
       if (!r) WiFi.disconnect();                // gave up waiting: stop that attempt
-      s_nextTry = millis() + (res == J_PASSWORD ? 120000UL : 20000UL);
+      if (s_misses < 250) s_misses++;
+      const uint32_t wait = retryDelay();
+      s_nextTry = millis() + (res == J_PASSWORD && wait < 120000UL ? 120000UL : wait);
     }
   }
+  // Someone picked it up while it was waiting out a long back-off: try within a minute.
+  if (!dimmer.asleep() && (int32_t)(s_nextTry - millis()) > 60000) s_nextTry = millis() + 60000;
 
   if (s_scanning) {
     if (s_scanWanted) {
@@ -275,6 +295,7 @@ void save(const char* ss, const char* pass) {
   store();
   if (!s_on) { ui_settings.wifiOn = true; ui_settings.save(); setEnabled(true); }
   s_result[slot] = J_NONE;
+  s_misses = 0;
   s_scanning = s_scanWanted = false;            // the join goes first
   WiFi.disconnect();
   join(slot);
