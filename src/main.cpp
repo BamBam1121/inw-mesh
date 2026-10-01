@@ -1235,8 +1235,65 @@ static void bootNote(const char* msg) {      // a long step the user should know
   display.drawString(msg, (L::W - display.textWidth(msg)) / 2, boot::ERR_Y0 + 2);
 }
 
+#if BOARD_BATTERY_FROM_VOLTAGE
+// A flat cell can't feed the radio and Wi-Fi: starting them sags it into a brownout
+// reset, the T-Deck starts again, and round it goes, running the cell down further
+// each turn (reports from two T-Decks sitting at 2.4-2.7 V, 2026-09-30). So below
+// 3.3 V nothing more is started: it says why, sleeps, and looks again every three
+// minutes, which is enough for a charger to lift it. The trackball click wakes it to
+// look now. Once held, or after a brownout, it wants more than 3.3 V: the reading at
+// start is taken with almost nothing drawing, and a flat cell rests higher than it works.
+RTC_DATA_ATTR static uint8_t s_flatHold;
+static constexpr uint16_t FLAT_MV = 3300, FLAT_LEAVE_MV = 3500, FLAT_AFTER_BROWNOUT_MV = 3600;
+static constexpr uint16_t NO_CELL_MV = 1500;            // under this there is no cell: USB alone is running it
+
+static void flatSleep() {
+  s_flatHold = 1;
+  esp_sleep_enable_timer_wakeup(180ULL * 1000000ULL);
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BUTTON, 0);
+  esp_deep_sleep_start();
+}
+
+// Woken by the timer while held: look at the cell and go straight back to sleep if it
+// still can't start, before the screen or anything else is powered.
+static void flatHoldQuickLook() {
+  if (!s_flatHold || esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_TIMER) return;
+  analogReadResolution(12);
+  analogReadMilliVolts(PIN_BAT_ADC);                    // the first one after setup reads low
+  uint32_t sum = 0;
+  for (int i = 0; i < 8; i++) sum += analogReadMilliVolts(PIN_BAT_ADC);
+  const uint16_t mv = (uint16_t)(2.037f * sum / 8);
+  if (mv >= NO_CELL_MV && mv < FLAT_LEAVE_MV) flatSleep();
+}
+
+static void flatBatteryHold(int rr) {
+  const uint16_t mv = battery.millivolts();
+  const uint16_t need = s_flatHold ? FLAT_LEAVE_MV : rr == ESP_RST_BROWNOUT ? FLAT_AFTER_BROWNOUT_MV : FLAT_MV;
+  if (mv < NO_CELL_MV || mv >= need) { s_flatHold = 0; return; }
+  Serial.printf("[power] battery flat (%u mV, needs %u): not starting\n", mv, need);
+  Serial.flush();
+  {
+    BootBusLock lock;
+    display.setFont(&fonts::Font2);
+    display.fillRect(0, boot::ERR_Y0 - 2, L::W, 34, theme.bg);
+    display.setTextColor(theme.amber, theme.bg);
+    char line[48];
+    snprintf(line, sizeof(line), "Battery empty (%u.%02u V)", mv / 1000, (mv % 1000) / 10);
+    display.drawString(line, (L::W - display.textWidth(line)) / 2, boot::ERR_Y0);
+    const char* more = "Plug in: it starts by itself";
+    display.drawString(more, (L::W - display.textWidth(more)) / 2, boot::ERR_Y0 + 16);
+  }
+  delay(5000);
+  backlight.setLevel(0);
+  flatSleep();
+}
+#endif
+
 void setup() {
   clearForceDownloadBoot();     // first thing: one trip into flash mode stays one trip
+#if BOARD_BATTERY_FROM_VOLTAGE
+  flatHoldQuickLook();
+#endif
   s_bootT0 = millis();
   Serial.begin(115200);
   delay(150);
@@ -1305,6 +1362,9 @@ void setup() {
     logs.add(battery.configured() ? LOG_WARN : LOG_INFO, "battery %u%% (gauge %u%%) %umV, pack %umAh%s", battery.percent(),
              battery.gaugePercent(), battery.millivolts(), battery.designNow(),
              battery.configured() ? " (was set wrong, fixed)" : "");
+#if BOARD_BATTERY_FROM_VOLTAGE
+  flatBatteryHold(rr);
+#endif
   const bool audioOk = codec.begin(Wire);
   jingle.begin(&codec);
   // The amp is powered only while a sound plays (it hisses and drains otherwise).
