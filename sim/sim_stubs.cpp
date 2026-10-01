@@ -128,10 +128,11 @@ uint16_t unread() {
 void applyDisplay() {}
 void applySound() {}
 void applyHaptics() {}
-const ThemeSpec& themeSpec() { return THEMES[ui_settings.themeId < THEME_COUNT ? ui_settings.themeId : 0]; }
+const ThemeSpec& themeSpec() { return themes::spec(ui_settings.themeId); }
 void applyTheme() {
   const ThemeSpec& th = themeSpec();
   theme.apply(display, th.palette, th.style);
+  theme.own = themes::isCustom(ui_settings.themeId) && themes::valid(ui_settings.themeId);
   nav.invalidate();
 }
 void testNotify() {}

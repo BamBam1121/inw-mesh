@@ -43,6 +43,7 @@ static Gestures   gestures;
 #include "audio_jingle.h"
 #include "logstore.h"
 #include "theme.h"
+#include "themestore.h"
 #include "app.h"
 #include "regions.h"
 #include "node.h"
@@ -223,11 +224,12 @@ void app::applyDisplay() {
 void app::applySound() { jingle.setVolume(ui_settings.sound ? ui_settings.volume : 0); }
 void app::applyHaptics() { haptic.setMode(ui_settings.vibeMode); }
 
-const ThemeSpec& app::themeSpec() { return THEMES[ui_settings.themeId < THEME_COUNT ? ui_settings.themeId : 0]; }
+const ThemeSpec& app::themeSpec() { return themes::spec(ui_settings.themeId); }
 
 void app::applyTheme() {
   const ThemeSpec& th = themeSpec();
   theme.apply(display, th.palette, th.style);
+  theme.own = themes::isCustom(ui_settings.themeId) && themes::valid(ui_settings.themeId);
   haptic.setPattern(th.vibeMsg.seq, th.vibeMsg.n);
   haptic.setTick(th.tickEffect, th.tickClamp);
   nav.invalidate();
@@ -641,8 +643,76 @@ void app::rebootToFlashMode() {
   esp_restart();
 }
 
+// The owner's own themes, from squatchmesh.com/theme-maker (themestore.h). The page
+// asks what is here, sends one, takes one away, or picks which is showing:
+//   themes               -> "[themes] v=1 max=4 active=ID count=N", a "[theme] id=ID <line>"
+//                           for each of the owner's, then "[themes] end"
+//   theme-set <line>     -> "[theme-set] ok id=ID name=NAME", and it is the theme showing
+//   theme-del ID         -> "[theme-del] ok id=ID active=ID"
+//   theme-use ID         -> "[theme-use] ok id=ID" (a built-in one, or one of the owner's)
+// <line> is theme_custom.h's. Only colours and a name come in, and nothing goes out
+// but the same back, so these answer in every build and with the screen locked.
+static bool themeCommand(const char* line) {
+  char out[themeline::LINE_LEN + 4];
+  if (!strcmp(line, "themes")) {
+    Serial.printf("[themes] v=1 max=%u active=%u count=%u\n", (unsigned)themes::CUSTOM_MAX,
+                  (unsigned)ui_settings.themeId, (unsigned)(themes::count() - THEME_COUNT));
+    for (uint8_t n = THEME_COUNT; n < themes::count(); n++) {
+      const uint8_t id = themes::idAt(n);
+      themeline::format(*themes::custom(id), out, sizeof(out));
+      Serial.printf("[theme] id=%u %s\n", (unsigned)id, out);
+    }
+    Serial.println("[themes] end");
+    return true;
+  }
+  auto show = [](uint8_t id) {
+    ui_settings.themeId = id;
+    app::applyTheme();
+    markUiDirty();
+  };
+  auto relist = [] { if (View* v = nav.top()) v->resume(); };     // the Theme menu, if it is the one open
+  if (!strncmp(line, "theme-set ", 10)) {
+    CustomTheme t;
+    const char* why = "";
+    if (!themeline::parse(line + 10, t, &why)) { Serial.printf("[theme-set] failed: %s\n", why); return true; }
+    const int id = themes::put(t);
+    if (id < 0) {
+      Serial.printf("[theme-set] failed: %s\n", id == -1 ? "full: it already has four of your own, take one off first" : "couldn't be saved");
+      return true;
+    }
+    show((uint8_t)id);
+    relist();
+    const ThemeSpec& sp = themes::spec((uint8_t)id);
+    snprintf(out, sizeof(out), "theme \"%s\" added", sp.name);
+    nav.toast(out, 3500);
+    logs.add(LOG_INFO, "theme added over usb (slot %d)", id - themes::CUSTOM_BASE);
+    Serial.printf("[theme-set] ok id=%d name=%s\n", id, sp.name);
+    return true;
+  }
+  if (!strncmp(line, "theme-del ", 10) || !strncmp(line, "theme-use ", 10)) {
+    const bool del = line[6] == 'd';
+    const char* tag = del ? "theme-del" : "theme-use";
+    char* end = nullptr;
+    const long id = strtol(line + 10, &end, 10);
+    if (end == line + 10 || *end || id < 0 || id > 255 || !themes::valid((uint8_t)id) || (del && !themes::isCustom((uint8_t)id))) {
+      Serial.printf("[%s] failed: no such theme\n", tag);
+      return true;
+    }
+    if (!del) { show((uint8_t)id); Serial.printf("[theme-use] ok id=%ld\n", id); return true; }
+    // Taking away the one showing: back to the built-in look it wore.
+    const uint8_t look = themes::custom((uint8_t)id)->look;
+    themes::remove((uint8_t)id);
+    if (ui_settings.themeId == id) show(look < THEME_COUNT ? look : 0);
+    relist();
+    nav.invalidate();
+    Serial.printf("[theme-del] ok id=%ld active=%u\n", id, (unsigned)ui_settings.themeId);
+    return true;
+  }
+  return false;
+}
+
 static void usbCommands() {
-  static char line[64];
+  static char line[themeline::LINE_LEN + 12];      // the longest thing sent: "theme-set " and a theme
   static uint8_t n = 0;
   while (Serial.available()) {
     const char c = Serial.read();
@@ -694,6 +764,7 @@ static void usbCommands() {
       if (ok) { delay(500); ESP.restart(); }
       continue;
     }
+    if (themeCommand(line)) continue;
 #if INW_DEV   // the rest is for the developer build (pio run -e t-lora-pager-dev), never a release:
               // diagnostics, remote control for screenshots, test commands
     // Anyone with a USB cable could send "press" or "key" to get past the lock
@@ -1325,6 +1396,8 @@ void setup() {
   logs.add(rr == ESP_RST_POWERON || rr == ESP_RST_SW ? LOG_INFO : LOG_WARN, "boot %s, last reset: %s",
            FW_VERSION, rr < 11 ? RESET[rr] : "?");
   ui_settings.load();
+  themes::load();
+  if (!themes::valid(ui_settings.themeId)) ui_settings.themeId = 0;   // one of the owner's that is no longer here
 
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
   pinMode(PIN_BUTTON, INPUT_PULLUP);

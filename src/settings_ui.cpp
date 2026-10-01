@@ -23,6 +23,7 @@
 #include "logstore.h"
 #include "regional.h"
 #include "regions.h"
+#include "themestore.h"
 #include <algorithm>
 #include <SPIFFS.h>
 #include <SD.h>
@@ -729,14 +730,18 @@ static void previewSound(const Jingle* j) {
 static void themeMenu() {
   auto* m = new MenuView("Theme");
   m->rebuild = [](MenuView& v) {
-    for (uint8_t i = 0; i < THEME_COUNT; i++) {
-      v.value(THEMES[i].name, [i]() -> String { return ui_settings.themeId == i ? String("active") : String(""); }, [i] {
+    // The four built in, then the owner's own (made at squatchmesh.com/theme-maker).
+    for (uint8_t n = 0; n < themes::count(); n++) {
+      const uint8_t i = themes::idAt(n);
+      v.value(themes::spec(i).name, [i]() -> String { return ui_settings.themeId == i ? String("active") : String(""); }, [i] {
+        if (!themes::valid(i)) { nav.toast("that theme has been taken off"); return; }   // removed over USB with this menu open
+        const ThemeSpec& sp = themes::spec(i);
         ui_settings.themeId = i;
         app::applyTheme();
         markUiDirty();
-        if (ui_settings.sound) jingle.play(THEMES[i].msg);
-        if (ui_settings.vibrate) haptic.pattern(THEMES[i].vibeMsg.seq, THEMES[i].vibeMsg.n);
-        nav.toast(THEMES[i].blurb, 3000);
+        if (ui_settings.sound) jingle.play(sp.msg);
+        if (ui_settings.vibrate) haptic.pattern(sp.vibeMsg.seq, sp.vibeMsg.n);
+        nav.toast(sp.blurb, 3000);
       });
     }
     v.header("preview this theme");

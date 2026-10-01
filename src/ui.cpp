@@ -446,6 +446,19 @@ uint16_t nameColor(const char* name) {
   return lgfx::color565((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
 }
 
+// A sender's name in a chat: their colour, lifted so it reads on a dark bubble. The
+// built-in themes are all dark. One of the owner's own may be light, so there the
+// lift is half way to the colour of the writing beside it: pale on a dark theme as
+// before, and dark with the rest of the words on a light one.
+uint16_t nameInk(const char* name, uint16_t ink) {
+  const uint16_t c = nameColor(name);
+  if (!nav.theme().own) return c | 0x8410;
+  const uint16_t r = (((c >> 11) & 31) + ((ink >> 11) & 31) + 1) >> 1;
+  const uint16_t g = (((c >> 5) & 63) + ((ink >> 5) & 63) + 1) >> 1;
+  const uint16_t b = ((c & 31) + (ink & 31) + 1) >> 1;
+  return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
 void drawAvatar(Canvas& g, int cx, int cy, int r, const char* name, uint8_t kind) {
   const Theme& t = nav.theme();
   char ini[3] = {0, 0, 0};

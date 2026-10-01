@@ -15,6 +15,7 @@ struct Theme {
     uint16_t bg, panel, line, green, greenDim, txt, dim, amber;
     uint16_t red, white, bubbleIn, bubbleOut, blue, focus, mentionBg;
     uint8_t  style = STYLE_INW;
+    bool     own = false;      // one of the owner's own (themestore.h), not a built-in one
 
     void apply(LGFX& d, const Palette& p, uint8_t s) {
         auto c = [&](uint32_t hex) { return d.color565(hex >> 16, (hex >> 8) & 0xFF, hex & 0xFF); };

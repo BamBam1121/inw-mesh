@@ -305,7 +305,7 @@ private:
     else if (mention) g.drawRoundRect(x, y, w, h, 8, t.amber);
     int ty = y + 4;
     if (showName) {
-      g.setTextColor(nameColor(m.sender) | 0x8410, bg);    // lifted for contrast
+      g.setTextColor(nameInk(m.sender, t.white), bg);
       drawRich(g, name, x + 8, ty);
       ty += 17;
     }
@@ -336,7 +336,7 @@ private:
     const int y = bottomY - h;
     if (selected) g.fillRect(0, y, L::W, h, t.focus);
     for (int i = 0; i < nl; i++) {
-      g.setTextColor(i == 0 ? (out ? t.green : nameColor(m.sender) | 0x8410) : t.txt, selected ? t.focus : t.bg);
+      g.setTextColor(i == 0 ? (out ? t.green : nameInk(m.sender, t.txt)) : t.txt, selected ? t.focus : t.bg);
       drawRich(g, text + st[i], 8, y + 1 + i * 17, ln[i]);
     }
     char meta[48];

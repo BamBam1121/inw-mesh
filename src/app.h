@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include "ui.h"
 #include "settings.h"
-#include "themes.h"
+#include "themestore.h"   // themes.h, and the owner's own
 
 class Haptic; class Gps; class Battery; class IdleDimmer; class Keyboard;
 class JinglePlayer; class Es8311; class LogStore; class Rtc; class Carousel;

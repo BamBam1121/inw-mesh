@@ -467,6 +467,188 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
     return 0;
   }
 #endif
+  // "squatch_sim OUT owntheme": the owner's own themes (themestore.h), as a USB line
+  // would bring them: kept, listed, read back after a "restart", replaced by name,
+  // taken off, a fifth refused. Prints each check; own_* are the pictures.
+  if (argc > 2 && !strcmp(argv[2], "owntheme")) {
+    int bad = 0;
+    auto check = [&](bool ok, const char* what) { printf("  %s  %s\n", ok ? "ok  " : "FAIL", what); if (!ok) bad++; };
+    const char* DUSK = "1 3 1a0f1f2a17304a2a4fff9e5eb0477af6e1d0a78a95ffd166ff5a6efff6ec331c385a2a4a7ec8e33d21464a3418 Dusk Ridge";
+    const char* PAPER = "1 0 f4efe6e9e2d4cfc6b4b3261e7a5c582a26226f675c8a5a00c62828000000e2dccff3c9c41f5fbfead9c8f7e2a6 Paper";
+    CustomTheme t;
+    themes::load();
+    check(themes::count() == THEME_COUNT, "nothing kept yet: the menu lists the four built in");
+    check(themeline::parse(DUSK, t) && themes::put(t) == themes::CUSTOM_BASE, "the first goes in slot 0 (id 16)");
+    check(themeline::parse(PAPER, t) && themes::put(t) == themes::CUSTOM_BASE + 1, "the second in slot 1 (id 17)");
+    check(themes::count() == THEME_COUNT + 2 && themes::idAt(4) == 16 && themes::idAt(5) == 17, "the menu lists six, the owner's after the built-in ones");
+    check(!strcmp(themes::spec(16).name, "Dusk Ridge") && themes::spec(16).style == STYLE_AURORA && themes::spec(16).palette.green == 0xff9e5e,
+          "its name, its look and its colours are what the menu and the screens read");
+    check(themes::spec(16).msg == themes::spec(3).msg ? true : !strcmp(themes::spec(16).msg->name, THEMES[3].msg->name), "it sounds like the look it wears");
+    themes::load();                                    // a restart: read again from what was kept
+    check(themes::count() == THEME_COUNT + 2 && !strcmp(themes::spec(17).name, "Paper") && themes::spec(17).palette.bg == 0xf4efe6 &&
+          themes::spec(17).palette.mentionBg == 0xf7e2a6, "after a restart both are still there, every colour as sent");
+    CustomTheme again = *themes::custom(16);
+    again.colour[3] = 0x00ffcc;
+    strcpy(again.name, "dusk ridge");                  // the same name in other letters
+    check(themes::put(again) == 16 && themes::count() == THEME_COUNT + 2 && themes::spec(16).palette.green == 0x00ffcc, "the same name again replaces it, in its slot");
+    strcpy(t.name, "Three"); check(themes::put(t) == 18, "a third");
+    strcpy(t.name, "Four"); check(themes::put(t) == 19, "a fourth");
+    strcpy(t.name, "Five"); check(themes::put(t) == -1 && themes::count() == THEME_COUNT + 4, "a fifth is refused, and nothing changes");
+    check(themes::remove(17) && !themes::valid(17) && themes::count() == THEME_COUNT + 3 && themes::idAt(5) == 18, "one taken off: its id is gone and the list closes up");
+    check(!themes::remove(2) && !themes::remove(17) && !themes::remove(99), "a built-in one, or one that isn't there, can't be taken off");
+    check(!strcmp(themes::spec(17).name, THEMES[0].name) && !strcmp(themes::spec(200).name, THEMES[0].name), "an id that isn't there reads as the first theme");
+    strcpy(t.name, "Five"); check(themes::put(t) == 17, "and the free slot takes the next one");
+    themes::load();
+    check(themes::count() == THEME_COUNT + 4 && !strcmp(themes::spec(17).name, "Five") && !strcmp(themes::spec(16).name, "dusk ridge"), "after another restart: all four, as left");
+    printf("%s\n", bad ? "FAILED" : "ALL PASS");
+
+    // The pictures: Dusk Ridge showing, and the Theme menu with the owner's in it.
+    themes::remove(17); themes::remove(18); themes::remove(19);
+    themeline::parse(DUSK, t); themes::put(t);
+    themeline::parse(PAPER, t); themes::put(t);
+    populateHistory();
+    View* home = makeHomeView();
+    nav.push(home);
+    ui_settings.themeId = 16;
+    app::applyTheme();
+    home->resume(); run(900);
+    shot("own_home");
+    sim::advance(20UL * 60UL * 1000UL);
+    nav.push(makeLockView()); run(2600);
+    shot("own_lock");
+    nav.pop();
+    app::openThreadForChannel(1); run(300);
+    shot("own_thread");
+    clearTo(home);
+#if BOARD_HAS_TOUCH
+    app::openSettings(); run(300);
+    nav.top()->key('t'); nav.top()->press(); run(400);
+    shot("own_theme_menu");
+    clearTo(home);
+    ui_settings.themeId = 17;                          // the light one
+    app::applyTheme();
+    home->resume(); run(600);
+    shot("own_home_light");
+    app::openThreadForChannel(1); run(300);
+    shot("own_thread_light");
+    clearTo(home);
+#endif
+    return bad ? 1 : 0;
+  }
+  // "squatch_sim OUT basis": what the website's theme maker is made from
+  // (tools/theme_atlas.py). Each look's screens, drawn over and over without a moment
+  // passing: once in fifteen dark colours, then fifteen times with one of them nearly
+  // white. Nearly everything the screens do with a colour is a sum (a fill, a blend,
+  // a fade), so from those sixteen any palette's picture can be worked out, to the
+  // pixel. The pictures after them are real palettes, to hold that sum against.
+  if (argc > 2 && !strcmp(argv[2], "basis")) {
+    strlcpy(g_node->prefs().node_name, argc > 3 ? argv[3] : "Squatch Mesh", sizeof(g_node->prefs().node_name));
+    View* home = makeHomeView();
+    nav.push(home);
+    const uint32_t shown = sim::epoch;                 // every picture says 9:41
+    static const int KINDS = 22;
+    auto palette = [](int look, int k, CustomTheme& t) {
+      t.look = (uint8_t)look;
+      strcpy(t.name, "basis");
+      // 0: fifteen dark colours, no two the same and none of them black (two colours
+      // alike, or one that is the library's "see-through", would draw differently:
+      // text whose colour is its background's gets no background). 1-15: the same with
+      // one of them nearly white. tools/theme_atlas.py has these same numbers.
+      for (int i = 0; i < 15; i++)
+        t.colour[i] = ((uint32_t)((1 + i % 3) << 3) << 16) | ((uint32_t)((2 + i % 5) << 2) << 8) | (uint32_t)((1 + i % 2) << 3);
+      if (k >= 1 && k <= 15) t.colour[k - 1] = 0xF0F0E8;
+      else if (k >= 16 && k <= 19) {                   // 16: this look's own; then the other three's
+        const Palette& p = THEMES[(look + k - 16) % 4].palette;
+        const uint32_t c[15] = {p.bg, p.panel, p.line, p.green, p.greenDim, p.txt, p.dim, p.amber,
+                                p.red, p.white, p.bubbleIn, p.bubbleOut, p.blue, p.focus, p.mentionBg};
+        memcpy(t.colour, c, sizeof(c));
+      } else if (k == 20) {                            // a light one: paper, ink, a red accent
+        const uint32_t c[15] = {0xf4efe6, 0xe9e2d4, 0xcfc6b4, 0xb3261e, 0x7a5c58, 0x2a2622, 0x6f675c, 0x8a5a00,
+                                0xc62828, 0x000000, 0xe2dccf, 0xf3c9c4, 0x1f5fbf, 0xead9c8, 0xf7e2a6};
+        memcpy(t.colour, c, sizeof(c));
+      } else if (k == 21) {                            // anything at all
+        uint32_t h = 0x9e3779b9u * (uint32_t)(look + 7);
+        for (uint32_t& c : t.colour) { h ^= h << 13; h ^= h >> 17; h ^= h << 5; c = h & 0xFFFFFF; }
+      }
+    };
+    auto use = [&](int look, int k) {
+      CustomTheme t;
+      palette(look, k, t);
+      ui_settings.themeId = (uint8_t)themes::put(t);   // the same name each time: the same slot
+      app::applyTheme();
+    };
+    auto pictures = [&](int look, const char* screen) {
+      static uint8_t* rgb = nullptr;
+      for (int k = 0; k < KINDS; k++) {
+        use(look, k);
+        if (nav.top()) nav.top()->resume();            // anything a screen keeps drawn is drawn again
+        sim::epoch = shown - (millis() - 100000) / 1000;
+        View* v = nav.top();
+        Canvas& g = nav.canvas();
+        g.fillScreen(theme.bg);
+        if (v && !v->isLock()) drawStatusBar(g, theme);
+        if (v) v->draw(g);
+        nav.drawOverlays(g);
+        const int w = g.width(), h = g.height();
+        if (!rgb) rgb = (uint8_t*)malloc((size_t)w * h * 3);
+        for (int y = 0; y < h; y++)
+          for (int x = 0; x < w; x++) {
+            const uint16_t px = g.readPixel(x, y);
+            uint8_t* o = rgb + ((size_t)y * w + x) * 3;
+            o[0] = ((px >> 11) & 31) * 255 / 31; o[1] = ((px >> 5) & 63) * 255 / 63; o[2] = (px & 31) * 255 / 31;
+          }
+        size_t len = 0;
+        void* png = tdefl_write_image_to_png_file_in_memory_ex(rgb, w, h, 3, &len, 6, 0);
+        char path[512];
+        snprintf(path, sizeof(path), "%s/b%d_%s_%02d.png", s_out, look, screen, k);
+        FILE* f = png ? fopen(path, "wb") : nullptr;
+        if (f) { fwrite(png, 1, len, f); fclose(f); }
+        else printf("can't write %s\n", path);
+        free(png);
+      }
+      use(look, 16);
+    };
+    // The messages, a few minutes old by the clock the pictures show.
+    auto fresh = [&] {
+      sim::epoch = shown;
+      populateHistory();
+      // Someone says your name, so that colour is in the picture.
+      const ConvKey inw = ConvKey::channel(g_node->channels[1].channel.secret);
+      char msg[64];
+      snprintf(msg, sizeof(msg), "@[%s] bring the long antenna", g_node->prefs().node_name);
+      history.add(inw, HF_MENTION, ST_RECV, "Trailhead", msg, sim::epoch - 120, 1, 28);
+      // And you answer, so the colour of your own bubbles is in it too.
+      history.add(inw, HF_OUT, ST_DELIVERED, g_node->prefs().node_name, "Packed. See you at 10", sim::epoch - 60);
+      history.markRead(inw);
+    };
+    for (int look = 0; look < 4; look++) {
+      use(look, 16);
+      fresh();
+      clearTo(home);
+      home->resume();
+      run(900);
+      pictures(look, "home");
+      randomSeed(4242 + look);
+      sim::advance(20UL * 60UL * 1000UL);              // dark a good while: he says hello
+      nav.push(makeLockView());
+      run(2600);                                       // and has finished saying it
+      pictures(look, "lock");
+      nav.pop();
+      fresh();
+      app::openChats(); run(300);
+      pictures(look, "chats");
+      app::openThreadForChannel(1); run(300);
+      pictures(look, "thread");
+      clearTo(home);
+#if BOARD_HAS_TOUCH
+      app::openSettings(); run(300);
+      pictures(look, "settings");
+      clearTo(home);
+#endif
+      printf("look %d done\n", look);
+    }
+    return 0;
+  }
   // The boot screen, half way through starting, and the power-off teardown.
   for (int t = 0; t < THEME_COUNT && t < 4; t++) {
     ui_settings.themeId = t;
