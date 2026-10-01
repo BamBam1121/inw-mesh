@@ -220,5 +220,9 @@ bool squatchWake(Canvas& to);   bool squatchSleep(Canvas& from);
 bool blocksWake(Canvas& to);    bool blocksSleep(Canvas& from);
 bool heroWake(Canvas& to);      bool heroSleep(Canvas& from);
 bool auroraWake(Canvas& to);    bool auroraSleep(Canvas& from);
+// Halloween (theme.scene, not a style: it has the Squatch look otherwise) has its own
+// screen changes, and its own wake / sleep / power-down frames (kind as fx::render).
+bool halloweenTransition(Trans kind, Canvas& from, Canvas& to);
+void halloweenRender(uint8_t kind, Canvas& frame, lgfx::LovyanGFX& dst, float p);
 
 }  // namespace fx

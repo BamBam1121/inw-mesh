@@ -44,6 +44,7 @@ static Gestures   gestures;
 #include "logstore.h"
 #include "theme.h"
 #include "themestore.h"
+#include "mascot.h"
 #include "app.h"
 #include "regions.h"
 #include "node.h"
@@ -1781,6 +1782,7 @@ void loop() {
   // Screen went dark: next wake lands on the lock face.
   static bool wasAsleep = false;
   if (dimmer.asleep() && !wasAsleep && ui_settings.lockOnSleep) app::lock();
+  if (dimmer.asleep() && !wasAsleep) spooky::next();   // Halloween: another costume and place each time the screen goes dark
   wasAsleep = dimmer.asleep();
 
   lap(0);

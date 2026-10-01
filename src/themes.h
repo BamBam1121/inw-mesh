@@ -134,8 +134,9 @@ static const ThemeSpec THEMES[] = {
     {{14, 0x80 | 12, 14, 0x80 | 12, 14, 0x80 | 12, 14}, 7},
     7, 0x40, &tunes::AUR_CHG_J },
   // Halloween has the Squatch look (its cards and screen changes) with its own lock
-  // scene: the sasquatch in costume, somewhere new after every restart.
-  { "Halloween", "trick or treat: a new costume every restart",
+  // scene (the sasquatch in costume, somewhere new every time the screen comes on) and
+  // its own screen changes (fx_halloween.cpp).
+  { "Halloween", "trick or treat: a new costume every time it wakes",
     { 0x0b0711, 0x160d20, 0x2e1a3d, 0xff8a1f, 0x9a5418, 0xeadfcd, 0x8d7a9c, 0xb8f24a,
       0xff4d5a, 0xfff6ea, 0x1c1229, 0x4a2608, 0xb07cff, 0x2a1838, 0x2c3a10 },
     STYLE_INW, &tunes::HAL_BOOT_J, &tunes::HAL_MSG_J, &tunes::HAL_DM_J, &tunes::HAL_MEN_J,

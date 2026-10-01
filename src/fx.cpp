@@ -408,6 +408,7 @@ int shakeX() {
 
 void render(uint8_t kind, Canvas& f, lgfx::LovyanGFX& d, float p) {
   p = clamp01(p);
+  if (T().scene == SCENE_HALLOWEEN) { halloweenRender(kind, f, d, p); return; }
   switch (style()) {
   case STYLE_BLOCKS: kind == 0 ? blocksOn(f, d, p) : blocksOff(f, d, p, kind == 2); break;
   case STYLE_HERO:   kind == 0 ? heroOn(f, d, p)   : heroOff(f, d, p, kind == 2);   break;
@@ -587,6 +588,7 @@ __attribute__((weak)) bool auroraSleep(Canvas&) { return false; }
 
 namespace {
 bool themeTransition(Trans kind, Canvas& from, Canvas& to) {
+  if (T().scene == SCENE_HALLOWEEN) return halloweenTransition(kind, from, to);
   switch (style()) {
   case STYLE_BLOCKS: return blocksTransition(kind, from, to);
   case STYLE_HERO:   return heroTransition(kind, from, to);
@@ -648,8 +650,9 @@ void transitionFrame(Trans kind, Canvas& from, Canvas& to, lgfx::LovyanGFX& dst,
 
 uint32_t framesDrawn() { return s_frames; }
 
-void screenOn(Canvas& frame)  { if (!themeWake(frame)) playTo(0, frame, 320); }
-void screenOff(Canvas& frame) { if (!themeSleep(frame)) playTo(1, frame, 280); }
+// Halloween's lightning and melt want a little longer than the others' wake and sleep.
+void screenOn(Canvas& frame)  { if (!themeWake(frame)) playTo(0, frame, T().scene == SCENE_HALLOWEEN ? 520 : 320); }
+void screenOff(Canvas& frame) { if (!themeSleep(frame)) playTo(1, frame, T().scene == SCENE_HALLOWEEN ? 440 : 280); }
 void powerDown(Canvas& frame) { playTo(2, frame, 1150); }
 
 }  // namespace fx

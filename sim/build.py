@@ -19,7 +19,7 @@ LGFX = os.path.join(ROOT, ".pio", "libdeps", "t-lora-pager", "LovyanGFX", "src")
 # The firmware files the simulator runs. Everything else is stubbed in sim/.
 FIRMWARE = ["ui.cpp", "home.cpp", "quips.cpp", "regional.cpp", "settings.cpp", "history.cpp", "regions.cpp",
             "chats.cpp", "notify.cpp", "fx.cpp", "fx_squatch.cpp", "fx_blocks.cpp", "fx_hero.cpp",
-            "fx_aurora.cpp", "bootscreen.cpp", "themestore.cpp"]
+            "fx_aurora.cpp", "fx_halloween.cpp", "bootscreen.cpp", "themestore.cpp"]
 SIM = ["sim_stubs.cpp", "sim_main.cpp", "serve_net.cpp"]
 # The T-Deck's own screens (src/tdeck); the pager build doesn't have them.
 BOARD_UI = [] if "--pager" in sys.argv else ["dashboard.cpp", "hwcheck.cpp"]

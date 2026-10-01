@@ -1,5 +1,5 @@
 // The Halloween theme's lock scene: the sasquatch out trick-or-treating, in costume
-// (mascot.h, spooky::costume) and somewhere different after every restart
+// (mascot.h, spooky::costume) and somewhere different every time the screen comes on
 // (spooky::place): down a street of lit houses, through a graveyard, across a pumpkin
 // patch, or in the woods below a haunted house.
 //

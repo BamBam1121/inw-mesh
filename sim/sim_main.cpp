@@ -10,6 +10,7 @@
 #include "history.h"
 #include "settings.h"
 #include "ui.h"
+#include "fx.h"
 #include "statusbar.h"
 #include "touch.h"
 #include "bootscreen.h"
@@ -533,6 +534,37 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
         shot(n);
       }
       nav.pop();
+    }
+    return 0;
+  }
+  // "squatch_sim OUT spookyfx": the Halloween theme's own screen changes, eight moments
+  // of each (fx_KIND_N), as the USB check would step through them, and the power-down.
+  if (argc > 2 && !strcmp(argv[2], "spookyfx")) {
+    ui_settings.themeId = 4;
+    app::applyTheme();
+    populateHistory();
+    spooky::costume() = spooky::WITCH; spooky::place() = spooky::STREET;
+    static Canvas home, chats, lock, out;
+    for (Canvas* c : {&home, &chats, &lock, &out}) { c->setColorDepth(16); c->createSprite(L::W, L::H); }
+    nav.push(makeHomeView()); run(900);
+    nav.compose(); nav.canvas().pushSprite(&home, 0, 0);
+    app::openChats(); run(300);
+    nav.compose(); nav.canvas().pushSprite(&chats, 0, 0);
+    nav.push(makeLockView()); run(1500);
+    nav.compose(); nav.canvas().pushSprite(&lock, 0, 0);
+    struct { const char* name; fx::Trans kind; Canvas* from; Canvas* to; int ms; } K[] = {
+      {"forward", fx::Trans::Forward, &home, &chats, 420}, {"back", fx::Trans::Back, &chats, &home, 440},
+      {"unlock", fx::Trans::Unlock, &lock, &home, 760},    {"lock", fx::Trans::Lock, &home, &lock, 900},
+      {"wake", fx::Trans::Wake, &lock, &lock, 320},        {"sleep", fx::Trans::Sleep, &lock, &lock, 280}};
+    char n[48];
+    for (auto& k : K)
+      for (int i = 0; i < 8; i++) {
+        fx::transitionFrame(k.kind, *k.from, *k.to, out, k.ms * (i * 2 + 1) / 16);
+        snprintf(n, sizeof(n), "fx_%s_%d", k.name, i); savePPM(out, n);
+      }
+    for (int i = 0; i < 8; i++) {
+      fx::render(2, lock, out, (i * 2 + 1) / 16.0f);
+      snprintf(n, sizeof(n), "fx_powerdown_%d", i); savePPM(out, n);
     }
     return 0;
   }

@@ -8,7 +8,7 @@
 // defaults to plain walking, which is all the screen transitions ask for.
 //
 // In the Halloween theme (theme.scene) he's dressed up: spooky::costume() says as what,
-// and it is a different one after every restart.
+// and it is a different one every time the screen comes on, and after every restart.
 
 #pragma once
 #include <math.h>
@@ -34,6 +34,9 @@ inline uint8_t& place() { static uint8_t v = STREET; return v; }
 // The n-th start: both move on by one, so it takes COSTUMES x PLACES starts to see
 // the same costume in the same place again.
 inline void pick(uint32_t n) { costume() = n % COSTUMES; place() = n % PLACES; }
+// The next of both: when the screen goes dark, so he's someone else, somewhere else,
+// the next time it lights.
+inline void next() { costume() = (costume() + 1) % COSTUMES; place() = (place() + 1) % PLACES; }
 inline const char* costumeName(uint8_t c) {
     static const char* const N[COSTUMES] = {"zombie", "witch", "vampire", "ghost", "pumpkin", "skeleton", "mummy"};
     return N[c % COSTUMES];
