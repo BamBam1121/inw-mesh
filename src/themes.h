@@ -1,4 +1,4 @@
-// The four themes: colours, lock-screen scene, sounds and vibration.
+// The built-in themes: colours, lock-screen scene, sounds and vibration.
 //
 // Sounds are original tunes written in each theme's spirit, not copies of any
 // game's music. Vibration sequences are DRV2605 ERM library-1 effect ids; a byte
@@ -19,6 +19,7 @@ struct ThemeSpec {
     VibePattern vibeMsg, vibeDm, vibeMention;
     uint8_t tickEffect, tickClamp;
     const Jingle* charge;             // plugged in
+    uint8_t scene;                    // SCENE_STYLE (the style's own lock scene) unless it has another
 };
 
 namespace tunes {
@@ -52,6 +53,20 @@ namespace tunes {
   static const ToneStep HERO_CHG[] = {{523, 70}, {659, 70}, {784, 70}, {1047, 160}};
   static const ToneStep AUR_CHG[]  = {{784, 280}, {1175, 520}};
 
+  // Halloween: little tunes with a rhythm to them, in a minor key, on a hollow
+  // triangle wave like a toy organ. Start-up creeps down the scale and lands on a low
+  // note; a message is two knocks and a ghost's "ooo"; a direct message skips along
+  // (da-da-dum, da-da-dum); a mention is a wail and three quick steps; the charger
+  // winds up like a theremin.
+  static const ToneStep HAL_BOOT[] = {{330, 150}, {0, 50}, {330, 150}, {0, 50}, {392, 150}, {0, 50}, {330, 150}, {0, 50},
+                                      {466, 300}, {0, 70}, {440, 150}, {0, 50}, {311, 150}, {0, 50}, {165, 620}};
+  static const ToneStep HAL_MSG[]  = {{196, 70}, {0, 70}, {196, 70}, {0, 150}, {740, 300, 392}};
+  static const ToneStep HAL_DM[]   = {{440, 90}, {0, 40}, {440, 90}, {0, 40}, {523, 190}, {0, 90},
+                                      {415, 90}, {0, 40}, {415, 90}, {0, 40}, {311, 330}};
+  static const ToneStep HAL_MEN[]  = {{440, 240, 880}, {880, 280, 415}, {0, 90}, {622, 80}, {0, 50}, {622, 80}, {0, 50},
+                                      {587, 80}, {0, 50}, {494, 360}};
+  static const ToneStep HAL_CHG[]  = {{220, 300, 660}, {0, 50}, {660, 90}, {0, 40}, {784, 200}};
+
   #define J(name, steps, wave, bell) static const Jingle name = {#name, steps, sizeof(steps) / sizeof(steps[0]), wave, bell}
   J(INW_BOOT_J, INW_BOOT, WAVE_SINE, false);
   J(INW_MSG_J,  INW_MSG,  WAVE_SINE, false);
@@ -73,6 +88,11 @@ namespace tunes {
   J(BLK_CHG_J,  BLK_CHG,  WAVE_TRIANGLE, false);
   J(HERO_CHG_J, HERO_CHG, WAVE_SQUARE, false);
   J(AUR_CHG_J,  AUR_CHG,  WAVE_SINE, true);
+  J(HAL_BOOT_J, HAL_BOOT, WAVE_TRIANGLE, false);
+  J(HAL_MSG_J,  HAL_MSG,  WAVE_TRIANGLE, false);
+  J(HAL_DM_J,   HAL_DM,   WAVE_TRIANGLE, false);
+  J(HAL_MEN_J,  HAL_MEN,  WAVE_TRIANGLE, false);
+  J(HAL_CHG_J,  HAL_CHG,  WAVE_TRIANGLE, false);
   #undef J
 }
 
@@ -113,5 +133,16 @@ static const ThemeSpec THEMES[] = {
     {{14, 0x80 | 22, 14, 0x80 | 22, 14}, 5},
     {{14, 0x80 | 12, 14, 0x80 | 12, 14, 0x80 | 12, 14}, 7},
     7, 0x40, &tunes::AUR_CHG_J },
+  // Halloween has the Squatch look (its cards and screen changes) with its own lock
+  // scene: the sasquatch in costume, somewhere new after every restart.
+  { "Halloween", "trick or treat: a new costume every restart",
+    { 0x0b0711, 0x160d20, 0x2e1a3d, 0xff8a1f, 0x9a5418, 0xeadfcd, 0x8d7a9c, 0xb8f24a,
+      0xff4d5a, 0xfff6ea, 0x1c1229, 0x4a2608, 0xb07cff, 0x2a1838, 0x2c3a10 },
+    STYLE_INW, &tunes::HAL_BOOT_J, &tunes::HAL_MSG_J, &tunes::HAL_DM_J, &tunes::HAL_MEN_J,
+    // A heartbeat: thump-thump ... thump-thump.
+    {{14, 0x80 | 14, 14}, 3},
+    {{14, 0x80 | 14, 14, 0x80 | 45, 14, 0x80 | 14, 14}, 7},
+    {{14, 0x80 | 10, 14, 0x80 | 10, 14, 0x80 | 30, 14}, 7},
+    7, 0x40, &tunes::HAL_CHG_J, SCENE_HALLOWEEN },
 };
 static constexpr uint8_t THEME_COUNT = sizeof(THEMES) / sizeof(THEMES[0]);

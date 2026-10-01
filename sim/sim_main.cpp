@@ -174,14 +174,14 @@ int main(int argc, char** argv) {
   history.begin();
   populate();
   nav.begin(&display, &theme);
-  static const char* THEME_NAMES[] = {"squatch", "blocks", "hero", "aurora"};
+  static const char* THEME_NAMES[] = {"squatch", "blocks", "hero", "aurora", "halloween"};
   // "squatch_sim OUT homes NAME": each theme's home screen, the node named NAME
   // (home_squatch, home_blocks, home_hero, home_aurora) - the README's pictures.
   if (argc > 2 && !strcmp(argv[2], "homes")) {
     if (argc > 3) strlcpy(g_node->prefs().node_name, argv[3], sizeof(g_node->prefs().node_name));
     View* home = makeHomeView();
     nav.push(home);
-    for (int t = 0; t < THEME_COUNT && t < 4; t++) {
+    for (int t = 0; t < THEME_COUNT && t < 5; t++) {
       ui_settings.themeId = t;
       app::applyTheme();
       populateHistory();
@@ -446,7 +446,7 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
   // poke, three pokes (stars), a tap somewhere else - in each theme.
   if (argc > 2 && !strcmp(argv[2], "squatch")) {
     nav.push(makeHomeView());
-    for (int t = 0; t < THEME_COUNT && t < 4; t++) {
+    for (int t = 0; t < THEME_COUNT && t < 5; t++) {
       ui_settings.themeId = t;
       app::applyTheme();
       const char* tn = THEME_NAMES[t];
@@ -467,6 +467,75 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
     return 0;
   }
 #endif
+  // "squatch_sim OUT spooky": the Halloween theme's lock face - every costume, in
+  // every place (sp_COSTUME_PLACE), then one of them waking, talking and with a
+  // message waiting.
+  if (argc > 2 && !strcmp(argv[2], "spooky")) {
+    ui_settings.themeId = 4;
+    app::applyTheme();
+    populateHistory();
+    nav.push(makeHomeView());
+    char n[64];
+    for (int c = 0; c < spooky::COSTUMES; c++)
+      for (int p = 0; p < spooky::PLACES; p++) {
+        spooky::costume() = c; spooky::place() = p;
+        nav.push(makeLockView());
+        run(9000 + c * 700 + p * 1900);
+        snprintf(n, sizeof(n), "sp_%s_%s", spooky::costumeName(c), spooky::placeName(p)); shot(n);
+        nav.pop();
+      }
+    {
+      ConvKey keys[64];
+      const uint16_t k = history.conversations(keys, 64);
+      for (uint16_t i = 0; i < k; i++) history.markRead(keys[i]);
+    }
+    for (int c = 0; c < spooky::COSTUMES; c++) {
+      spooky::costume() = c; spooky::place() = c % spooky::PLACES;
+      sim::advance(20UL * 60UL * 1000UL);            // dark a good while: hello, with a wave
+      nav.push(makeLockView());
+      run(1300);
+      snprintf(n, sizeof(n), "sphello_%s", spooky::costumeName(c)); shot(n);
+      nav.pop();
+    }
+    for (int k = 0; k < 4; k++) {                    // each start moves on to the next of both
+      themes::load();
+      printf("start %d: %s, %s\n", k, spooky::costumeName(spooky::costume()), spooky::placeName(spooky::place()));
+    }
+    return 0;
+  }
+  // "squatch_sim OUT spookyanim NAME": the Halloween lock face as the site's animation -
+  // four restarts' worth, a different costume and place in each, 36 frames apiece, one
+  // every 50 ms (anim_NNN). The first wakes after a good while, so he says hello.
+  if (argc > 2 && !strcmp(argv[2], "spookyanim")) {
+    ui_settings.themeId = 4;
+    randomSeed(1000 + 4 * 7919);
+    app::applyTheme();
+    populateHistory();
+    {
+      ConvKey keys[64];
+      const uint16_t k = history.conversations(keys, 64);
+      for (uint16_t i = 0; i < k; i++) history.markRead(keys[i]);
+    }
+    if (argc > 3) strlcpy(g_node->prefs().node_name, argv[3], sizeof(g_node->prefs().node_name));
+    nav.push(makeHomeView());
+    static const uint8_t SHOW[4][2] = {{spooky::WITCH, spooky::STREET}, {spooky::GHOST, spooky::GRAVEYARD},
+                                       {spooky::PUMPKIN, spooky::PATCH}, {spooky::SKELETON, spooky::WOODS}};
+    int frame = 0;
+    for (int s = 0; s < 4; s++) {
+      spooky::costume() = SHOW[s][0]; spooky::place() = SHOW[s][1];
+      if (s == 0) sim::advance(20UL * 60UL * 1000UL);
+      nav.push(makeLockView());
+      if (s) run(3000 + s * 900);
+      for (int k = 0; k < (s == 0 ? 56 : 36); k++) {
+        run(50);
+        char n[32];
+        snprintf(n, sizeof(n), "anim_%03d", frame++);
+        shot(n);
+      }
+      nav.pop();
+    }
+    return 0;
+  }
   // "squatch_sim OUT owntheme": the owner's own themes (themestore.h), as a USB line
   // would bring them: kept, listed, read back after a "restart", replaced by name,
   // taken off, a fifth refused. Prints each check; own_* are the pictures.
@@ -650,7 +719,7 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
     return 0;
   }
   // The boot screen, half way through starting, and the power-off teardown.
-  for (int t = 0; t < THEME_COUNT && t < 4; t++) {
+  for (int t = 0; t < THEME_COUNT && t < 5; t++) {
     ui_settings.themeId = t;
     app::applyTheme();
     Canvas& g = nav.canvas();
@@ -666,7 +735,7 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
   }
   View* home = makeHomeView();       // the bottom of the stack, as on the pager: never popped
   nav.push(home);
-  for (int t = 0; t < THEME_COUNT && t < 4; t++) {
+  for (int t = 0; t < THEME_COUNT && t < 5; t++) {
     ui_settings.themeId = t;
     app::applyTheme();
     populateHistory();

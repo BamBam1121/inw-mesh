@@ -230,6 +230,7 @@ void app::applyTheme() {
   const ThemeSpec& th = themeSpec();
   theme.apply(display, th.palette, th.style);
   theme.own = themes::isCustom(ui_settings.themeId) && themes::valid(ui_settings.themeId);
+  theme.scene = th.scene;
   haptic.setPattern(th.vibeMsg.seq, th.vibeMsg.n);
   haptic.setTick(th.tickEffect, th.tickClamp);
   nav.invalidate();

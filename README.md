@@ -46,7 +46,7 @@ sounds, the vibration, the charging indicator and the plug-in chime.
   version if anything goes wrong. Contacts, keys and settings are untouched.
 - **NFC:** read and write tags, share your contact or a channel invite by tapping
   a phone to the pager.
-- **Themes:** Squatch, Blocks, Hero and Aurora (see above).
+- **Themes:** Squatch, Blocks, Hero, Aurora and Halloween (see above), plus up to four of your own from [squatchmesh.com/theme-maker](https://squatchmesh.com/theme-maker).
 - **Lock screen:** a rotating one-liner under the clock, a few hundred of them:
   jokes, mesh tips, per-theme lines and live ones from your own contact list.
 - **Battery:** an accurate percentage from the fuel gauge (the charger is set up so

@@ -287,4 +287,11 @@ inline void aurora(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll
   auroraGround(d, t, phase, scroll, unread);
 }
 
+#include "scene_halloween.h"
+
+// The Halloween theme's scene, laid out for this screen.
+inline void halloween(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll, bool unread) {
+  halloween(d, t, SpookyFrame{W, GROUND, MASCOT_X, NARROW, 0, 0, 0, 0}, phase, scroll, unread);
+}
+
 }  // namespace scenes

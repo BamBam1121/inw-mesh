@@ -16,7 +16,7 @@ import glob, os
 os.chdir(".pio/sim/shots")
 for f in glob.glob("*.ppm"): Image.open(f).save(f.replace(".ppm", ".png")); os.remove(f)
 order = ["lock", "home_messages", "home_contacts", "home_map", "home_tools", "home_settings", "chats", "thread_inw", "thread_trailhead"]
-for theme in ["squatch", "blocks", "hero", "aurora"]:
+for theme in ["squatch", "blocks", "hero", "aurora", "halloween"]:
     ims = [(n, Image.open("%s_%s.png" % (theme, n))) for n in order if os.path.exists("%s_%s.png" % (theme, n))]
     if not ims: continue
     w, h = ims[0][1].size

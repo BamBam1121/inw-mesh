@@ -157,6 +157,27 @@ static const char* const THEMED[][N_THEMED] = {
     "Violet, teal, green. Also your status bar.",
     "Calm night on the mesh. Enjoy it.",
     "Everything is glowing. Even the unread count." },
+  // Halloween
+  { "Trick or treat. Smell my feet. Mesh me something good to eat.",
+    "It's not a costume. I just look like this.",
+    "Knock knock. It's a packet.",
+    "No tricks, just hops.",
+    "Something in these woods is beaconing.",
+    "The scariest sound: no ack.",
+    "Ghost nodes: heard once, never again.",
+    "Full moon, clear sky, long range.",
+    "A repeater on a hill at midnight. Spooky, and useful.",
+    "Candy is a good trade for a relayed message.",
+    "Boo. Did the path change? Boo again.",
+    "Every house on the street, one hop apart.",
+    "Don't split up. Stay in range.",
+    "The call is coming from inside the mesh.",
+    "Bats use echoes. We use repeaters.",
+    "Witching hour: the airtime is all yours.",
+    "A zombie node still forwards. Respect.",
+    "Carved a pumpkin. It looks like an antenna.",
+    "Who's out there? Check the heard list.",
+    "Happy Halloween. Keep your batteries charged." }
 };
 static constexpr int N_GENERAL = sizeof(GENERAL) / sizeof(GENERAL[0]);
 static constexpr int N_MORE = sizeof(MORE) / sizeof(MORE[0]);
@@ -240,8 +261,8 @@ const char* quipNext() {
     if (k < N_MORE) { if (fitsBoard(MORE[k])) return MORE[k]; continue; }
     k -= N_MORE;
     if (k < N_THEMED) {
-      const uint8_t s = nav.theme().style;
-      if (fitsBoard(THEMED[s < 4 ? s : 0][k])) return THEMED[s < 4 ? s : 0][k];
+      const uint8_t s = nav.theme().scene == SCENE_HALLOWEEN ? 4 : nav.theme().style < 4 ? nav.theme().style : 0;
+      if (fitsBoard(THEMED[s][k])) return THEMED[s][k];
       continue;
     }
     if (liveLine(k - N_THEMED, line, sizeof(line))) return line;
