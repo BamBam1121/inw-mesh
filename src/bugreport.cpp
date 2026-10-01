@@ -110,8 +110,8 @@ void setEnabled(bool on) {
   if (p.begin("inw-rpt", false)) { p.putBool("on", on); p.end(); }
 }
 
-// A random id for this device, so reports from one device can be told apart
-// without sending anything that identifies it on the mesh.
+// A random id for this device: what the daily check-in is counted by, and what ties
+// a device's reports together if its name changes.
 static String deviceId() {
   Preferences p;
   String id;
@@ -285,6 +285,18 @@ static void checkIn() {
   if (app::timeValid() && p.begin("inw-rpt", false)) { p.putUInt("chk", app::now()); p.end(); }
 }
 
+// Whose report it is: the name the device goes by on the mesh, so the developer can
+// tell who to ask about it. Put on as it is sent (the node isn't up yet when a crash
+// is filed). The daily check-in never carries it.
+static String withName(const String& body) {
+  if (!g_node || body.length() < 2 || body[0] != '{') return body;
+  String j = "{\"name\":\"";
+  jsonEscape(j, String(g_node->name()));
+  j += "\",";
+  j += body.substring(1);
+  return j;
+}
+
 void tick() {
   static uint32_t lastTry = 0, connectedAt = 0, lastLook = 0;
   if (!s_mounted || !enabled()) { s_errWhy[0] = 0; return; }
@@ -310,7 +322,7 @@ void tick() {
   if (!f) return;
   const String body = f.readString();
   f.close();
-  if (!body.length() || post(body)) {
+  if (!body.length() || post(withName(body))) {
     SPIFFS.remove(path);
     s_sent++;
     Serial.printf("[report] sent %s\n", path.c_str());

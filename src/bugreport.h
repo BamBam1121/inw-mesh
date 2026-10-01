@@ -2,12 +2,13 @@
 // to the developer by itself, over Wi-Fi. Also a once-a-day check-in (board,
 // version and a random id, nothing else) so we know how many are in use.
 //
-// What a report holds: the firmware version, why it restarted, where it crashed
+// What a report holds: the device's name on the mesh (so the developer knows whose
+// it is), the firmware version, why it restarted, where it crashed
 // (the task, the program counter and backtrace from ESP-IDF's core dump, which the
 // release's firmware.elf turns into file and line), memory, uptime, battery, and
 // the last log lines before it happened. What it never holds: messages, contact
 // or channel names, keys, positions, Wi-Fi names or addresses - log lines that
-// could carry one are cut down before they're kept.
+// could carry one are cut down before they're kept. The check-in has no name.
 //
 // Reports wait in the flash store (/rpt, at most 4) until Wi-Fi is up and the
 // screen has been left alone a few seconds, then go to squatchmesh.com. On by
