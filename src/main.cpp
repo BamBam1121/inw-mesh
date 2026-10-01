@@ -263,6 +263,9 @@ void app::rebootDiscard() {
 static void powerOffShow();                   // the goodbye animation, further down
 static void goodbyeFrame(Canvas& g, uint32_t ms, int32_t brk) { boot::drawGoodbye(g, ms, brk); }
 
+#if BOARD_BATTERY_FROM_VOLTAGE
+static void flatSleep();                      // the flat-battery wait, further down
+#endif
 bool app::powerOff(const char* why) {
   if (battery.pluggedIn()) return false;      // the charger can't cut the battery with USB in
   logs.add(LOG_INFO, "powering off (%s)", why);
@@ -284,6 +287,11 @@ bool app::powerOff(const char* why) {
   // Still running: USB went in at the last moment, or the charger didn't take
   // it. Sleep instead; the side button wakes it with a fresh boot.
   Serial.println("[power] battery not cut, sleeping instead");
+#if BOARD_BATTERY_FROM_VOLTAGE
+  // Turned off for a flat battery: sleep the way a flat start does, so it looks for a
+  // charge every few minutes and comes back on by itself.
+  if (!strcmp(why, "battery empty")) flatSleep();
+#endif
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
   esp_deep_sleep_start();
   return true;
@@ -1236,41 +1244,35 @@ static void bootNote(const char* msg) {      // a long step the user should know
 }
 
 #if BOARD_BATTERY_FROM_VOLTAGE
-// A flat cell can't feed the radio and Wi-Fi: starting them sags it into a brownout
-// reset, the T-Deck starts again, and round it goes, running the cell down further
-// each turn (reports from two T-Decks sitting at 2.4-2.7 V, 2026-09-30). So below
-// 3.3 V nothing more is started: it says why, sleeps, and looks again every three
-// minutes, which is enough for a charger to lift it. The trackball click wakes it to
-// look now. Once held, or after a brownout, it wants more than 3.3 V: the reading at
-// start is taken with almost nothing drawing, and a flat cell rests higher than it works.
-RTC_DATA_ATTR static uint8_t s_flatHold;
-static constexpr uint16_t FLAT_MV = 3300, FLAT_LEAVE_MV = 3500, FLAT_AFTER_BROWNOUT_MV = 3600;
-static constexpr uint16_t NO_CELL_MV = 1500;            // under this there is no cell: USB alone is running it
+#include "flat_hold.h"
+// A flat battery waits for a charge instead of starting (tdeck/flat_hold.h has the
+// rule and why). While it waits it sleeps, looks again every three minutes, and the
+// trackball click wakes it to look now.
+RTC_DATA_ATTR static uint8_t s_flatWaiting;
 
 static void flatSleep() {
-  s_flatHold = 1;
-  esp_sleep_enable_timer_wakeup(180ULL * 1000000ULL);
+  s_flatWaiting = 1;
+  esp_sleep_enable_timer_wakeup((uint64_t)FlatHold::LOOK_EVERY_S * 1000000ULL);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BUTTON, 0);
   esp_deep_sleep_start();
 }
 
-// Woken by the timer while held: look at the cell and go straight back to sleep if it
-// still can't start, before the screen or anything else is powered.
+// Woken by the timer while waiting: look at the cell and go straight back to sleep if
+// it still can't start, before the screen or anything else is powered.
 static void flatHoldQuickLook() {
-  if (!s_flatHold || esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_TIMER) return;
+  if (!s_flatWaiting || esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_TIMER) return;
   analogReadResolution(12);
   analogReadMilliVolts(PIN_BAT_ADC);                    // the first one after setup reads low
   uint32_t sum = 0;
   for (int i = 0; i < 8; i++) sum += analogReadMilliVolts(PIN_BAT_ADC);
-  const uint16_t mv = (uint16_t)(2.037f * sum / 8);
-  if (mv >= NO_CELL_MV && mv < FLAT_LEAVE_MV) flatSleep();
+  if (FlatHold::hold((uint16_t)(2.037f * sum / 8), true, false)) flatSleep();
 }
 
 static void flatBatteryHold(int rr) {
   const uint16_t mv = battery.millivolts();
-  const uint16_t need = s_flatHold ? FLAT_LEAVE_MV : rr == ESP_RST_BROWNOUT ? FLAT_AFTER_BROWNOUT_MV : FLAT_MV;
-  if (mv < NO_CELL_MV || mv >= need) { s_flatHold = 0; return; }
-  Serial.printf("[power] battery flat (%u mV, needs %u): not starting\n", mv, need);
+  if (!FlatHold::hold(mv, s_flatWaiting, rr == ESP_RST_BROWNOUT)) { s_flatWaiting = 0; return; }
+  Serial.printf("[power] battery flat (%u mV, needs %u): not starting\n", mv,
+                FlatHold::need(s_flatWaiting, rr == ESP_RST_BROWNOUT));
   Serial.flush();
   {
     BootBusLock lock;
@@ -1278,12 +1280,27 @@ static void flatBatteryHold(int rr) {
     display.fillRect(0, boot::ERR_Y0 - 2, L::W, 34, theme.bg);
     display.setTextColor(theme.amber, theme.bg);
     char line[48];
-    snprintf(line, sizeof(line), "Battery empty (%u.%02u V)", mv / 1000, (mv % 1000) / 10);
+    snprintf(line, sizeof(line), "Battery empty (%u.%02u V): plug it in", mv / 1000, (mv % 1000) / 10);
     display.drawString(line, (L::W - display.textWidth(line)) / 2, boot::ERR_Y0);
-    const char* more = "Plug in: it starts by itself";
+    const char* more = "or hold the trackball to start anyway";
     display.drawString(more, (L::W - display.textWidth(more)) / 2, boot::ERR_Y0 + 16);
   }
-  delay(5000);
+  // The way out if the reading is ever wrong: the click held for a second and a half.
+  const uint32_t until = millis() + 6000;
+  uint32_t downAt = 0;
+  while ((int32_t)(millis() - until) < 0) {
+    if (digitalRead(PIN_BUTTON) == LOW) {
+      if (!downAt) downAt = millis() | 1;
+      else if (millis() - downAt > 1500) {
+        Serial.println("[power] battery flat: started anyway (trackball held)");
+        logs.add(LOG_WARN, "battery flat (%umV): started anyway", mv);
+        bootNote("starting anyway");
+        s_flatWaiting = 0;
+        return;
+      }
+    } else downAt = 0;
+    delay(20);
+  }
   backlight.setLevel(0);
   flatSleep();
 }
