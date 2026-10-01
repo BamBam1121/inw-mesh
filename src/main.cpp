@@ -396,6 +396,9 @@ void app::pluggedInFeedback() {
   nav.statusChanged();
   if (!dimmer.asleep()) fx::charge(app::batteryPct());   // the theme's charging splash
   if (quietHours()) return;
+  // Full already: no chime and no tap. A charger tops a full cell up again and again,
+  // and each top-up looked like plugging in.
+  if (app::batteryPct() >= 95) return;
   if (ui_settings.vibrate) { static const uint8_t TAP[] = {47}; haptic.pattern(TAP, 1); }
   if (ui_settings.sound) jingle.play(themeSpec().charge);
 }
@@ -1606,6 +1609,17 @@ void loop() {
   wifi::tick();
   { static bool w = false; if (wifi::connected() != w) { w = wifi::connected(); nav.statusChanged(); } }
   lap(2);
+#if BOARD_BATTERY_FROM_VOLTAGE
+  // The screen going dark (and Wi-Fi and the GPS with it) lifts the cell's voltage as
+  // a small charger would, and waking sags it: say so, or the estimate reads them as
+  // plugging in and unplugging (a charging icon and a chime with nothing plugged in).
+  {
+    static int was = -1;
+    // Roughly, in mA above the least it draws: only the changes matter.
+    const int draw = (dimmer.asleep() ? 0 : dimmer.dimmed() ? 30 : 80) + (wifi::enabled() ? 80 : 0) + (s_gpsRail ? 25 : 0);
+    if (draw != was) { battery.drawChanged(millis(), draw); was = draw; }
+  }
+#endif
   battery.tick(millis());
   {   // keep the battery count through restarts (RTC, every 5 s) and power loss (flash, every 30 min)
     static uint32_t rtcAt = 0, flashAt = 0;

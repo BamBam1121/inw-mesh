@@ -29,9 +29,20 @@ public:
             if (c > 0.89f && c < 1.11f) _est.cal = c;
             p.end();
         }
-        _est.update(millis(), sample(), HWCDC::isPlugged());
+        // The first conversion after the pin is set up can come out low, and it used to
+        // be the whole of the first figure: throw one away and take the middle of three.
+        sample();
+        uint16_t a = sample(); delay(20);
+        uint16_t b = sample(); delay(20);
+        uint16_t c = sample();
+        if (a > b) { const uint16_t t = a; a = b; b = t; }
+        _est.update(millis(), c <= a ? a : c >= b ? b : c, HWCDC::isPlugged());
         return true;
     }
+
+    // The T-Deck's own draw changed by a lot (main.cpp): what the voltage does next is
+    // that, not a charger going in or out (battery_est.h).
+    void drawChanged(uint32_t now, int mA) { _est.drawChanged(now, mA); }
 
     bool present() const { return true; }
     bool hasReading() const { return _est.mv > 2500; }

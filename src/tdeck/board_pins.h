@@ -38,6 +38,10 @@
 // stays asleep (no half-hourly fix windows) and Wi-Fi is switched off a minute in.
 // Plugged in, Wi-Fi stays on so updates still install while it charges.
 #define BOARD_RADIO_ONLY_WHEN_DARK 1
+// No fuel gauge or charger chip to ask: the battery figure and "plugged in" are worked
+// out from the cell's voltage (battery_est.h), which this board's own draw also moves.
+// main.cpp tells the estimate when that draw changes.
+#define BOARD_BATTERY_FROM_VOLTAGE 1
 #define REPORT_BOARD           "t-deck"
 
 // ---- Power: one switch for the keyboard, radio, display and SD --------------------
