@@ -402,7 +402,14 @@ static void fetchTask(void*) {
           const uint32_t until = millis() + 8000;
           while (got < len && (int32_t)(millis() - until) < 0) {
             const int a = st->available();
-            if (a > 0) got += st->read(buf + got, min(a, len - got));
+            if (a > 0) {
+              // A failed read answers with an error number below zero. Adding that to the
+              // count sent it negative, and the loop then sat out its 8 seconds on a dead
+              // connection: stop at once instead.
+              const int n = st->read(buf + got, min(a, len - got));
+              if (n < 0) break;
+              got += n;
+            } else if (!st->connected()) break;
             else vTaskDelay(pdMS_TO_TICKS(5));
           }
           const bool isPng = got > 4 && buf[0] == 0x89 && buf[1] == 'P';
