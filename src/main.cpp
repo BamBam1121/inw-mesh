@@ -674,6 +674,18 @@ static void usbCommands() {
       Serial.printf("[save] %s contacts=%d\n", landed ? "ok" : "slow", g_node ? g_node->getNumContacts() : -1);
       continue;
     }
+    // The installer's two tick boxes, sent once the firmware it wrote is up: "start
+    // fresh" (contacts, channels and messages go; keys, name and Wi-Fi stay) and
+    // "reset everything". Only a mark is left here: the wipe is done on the restart,
+    // before anything is running (dataio.h).
+    if (!strcmp(line, "wipe-keep-keys") || !strcmp(line, "wipe-everything")) {
+      const bool all = !strcmp(line, "wipe-everything");
+      const bool ok = wipeRequest(all);
+      Serial.printf("[wipe] %s %s\n", ok ? "ok" : "failed", all ? "everything" : "keep-keys");
+      Serial.flush();
+      if (ok) { delay(500); ESP.restart(); }
+      continue;
+    }
 #if INW_DEV   // the rest is for the developer build (pio run -e t-lora-pager-dev), never a release:
               // diagnostics, remote control for screenshots, test commands
     // Anyone with a USB cable could send "press" or "key" to get past the lock
@@ -689,6 +701,8 @@ static void usbCommands() {
       Serial.println("[usb] pager is locked: unlock it on the device first");
       continue;
     }
+    // What the installer's two wipes would remove and keep, without doing either.
+    if (!strcmp(line, "wipe-dry") || !strcmp(line, "wipe-dry-all")) { wipeDryRun(line[8] == '-'); continue; }
     // Diagnostic for the "a website update wipes my settings" report: how full
     // NVS is, what it holds, and the settings most likely to be noticed missing.
     if (!strcmp(line, "nvs")) {
@@ -1348,6 +1362,21 @@ void setup() {
     Serial.printf("[boot] settings           %s\n", from ? from : "defaults (no copy to restore)");
   } else if (fsOk) {
     ui_settings.saveMirror();               // keep the copy current from the first boot
+  }
+  // The web installer's "start fresh" or "reset everything", asked for over USB
+  // before this start (dataio.h). Done here, with nothing else running yet.
+  if (const uint8_t wipe = wipePending()) {
+    bootNote(wipe >= 2 ? (L::W < 400 ? "resetting everything" : "resetting everything: this takes a few minutes")
+                       : (L::W < 400 ? "starting fresh" : "starting fresh: clearing contacts and messages"));
+    wipeNow(wipe, [](int done, int total) {
+      char msg[48];
+      snprintf(msg, sizeof(msg), "starting fresh: %d of %d", done, total);
+      bootNote(msg);
+    });
+    Serial.println("[wipe] done, restarting");
+    Serial.flush();
+    delay(600);
+    ESP.restart();
   }
   char report[96];
   importBeforeNode(report, sizeof(report));

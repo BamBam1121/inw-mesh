@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <vector>
 #include <esp_heap_caps.h>
+#include <nvs_flash.h>
 #include <helpers/IdentityStore.h>
 #include "board_pins.h"
 #include "node.h"
@@ -89,9 +90,139 @@ static bool validStore(fs::FS& fs, const char* p, size_t rec) {
   return s >= rec && s % rec == 0;
 }
 
+// ---- starting afresh ------------------------------------------------------------
+// See dataio.h. NVS "inw-fresh" holds the marks:
+//   wipe   a wipe is wanted on the next start (1 keys kept, 2 everything)
+//   fresh  one was done, and the store is still empty on purpose: until contacts and
+//          channels are back on flash, nothing is put back from a backup
+//   noimp  an export on the card is never imported by itself again (Settings >
+//          Backups still imports it when asked)
+static uint8_t s_fresh = 0;
+
+// What goes when the keys are kept, besides MeshCore's /bl/<key> files (each
+// contact's last advert, one file per contact). Everything takes the whole store.
+static const char* const WIPE_DATA[] = {
+  "/contacts3", "/contacts3.bak", "/contacts3.tmp", "/channels2", "/channels2.bak", "/channels2.tmp",
+  "/hist.log", "/hist.tmp", "/hist_read.bin", "/hist_route.bin", "/regions.bin", "/chregion.bin"};
+static const char* const WIPE_REST[] = {"/prefs.json", "/identity/_main.id", "/ui.bin"};
+
+static bool wipedAtLevel1(const char* path) {
+  if (!strncmp(path, "/bl/", 4)) return true;
+  for (const char* d : WIPE_DATA) if (!strcmp(path, d)) return true;
+  return false;
+}
+
+bool wipeRequest(bool everything) {
+  Preferences p;
+  if (!p.begin("inw-fresh", false)) return false;
+  const bool ok = p.putUChar("wipe", everything ? 2 : 1) == 1;
+  p.end();
+  return ok;
+}
+
+uint8_t wipePending() {
+  Preferences p;
+  if (!p.begin("inw-fresh", true)) return 0;
+  const uint8_t v = p.getUChar("wipe", 0);
+  p.end();
+  return v;
+}
+
+void wipeDryRun(bool everything) {
+  Serial.printf("[wipe] dry run, %s: nothing is touched\n", everything ? "everything" : "keys kept");
+  int adverts = 0, others = 0;
+  {
+    File root = SPIFFS.open("/");
+    for (File f = root.openNextFile(); f; f = root.openNextFile()) {
+      const char* path = f.path();
+      if (!strncmp(path, "/bl/", 4)) { adverts++; continue; }      // a thousand of these on a busy mesh
+      others++;
+      Serial.printf("[wipe]   flash %-26s %7u bytes  %s\n", path, (unsigned)f.size(),
+                    everything || wipedAtLevel1(path) ? "REMOVE" : "keep");
+    }
+  }
+  Serial.printf("[wipe]   flash /bl/ (contacts' saved adverts): %d files  REMOVE\n", adverts);
+  if (everything) Serial.printf("[wipe]   flash: the store is formatted (%d files in all)\n", adverts + others);
+  if (sdMount()) {
+    char m[48];
+    for (const char* d : WIPE_DATA) { snprintf(m, sizeof(m), "/inw%s", d); if (SD.exists(m)) Serial.printf("[wipe]   sd    %-26s REMOVE\n", m); }
+    for (const char* d : WIPE_REST) { snprintf(m, sizeof(m), "/inw%s", d); if (SD.exists(m)) Serial.printf("[wipe]   sd    %-26s %s\n", m, everything ? "REMOVE" : "keep"); }
+    Serial.println("[wipe]   sd    exports, dated backups, other firmware's folders: left alone");
+  } else Serial.println("[wipe]   no sd card");
+  Serial.println(everything ? "[wipe]   settings storage: all of it (saved wi-fi, settings, the safety copies)"
+                            : "[wipe]   settings storage: the channels' safety copy and the per-chat notification rules");
+}
+
+// Removes the store's files one at a time: all of them, or only what "start fresh"
+// clears. Names are collected a batch at a time first, because removing while
+// listing skips entries. Returns how many went.
+static int wipeFiles(bool all, void (*progress)(int done, int total)) {
+  int total = 0;
+  {
+    File root = SPIFFS.open("/");
+    for (File f = root.openNextFile(); f; f = root.openNextFile()) if (all || wipedAtLevel1(f.path())) total++;
+  }
+  static char names[64][40];
+  int gone = 0;
+  for (int pass = 0; pass < 200 && gone < total; pass++) {
+    int n = 0;
+    {
+      File root = SPIFFS.open("/");
+      for (File f = root.openNextFile(); f && n < 64; f = root.openNextFile())
+        if (all || wipedAtLevel1(f.path())) strlcpy(names[n++], f.path(), sizeof(names[0]));
+    }
+    int removed = 0;
+    for (int i = 0; i < n; i++) {
+      if (SPIFFS.remove(names[i])) removed++;
+      if (progress && (gone + removed) % 10 == 0) progress(gone + removed, total);
+    }
+    gone += removed;
+    if (!removed) break;             // nothing would come off: don't go round forever
+  }
+  return gone;
+}
+
+void wipeNow(uint8_t level, void (*progress)(int done, int total)) {
+  const uint32_t t0 = millis();
+  int gone = 0;
+  // Everything: a format leaves nothing behind, whatever it was called. Keys kept:
+  // file by file, which with a thousand contacts is a thousand small files and a
+  // few minutes on this SPIFFS.
+  if (level >= 2 && SPIFFS.format()) gone = -1;
+  else gone = wipeFiles(level >= 2, progress);
+  // Our own mirror of the same things on the card: left there, the next start would
+  // put them straight back.
+  if (sdMount()) {
+    char m[48];
+    for (const char* d : WIPE_DATA) { snprintf(m, sizeof(m), "/inw%s", d); if (SD.exists(m)) SD.remove(m); }
+    if (level >= 2) for (const char* d : WIPE_REST) { snprintf(m, sizeof(m), "/inw%s", d); if (SD.exists(m)) SD.remove(m); }
+  }
+  Preferences p;
+  if (level >= 2) {
+    nvs_flash_erase();               // settings, saved Wi-Fi, phone pairings, the safety copies
+    nvs_flash_init();
+  } else {
+    if (p.begin("inw-keep", false)) { p.remove("ch"); p.end(); }        // the channels' safety copy
+    if (p.begin("inw-notify", false)) { p.clear(); p.end(); }            // rules for chats that are gone
+    if (p.begin("inw-field", false)) { p.remove("sosch"); p.end(); }     // the SOS channel was one of them
+  }
+  // Last, so a wipe cut short by the power is simply done again on the next start.
+  if (p.begin("inw-fresh", false)) {
+    p.putUChar("wipe", 0);
+    p.putUChar("fresh", level);
+    p.putUChar("noimp", 1);
+    p.end();
+  }
+  if (gone < 0) Serial.printf("[wipe] everything: store formatted in %lums\n", (unsigned long)(millis() - t0));
+  else Serial.printf("[wipe] %s: %d files removed in %lums\n", level >= 2 ? "everything" : "contacts, channels and messages (keys kept)",
+                     gone, (unsigned long)(millis() - t0));
+}
+
 // Restore order for a store file: our own flash copy, our SD mirror, then
 // Wadamesh's store on the card. Returns a label for what was used, or null.
-static const char* restoreStore(const char* name, size_t rec) {
+// backups false (the store was emptied on purpose): a save that was cut short is
+// still finished, but nothing is brought back.
+static const char* restoreStore(const char* name, size_t rec, bool backups = true) {
   char live[32], bak[40], mine[40], wada[48];
   snprintf(live, sizeof(live), "/%s", name);
   // A save writes <name>.tmp and then swaps it in. With the live file present the
@@ -105,7 +236,7 @@ static const char* restoreStore(const char* name, size_t rec) {
     }
     SPIFFS.remove(tmp);
   }
-  if (validStore(SPIFFS, live, rec)) return nullptr;
+  if (validStore(SPIFFS, live, rec) || !backups) return nullptr;
   snprintf(bak, sizeof(bak), "/%s.bak", name);
   if (validStore(SPIFFS, bak, rec) && copyFile(SPIFFS, bak, SPIFFS, live)) return "flash backup";
   if (!sdMount()) return nullptr;
@@ -247,10 +378,22 @@ void importBeforeNode(char* report, size_t cap) {
   // The key sits in /identity/; if the listing shows that as a folder rather
   // than the file, ask for the one file by name.
   if (szId < 0) szId = (long)fileSize(SPIFFS, "/identity/_main.id");
-  const bool whole = !leftovers &&
+  const bool filled =
       szContacts >= (long)CONTACT_REC && szContacts % CONTACT_REC == 0 &&
       szChannels >= (long)CHANNEL_REC && szChannels % CHANNEL_REC == 0 &&
-      szPrefs > 0 && szId >= 96 && szHist >= 0;
+      szPrefs > 0 && szId >= 96;
+  const bool whole = !leftovers && filled && szHist >= 0;
+  // Emptied on purpose by the installer (dataio.h): until there are contacts and
+  // channels on flash again, an empty store is not damage and nothing is put back.
+  {
+    Preferences p;
+    if (p.begin("inw-fresh", true)) { s_fresh = p.getUChar("fresh", 0); p.end(); }
+    if (s_fresh && filled) {
+      if (p.begin("inw-fresh", false)) { p.putUChar("fresh", 0); p.end(); }
+      s_fresh = 0;
+    }
+  }
+  const bool backups = !s_fresh;
   if (whole) {
     uint8_t d = dedupeChannels();
     Serial.printf("[store] all present, restore skipped (%lums)\n", (unsigned long)(millis() - t0));
@@ -262,30 +405,36 @@ void importBeforeNode(char* report, size_t cap) {
     if (from && w < cap) w += snprintf(report + w, cap - w, "%s<-%s ", what, from);
     if (from) logs.add(LOG_INFO, "%s restored from %s", what, from);
   };
-  note("contacts", restoreStore("contacts3", CONTACT_REC));
-  const char* chFrom = restoreStore("channels2", CHANNEL_REC);
-  if (!chFrom && !validStore(SPIFFS, "/channels2", CHANNEL_REC) && restoreFromKeep("ch", "/channels2")) chFrom = "safety copy";
+  if (!backups) {
+    Serial.printf("[store] started fresh (%s): nothing is restored from backups\n", s_fresh >= 2 ? "everything" : "keys kept");
+    if (w < cap) w += snprintf(report + w, cap - w, "started fresh ");
+  }
+  note("contacts", restoreStore("contacts3", CONTACT_REC, backups));
+  const char* chFrom = restoreStore("channels2", CHANNEL_REC, backups);
+  if (backups && !chFrom && !validStore(SPIFFS, "/channels2", CHANNEL_REC) && restoreFromKeep("ch", "/channels2")) chFrom = "safety copy";
   note("channels", chFrom);
   if (dedupeChannels()) note("channels", "duplicates removed");
 
   // Mesh prefs, message history: from the SD mirror, then (prefs only) NVS.
-  if (!SPIFFS.exists("/prefs.json")) {
+  // After "reset everything" the old name and radio settings stay gone.
+  if (s_fresh < 2 && !SPIFFS.exists("/prefs.json")) {
     const char* from = nullptr;
     if (sdMount() && fileSize(SD, "/inw/prefs.json") && copyFile(SD, "/inw/prefs.json", SPIFFS, "/prefs.json")) from = "sd mirror";
     else if (restoreFromKeep("pr", "/prefs.json")) from = "safety copy";
     note("settings", from);
   }
   // Channels' region scopes (regions.h): read after this, so restored first.
-  if (!SPIFFS.exists("/chregion.bin") && sdMount() && fileSize(SD, "/inw/chregion.bin") &&
+  if (backups && !SPIFFS.exists("/chregion.bin") && sdMount() && fileSize(SD, "/inw/chregion.bin") &&
       copyFile(SD, "/inw/chregion.bin", SPIFFS, "/chregion.bin")) note("channel regions", "sd mirror");
-  if (!SPIFFS.exists("/regions.bin") && sdMount() && fileSize(SD, "/inw/regions.bin"))
+  if (backups && !SPIFFS.exists("/regions.bin") && sdMount() && fileSize(SD, "/inw/regions.bin"))
     copyFile(SD, "/inw/regions.bin", SPIFFS, "/regions.bin");
-  if (!SPIFFS.exists("/hist.log") && sdMount() && fileSize(SD, "/inw/hist.log")) {
+  if (backups && !SPIFFS.exists("/hist.log") && sdMount() && fileSize(SD, "/inw/hist.log")) {
     if (copyFile(SD, "/inw/hist.log", SPIFFS, "/hist.log")) note("messages", "sd mirror");
     if (fileSize(SD, "/inw/hist_read.bin")) copyFile(SD, "/inw/hist_read.bin", SPIFFS, "/hist_read.bin");
   }
 
-  if (!SPIFFS.exists("/identity/_main.id")) {
+  // After "reset everything" no old key comes back from anywhere: the node makes a new one.
+  if (s_fresh < 2 && !SPIFFS.exists("/identity/_main.id")) {
     const char* from = nullptr;
     if (sdMount() && fileSize(SD, "/inw/identity/_main.id") >= 96 &&
         copyFile(SD, "/inw/identity/_main.id", SPIFFS, "/identity/_main.id")) from = "sd mirror";
@@ -369,6 +518,14 @@ void importPrefsAfterNode(char* report, size_t cap) {
   }
   const bool needContacts = g_node->getNumContacts() == 0;
   if (!needPrefs && !needChans && !needContacts) return;
+  // Started fresh from the installer: an export on the card would bring straight back
+  // what was just cleared. Settings > Backups still imports it when asked.
+  {
+    Preferences np;
+    bool noimp = false;
+    if (np.begin("inw-fresh", true)) { noimp = np.getUChar("noimp", 0); np.end(); }
+    if (noimp) return;
+  }
 
   size_t w = 0;
   if (sdMount() && SD.exists(JSON_PATH)) {
