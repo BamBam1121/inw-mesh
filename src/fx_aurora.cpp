@@ -91,7 +91,7 @@ void drawRays(const Strip& s, const Theme& t) {
 void starField(const Strip& s, const Theme& t, float phase, int dy, int streak) {
   for (int i = 0; i < scenes::starCount(70); i++) {
     const uint32_t h = scenes::hash(i + 7);
-    const int x = h % SCREEN_W, y = 20 + (h >> 9) % (150 - 20) + dy;
+    const int x = h % SCREEN_W, y = 20 + (h >> 9) % (scenes::GROUND - 20 - 20) + dy;
     if (!touches(s, y - streak, y + 1) || ((int)(phase * 0.2f) + i) % 7 == 0) continue;
     const uint16_t col = (i % 5 == 0) ? scenes::mix(t.dim, 0xFFFF, 0.6f) : t.dim;
     if (streak <= 0) s.g.drawPixel(x, y, col);
@@ -100,8 +100,8 @@ void starField(const Strip& s, const Theme& t, float phase, int dy, int streak) 
 }
 void moon(const Strip& s, const Theme& t, int dy) {
   if (!touches(s, 29 + dy, 52 + dy)) return;
-  s.g.fillCircle(88, 40 + dy, 11, scenes::rgb(0xf2f5ff));
-  s.g.fillCircle(93, 36 + dy, 10, t.bg);
+  s.g.fillCircle(scenes::MOON_X, 40 + dy, 11, scenes::rgb(0xf2f5ff));
+  s.g.fillCircle(scenes::MOON_X + 5, 36 + dy, 10, t.bg);
 }
 // The ridge and the sasquatch (whose limbs are drawWideLine: see Strip).
 void ground(const Strip& s, const Theme& t, float phase, float scroll, bool unread, int dy) {
@@ -432,7 +432,7 @@ void touchdown(Canvas& from, Canvas& to, uint16_t ms) {
       if (!landed && tm >= 340) {                        // light kicked up off the ridge
         landed = true;
         for (int i = 0; i < 6; i++)
-          spawnMote(motes, 60 + hashf(i * 7) * (SCREEN_W - 120), 150 + hashf(i * 3) * 16, (hashf(i * 5) - 0.5f) * 30, -40 - hashf(i) * 30,
+          spawnMote(motes, 60 + hashf(i * 7) * (SCREEN_W - 120), scenes::GROUND - 20 + hashf(i * 3) * 16, (hashf(i * 5) - 0.5f) * 30, -40 - hashf(i) * 30,
                     0.5f, i % 2 ? c.green : c.greenDim, 3 + (uint8_t)(hashf(i * 9) * 2));
       }
       stepMotes(motes, dt, -20);

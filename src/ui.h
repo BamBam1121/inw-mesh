@@ -70,6 +70,7 @@ public:
 
   void toast(const char* msg, uint16_t ms = 2500);
   void dismissToast() { if (_toastUntil) { _toastUntil = 0; _toastAt = 0; invalidate(); } }
+  bool toastUp() const { return _toastUntil != 0; }
   // Puts a notice on screen right away, before a slow blocking job starts.
   // Shown at once (no slide-in): the caller is about to block.
   void busy(const char* msg) { toast(msg, 60000); _toastAt = 0; draw(); }

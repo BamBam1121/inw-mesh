@@ -1,5 +1,12 @@
 // Lock-screen scenes, one per theme. Each draws the band between the status bar
-// and y = 172; the clock and summary text go underneath.
+// and the ground line; the clock and summary text go underneath.
+//
+// They were drawn for the pager's 480 x 222, and every number below still gives the
+// pager exactly that. A narrower, taller screen (the T-Deck's 320 x 240) is not shown
+// the left two thirds of the pager's picture: it gets the scene composed for itself.
+// The character stands a little left of centre with room ahead of him and for what he
+// says, the hills and peaks are framed by this screen's edges, the moon is in the
+// picture, and the ground sits higher to leave room for a big clock underneath.
 
 #pragma once
 #include <math.h>
@@ -9,7 +16,12 @@
 
 namespace scenes {
 
-constexpr int GROUND = 170;
+constexpr int W = SCREEN_W;
+constexpr bool NARROW = SCREEN_W < 400;
+constexpr int GROUND = NARROW ? 152 : 170;       // the line the character walks on
+constexpr int DY = GROUND - 170;                 // how far what stands on it moved from the pager's
+constexpr int MASCOT_X = NARROW ? 148 : 250;     // where the character stands (his hip centre)
+constexpr int MOON_X = NARROW ? 44 : 88;         // Aurora's moon: behind him, clear of what he says
 
 inline uint16_t rgb(uint32_t hex) { return lgfx::color565(hex >> 16, (hex >> 8) & 0xFF, hex & 0xFF); }
 
@@ -47,19 +59,27 @@ inline void stars(lgfx::LovyanGFX& d, uint16_t c, float phase, int count, int ma
 
 // ---- INW: mountains, scrolling pines, the walking sasquatch ---------------------------
 inline void inw(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll, bool unread) {
-  d.fillTriangle(0, 120, 90, 66, 160, 120, t.line);
-  d.fillTriangle(120, 124, 230, 58, 340, 124, t.line);
-  d.fillTriangle(300, 120, 400, 72, 480, 120, t.line);
-  const int span = 480 + 60;
-  for (int i = 0; i < 14; i++) {
+  if (NARROW) {
+    // Three peaks across this screen, the tallest behind him, lower and wider than a
+    // squeezed copy of the pager's would be.
+    d.fillTriangle(-30, 120 + DY, 52, 74 + DY, 128, 120 + DY, t.line);
+    d.fillTriangle(70, 124 + DY, 168, 62 + DY, 262, 124 + DY, t.line);
+    d.fillTriangle(214, 120 + DY, 286, 80 + DY, 350, 120 + DY, t.line);
+  } else {
+    d.fillTriangle(0, 120, 90, 66, 160, 120, t.line);
+    d.fillTriangle(120, 124, 230, 58, 340, 124, t.line);
+    d.fillTriangle(300, 120, 400, 72, 480, 120, t.line);
+  }
+  const int span = W + 60;
+  for (int i = 0; i < (NARROW ? 9 : 14); i++) {
     int px = (int)(i * 46 - scroll);
     px = ((px % span) + span) % span - 30;
-    if (px > 200 && px < 300) continue;
+    if (px > MASCOT_X - 50 && px < MASCOT_X + 50) continue;
     const int ph = 20 + (i % 3) * 7;
     d.fillTriangle(px, GROUND - 4, px + 9, GROUND - 4 - ph, px + 18, GROUND - 4, t.greenDim);
   }
-  d.drawFastHLine(0, GROUND, 480, t.greenDim);
-  drawSasquatch(d, t, 250, GROUND - mascotLift(), 88, phase, unread ? t.amber : t.green, mascotPose());
+  d.drawFastHLine(0, GROUND, W, t.greenDim);
+  drawSasquatch(d, t, MASCOT_X, GROUND - mascotLift(), 88, phase, unread ? t.amber : t.green, mascotPose());
 }
 
 // ---- Blocks: block terrain, square moon, a blocky explorer -----------------------------
@@ -67,21 +87,23 @@ inline void blocks(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll
   constexpr int B = 12;
   const uint16_t dirt = rgb(0x7a5230), dirtDark = rgb(0x5c3c22), grass = t.green, grassDark = t.greenDim;
   const uint16_t leaf = rgb(0x2f6b1f), trunk = rgb(0x6b4a2b), cloud = rgb(0x2c3442);
-  stars(d, t.dim, phase, 40, 110);
-  const int mx = 40 + (int)fmodf(scroll * 0.05f, 400.0f);
+  stars(d, t.dim, phase, 40, 110 + DY);
+  const int mx = 40 + (int)fmodf(scroll * 0.05f, (float)(W - 80));
   d.fillRect(mx, 30, 18, 18, rgb(0xefe7c4));
   d.fillRect(mx + 4, 34, 4, 4, rgb(0xcfc6a0));
   d.fillRect(mx + 10, 40, 3, 3, rgb(0xcfc6a0));
   for (int c = 0; c < 3; c++) {                                  // chunky clouds
-    int cx = (int)(c * 190 - scroll * 0.3f);
-    cx = ((cx % 620) + 620) % 620 - 70;
-    const int cy = 55 + c * 14;
+    // Spread over the screen's own width (and the same three as ever on the pager).
+    const int wrap = W + 140;
+    int cx = (int)(c * (wrap * 19 / 62) - scroll * 0.3f);
+    cx = ((cx % wrap) + wrap) % wrap - 70;
+    const int cy = 55 + c * 14 + DY / 2;
     d.fillRect(cx, cy, 64, 10, cloud);
     d.fillRect(cx + 10, cy - 8, 36, 8, cloud);
   }
   const int off = (int)scroll % B;
   const int first = (int)scroll / B;
-  for (int col = -1; col <= 480 / B + 1; col++) {
+  for (int col = -1; col <= W / B + 1; col++) {
     const int world = first + col;
     const int h = 2 + hash(world) % 3;
     const int x = col * B - off;
@@ -106,7 +128,7 @@ inline void blocks(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll
     }
   }
   // The explorer stands on whichever column is under him.
-  const int px = 234;
+  const int px = MASCOT_X - 16;
   const int world = first + (px + off) / B;
   const int ground = GROUND - (2 + hash(world) % 3) * B;
   const int swing = (int)(sinf(phase) * 3);
@@ -137,34 +159,40 @@ inline void heart(lgfx::LovyanGFX& d, int x, int y, uint16_t c) {
 
 inline void hero(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll, bool unread,
                  uint8_t batteryPct, uint16_t unreadCount) {
-  stars(d, t.dim, phase, 50, 100);
-  d.fillCircle(400, 44, 13, rgb(0xe9eef5));
-  d.fillCircle(405, 40, 11, t.bg);
+  stars(d, t.dim, phase, 50, 100 + DY);
+  // The moon: over the far hills on the pager. On a narrow screen it hangs low on
+  // the left, under the hearts: the right is where the adventurer's words go.
+  const int moonX = NARROW ? 46 : 400, moonY = NARROW ? 62 : 44;
+  d.fillCircle(moonX, moonY, 13, rgb(0xe9eef5));
+  d.fillCircle(moonX + 5, moonY - 4, 11, t.bg);
   // Far hill with a castle.
-  for (int x = 0; x < 480; x += 2) {
-    const int y = 118 + (int)(sinf((x + scroll * 0.2f) * 0.012f) * 12);
+  for (int x = 0; x < W; x += 2) {
+    const int y = 118 + DY + (int)(sinf((x + scroll * 0.2f) * 0.012f) * 12);
     d.fillRect(x, y, 2, GROUND - y, t.line);
   }
-  const int cx = 80 - (int)fmodf(scroll * 0.2f, 600.0f);
+  // The castle drifts off to the left and comes round again. On a narrow screen it
+  // starts ahead of the adventurer, in the corner, rather than behind his back.
+  const int cx = (NARROW ? W - 68 : 80) - (int)fmodf(scroll * 0.2f, (float)(W + 120));
   if (cx > -80) {
     const uint16_t stone = mix(t.line, t.bg, 0.4f);
-    d.fillRect(cx, 84, 46, 34, stone);
-    d.fillRect(cx - 8, 72, 12, 46, stone);
-    d.fillRect(cx + 42, 72, 12, 46, stone);
-    d.fillTriangle(cx - 10, 72, cx - 2, 58, cx + 6, 72, stone);
-    d.fillTriangle(cx + 40, 72, cx + 48, 58, cx + 56, 72, stone);
-    d.fillRect(cx + 18, 100, 10, 18, t.bg);
-    d.fillRect(cx + 4, 90, 4, 5, t.amber);                         // a lit window
+    const int cy = DY;
+    d.fillRect(cx, 84 + cy, 46, 34, stone);
+    d.fillRect(cx - 8, 72 + cy, 12, 46, stone);
+    d.fillRect(cx + 42, 72 + cy, 12, 46, stone);
+    d.fillTriangle(cx - 10, 72 + cy, cx - 2, 58 + cy, cx + 6, 72 + cy, stone);
+    d.fillTriangle(cx + 40, 72 + cy, cx + 48, 58 + cy, cx + 56, 72 + cy, stone);
+    d.fillRect(cx + 18, 100 + cy, 10, 18, t.bg);
+    d.fillRect(cx + 4, 90 + cy, 4, 5, t.amber);                    // a lit window
   }
   // Front hill.
-  auto hill = [&](int x) { return 146 + (int)(sinf((x + scroll) * 0.018f) * 9); };
-  for (int x = 0; x < 480; x += 2) {
+  auto hill = [&](int x) { return 146 + DY + (int)(sinf((x + scroll) * 0.018f) * 9); };
+  for (int x = 0; x < W; x += 2) {
     const int y = hill(x);
     d.fillRect(x, y, 2, GROUND - y, t.greenDim);
     if (hash((int)(x + scroll) / 2) % 11 == 0) d.drawFastVLine(x, y - 3, 3, mix(t.greenDim, t.green, 0.3f));
   }
   // The adventurer.
-  const int px = 232, g = hill(px + 6);
+  const int px = MASCOT_X - 18, g = hill(px + 6);
   const int step = (int)(sinf(phase) * 3);
   const uint16_t cloak = rgb(0x6b3f24), hood = rgb(0x3e9b5c), cloakDark = rgb(0x3a2414), skin = rgb(0xe0b48a);
   d.drawLine(px + 4, g - 12, px + 2 + step, g, cloakDark);          // legs
@@ -213,30 +241,37 @@ inline AuroraState& auroraLast() { static AuroraState s = {0, 0, false}; return 
 // The ridge, the pines and the sasquatch walking under the lights, dy px lower.
 inline void auroraGround(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll, bool unread, int dy = 0) {
   const uint16_t ridge = mix(t.bg, t.line, 0.6f), pine = mix(t.bg, t.line, 0.35f);
-  d.fillTriangle(0, 150 + dy, 110, 112 + dy, 230, 150 + dy, ridge);
-  d.fillTriangle(180, 152 + dy, 330, 104 + dy, 480, 152 + dy, ridge);
-  d.fillRect(0, 150 + dy, 480, GROUND - 150, ridge);
+  const int base = GROUND - 20 + dy;                 // where the ridge meets the flat
+  if (NARROW) {
+    // Two ridges that meet behind him and run off both edges of this screen.
+    d.fillTriangle(-40, base, 62, base - 34, 176, base, ridge);
+    d.fillTriangle(110, base + 2, 236, base - 44, 372, base + 2, ridge);
+  } else {
+    d.fillTriangle(0, base, 110, base - 38, 230, base, ridge);
+    d.fillTriangle(180, base + 2, 330, base - 46, 480, base + 2, ridge);
+  }
+  d.fillRect(0, base, W, 20, ridge);
   // Same speed and wrap as the INW scene, so the walk cycle matches the ground.
-  const int span = 480 + 60;
-  for (int i = 0; i < 18; i++) {
+  const int span = W + 60;
+  for (int i = 0; i < (NARROW ? 13 : 18); i++) {
     int x = (int)(i * 29 + (hash(i) % 13) - scroll);
     x = ((x % span) + span) % span - 30;
-    if (x > 205 && x < 290) continue;
+    if (x > MASCOT_X - 45 && x < MASCOT_X + 40) continue;
     const int h = 18 + hash(i * 3) % 16;
     d.fillTriangle(x, GROUND + dy, x + 7, GROUND - h + dy, x + 14, GROUND + dy, pine);
   }
-  d.drawFastHLine(0, GROUND + dy, 480, t.line);
-  drawSasquatch(d, t, 250, GROUND + dy - mascotLift(), 80, phase, unread ? t.amber : t.green, mascotPose());   // walking, like INW: the pines scroll past
+  d.drawFastHLine(0, GROUND + dy, W, t.line);
+  drawSasquatch(d, t, MASCOT_X, GROUND + dy - mascotLift(), 80, phase, unread ? t.amber : t.green, mascotPose());   // walking, like INW: the pines scroll past
 }
 
 inline void aurora(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll, bool unread) {
   auroraLast() = {phase, scroll, unread};
-  stars(d, t.dim, phase, 70, 150);
+  stars(d, t.dim, phase, 70, GROUND - 20);
   const float p = phase * 0.05f;
   for (int band = 0; band < 2; band++) {
     const uint16_t c = band ? t.greenDim : t.green;
     const int base = band ? 42 : 64;
-    for (int x = 0; x < 480; x += 3) {
+    for (int x = 0; x < W; x += 3) {
       const float fx = x * 0.011f;
       const int y = base + (int)(sinf(fx * (band ? 1.6f : 1.0f) + p * (band ? -1.3f : 1.0f)) * 16 + sinf(fx * 3.1f - p * 0.7f) * 6);
       const int len = 26 + (int)((sinf(fx * 2.3f + p * 1.9f) + 1) * 16);
@@ -247,8 +282,8 @@ inline void aurora(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll
       }
     }
   }
-  d.fillCircle(88, 40, 11, rgb(0xf2f5ff));
-  d.fillCircle(93, 36, 10, t.bg);
+  d.fillCircle(MOON_X, 40, 11, rgb(0xf2f5ff));
+  d.fillCircle(MOON_X + 5, 36, 10, t.bg);
   auroraGround(d, t, phase, scroll, unread);
 }
 

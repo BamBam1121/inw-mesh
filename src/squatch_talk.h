@@ -8,6 +8,7 @@
 #include "display_config.h"
 #include "theme.h"
 #include "mascot.h"      // SquatchPose
+#include "scenes.h"      // where the character stands on this screen
 #include "ui.h"          // L::W
 
 namespace talk {
@@ -182,11 +183,12 @@ inline void pose(Kind k, const char* text, uint32_t e, uint32_t total, SquatchPo
 // ground mid-hop: where the bubble's tail points.
 inline void anchor(uint8_t style, int lift, int& ax, int& ay) {
   switch (style) {
-    case STYLE_BLOCKS: ax = 241; ay = 70; break;           // the explorer (his ground varies)
-    case STYLE_HERO:   ax = 238; ay = 86; break;           // the adventurer
-    case STYLE_AURORA: ax = 266; ay = 90 - lift; break;    // the sasquatch, 80 px tall
-    default:           ax = 268; ay = 82 - lift; break;    // INW: the sasquatch, 88 px tall
+    case STYLE_BLOCKS: ax = scenes::MASCOT_X - 9;  ay = 70; break;           // the explorer (his ground varies)
+    case STYLE_HERO:   ax = scenes::MASCOT_X - 12; ay = 86; break;           // the adventurer
+    case STYLE_AURORA: ax = scenes::MASCOT_X + 16; ay = 90 - lift; break;    // the sasquatch, 80 px tall
+    default:           ax = scenes::MASCOT_X + 18; ay = 82 - lift; break;    // INW: the sasquatch, 88 px tall
   }
+  ay += scenes::DY;                                        // the ground is where this screen has it
 }
 
 // The bubble, its tail pointing at (ax, ay) - just above his head. It pops in over

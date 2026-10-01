@@ -16,6 +16,7 @@
 #include "regions.h"
 #include "battery.h"
 #include "serve_net.h"
+#include "scenes.h"       // where the character stands, for the taps that poke him
 // LovyanGFX's PNG writer (utility/lgfx_miniz.c), declared only in that file.
 extern "C" void* tdefl_write_image_to_png_file_in_memory_ex(const void* img, int w, int h, int chans, size_t* len, unsigned int level, int flip);
 void startSetup();   // settings_ui.cpp
@@ -420,8 +421,8 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
     // Stills, each from a fresh wake so he has something to say.
     auto wake = [&]() { sim::advance(20UL * 60UL * 1000UL); nav.push(makeLockView()); };
     wake(); run(1300); shot("st_1_morning_wave"); run(8000);
-    run(1000); tap(255, 125); run(200); shot("st_2_poke");
-    run(9000); tap(255, 125); tap(255, 125); tap(255, 125); run(600); shot("st_3_dizzy");
+    run(1000); tap(scenes::MASCOT_X + 5, scenes::GROUND - 45); run(200); shot("st_2_poke");
+    run(9000); tap(scenes::MASCOT_X + 5, scenes::GROUND - 45); tap(scenes::MASCOT_X + 5, scenes::GROUND - 45); tap(scenes::MASCOT_X + 5, scenes::GROUND - 45); run(600); shot("st_3_dizzy");
     run(9000);
     const ConvKey trail = ConvKey::contact(g_node->contacts[3].id.pub_key);
     history.add(trail, 0, ST_RECV, "Trailhead", "Made it to the top!", app::now(), 1, 30);
@@ -454,9 +455,9 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
       nav.push(makeLockView());
       run(1100);  snprintf(n, sizeof(n), "sq_%s_1_hello", tn); shot(n);
       run(5000);  snprintf(n, sizeof(n), "sq_%s_2_walking", tn); shot(n);
-      tap(255, 125); snprintf(n, sizeof(n), "sq_%s_3_poke", tn); shot(n);
+      tap(scenes::MASCOT_X + 5, scenes::GROUND - 45); snprintf(n, sizeof(n), "sq_%s_3_poke", tn); shot(n);
       run(900);   snprintf(n, sizeof(n), "sq_%s_4_poke_said", tn); shot(n);
-      tap(255, 125); tap(255, 125);
+      tap(scenes::MASCOT_X + 5, scenes::GROUND - 45); tap(scenes::MASCOT_X + 5, scenes::GROUND - 45);
       run(300);   snprintf(n, sizeof(n), "sq_%s_5_dizzy", tn); shot(n);
       run(6000);
       tap(60, 110); snprintf(n, sizeof(n), "sq_%s_6_tap_elsewhere", tn); shot(n);
@@ -534,7 +535,7 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
   View* base = nav.top();
   nav.push(makeLockView()); run(600);
   shot("touch_0_locked");
-  tap(160, 120);                       shot("touch_1_tap_says_swipe");
+  tap(40, 100);                        shot("touch_1_tap_says_swipe");   // off the character: a tap on him is a poke
   swipe(160, 200, 160, 80);            shot("touch_2_swiped_up");
   tap(8 + 28, 200);                    shot("touch_3_tapped_chats");
   tap(160, 42 + 22);                   shot("touch_4_tapped_first_chat");

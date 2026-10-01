@@ -128,29 +128,15 @@ public:
     scenes::mascotLift() = 0;
     scenes::mascotPose() = SquatchPose();
     drawTalk(d, t);
-    d.fillRect(0, 172, L::W, L::H - 172, t.bg);
+    d.fillRect(0, scenes::GROUND + 2, L::W, L::H - scenes::GROUND - 2, t.bg);
 
-    d.setFont(&fonts::Font4);
-    d.setTextColor(t.green, t.bg);
-    d.drawString(app::timeValid() ? clockText(app::now()) : "--:--", 8, 182);
-    d.setFont(&fonts::Font2);
-    d.setTextColor(t.dim, t.bg);
     const uint16_t un = app::unread();
-    if (un || !g_node) {
-      char sub[40];
-      if (un) snprintf(sub, sizeof(sub), "%u unread message%s", un, un == 1 ? "" : "s");
-      else snprintf(sub, sizeof(sub), "radio down");
-      d.setTextColor(un ? t.amber : t.red, t.bg);
-      // A narrow screen has no room beside the clock, but a taller one has a row under it.
-      if (L::W < 400) d.drawString(sub, 8, 208);
-      else d.drawString(sub, 140, 192);
-      d.setTextColor(t.dim, t.bg);
-    }
-    if (app::timeValid()) {                // the date, once: the time is the big clock's
-      const char* date = dateText(app::now());
-      d.drawString(date, L::W - 8 - d.textWidth(date), 192);
-    }
+    char sub[40] = "";
+    if (un) snprintf(sub, sizeof(sub), "%u unread message%s", un, un == 1 ? "" : "s");
+    else if (!g_node) snprintf(sub, sizeof(sub), "radio down");
+    const char* date = app::timeValid() ? dateText(app::now()) : "";   // once: the time is the big clock's
     // A new line on every wake, and every half hour while it sits here.
+    d.setFont(&fonts::Font2);
     if (!_quip[0] || millis() - _quipAt > 30UL * 60UL * 1000UL) {
       for (int i = 0; i < 8; i++) {
         strlcpy(_quip, quipNext(), sizeof(_quip));
@@ -158,8 +144,59 @@ public:
       }
       _quipAt = millis();
     }
-    d.setTextColor(t.greenDim, t.bg);
-    d.drawString(_quip, 8, L::W < 400 ? 224 : 206);
+    if (L::W < 400) {
+      // A narrow, taller screen (the T-Deck) has its own face rather than the pager's
+      // row squeezed in: a clock big enough to read at arm's length, centred like a
+      // phone's, with am/pm small beside it; under it the date and what is waiting;
+      // then the one-liner.
+      const char* clk = app::timeValid() ? clockText(app::now()) : "--:--";
+      char digits[8];
+      size_t n = 0;
+      while (clk[n] && !isalpha((unsigned char)clk[n]) && n < sizeof(digits) - 1) { digits[n] = clk[n]; n++; }
+      digits[n] = 0;
+      const char* ampm = clk + n;
+      d.setFont(&fonts::Font6);
+      const int wd = d.textWidth(digits);
+      d.setFont(&fonts::Font4);
+      const int wa = ampm[0] ? d.textWidth(ampm) + 5 : 0;
+      const int x = (L::W - wd - wa) / 2, top = scenes::GROUND + 9;
+      d.setFont(&fonts::Font6);
+      d.setTextColor(t.green, t.bg);
+      d.drawString(digits, x, top);
+      if (ampm[0]) {
+        d.setFont(&fonts::Font4);
+        d.setTextColor(scenes::mix(t.bg, t.green, 0.55f), t.bg);
+        d.drawString(ampm, x + wd + 5, top + 19);
+      }
+      d.setFont(&fonts::Font2);
+      // A toast ("swipe up to unlock") comes up over these two lines: it has them to itself.
+      if (nav.toastUp()) { date = ""; sub[0] = 0; }
+      const int wDate = date[0] ? d.textWidth(date) : 0, wSub = sub[0] ? d.textWidth(sub) : 0;
+      const int gap = wDate && wSub ? 16 : 0;
+      const int lx = (L::W - wDate - gap - wSub) / 2, ly = scenes::GROUND + 56;
+      d.setTextColor(t.dim, t.bg);
+      if (wDate) d.drawString(date, lx, ly);
+      if (gap) d.fillRect(lx + wDate + gap / 2 - 1, ly + 8, 2, 2, t.dim);
+      if (wSub) {
+        d.setTextColor(un ? t.amber : t.red, t.bg);
+        d.drawString(sub, lx + wDate + gap, ly);
+      }
+      d.setTextColor(t.greenDim, t.bg);
+      if (!nav.toastUp()) d.drawString(_quip, (L::W - d.textWidth(_quip)) / 2, ly + 16);
+    } else {
+      d.setFont(&fonts::Font4);
+      d.setTextColor(t.green, t.bg);
+      d.drawString(app::timeValid() ? clockText(app::now()) : "--:--", 8, 182);
+      d.setFont(&fonts::Font2);
+      if (sub[0]) {
+        d.setTextColor(un ? t.amber : t.red, t.bg);
+        d.drawString(sub, 140, 192);
+      }
+      d.setTextColor(t.dim, t.bg);
+      if (date[0]) d.drawString(date, L::W - 8 - d.textWidth(date), 192);
+      d.setTextColor(t.greenDim, t.bg);
+      d.drawString(_quip, 8, 206);
+    }
 
     // Touchscreen: the face rides up with the finger (the status bar stays), and says
     // so once letting go will unlock.
@@ -268,7 +305,9 @@ private:
 
   // Where he is on the lock face (scenes.h): a finger-sized box round him, and round
   // the other themes' characters, who stand in the same spot.
-  bool onMascot(int x, int y) const { return x >= 205 && x <= 305 && y >= 60 - _hop && y <= 176; }
+  bool onMascot(int x, int y) const {
+    return x >= scenes::MASCOT_X - 45 && x <= scenes::MASCOT_X + 55 && y >= scenes::GROUND - 110 - _hop && y <= scenes::GROUND + 6;
+  }
 
   // A poke: he hops and says so. Three in a few seconds and he's seeing stars.
   void poke() {
