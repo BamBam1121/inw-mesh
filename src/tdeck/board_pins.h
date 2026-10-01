@@ -22,6 +22,7 @@
 #define BOARD_HAS_TOUCH        1    // GT911 capacitive touch: the main input on this board
 #define BOARD_ROW_H            28   // menu rows sized for a finger (5 mm), not a wheel
 #define BOARD_HOME_DASHBOARD   1    // home is src/tdeck/dashboard.cpp, not the wheel carousel
+#define BOARD_SMOOTH_SHAPES    1    // big pixels: round shapes and slanted lines get soft edges (smooth_canvas.h)
 
 // Wi-Fi updates come from firmware/t-deck/ and must carry a signature naming
 // "t-deck" (ota.cpp): pager firmware can never be installed on a T-Deck this way.

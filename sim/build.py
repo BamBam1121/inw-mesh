@@ -69,6 +69,9 @@ def main():
         h = os.path.join(ROOT, "src", "tdeck", f.replace(".cpp", ".h"))
         if os.path.exists(h):
             sync(h)
+    # A T-Deck header the shared screens include by name (ui.h): its soft-edged canvas.
+    if "--pager" not in sys.argv:
+        sync(os.path.join(ROOT, "src", "tdeck", "smooth_canvas.h"))
     objs = []
     lg = os.path.join(OBJ, "lgfx_v1.o")
     if not os.path.exists(lg):

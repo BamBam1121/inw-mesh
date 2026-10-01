@@ -194,7 +194,9 @@ inline void anchor(uint8_t style, int lift, int& ax, int& ay) {
 // The bubble, its tail pointing at (ax, ay) - just above his head. It pops in over
 // the first ~0.16 s (grow 0..1), sized for the whole line, and the first `chars`
 // letters show once it's full size (-1: all of them).
-inline void bubble(lgfx::LovyanGFX& d, const Theme& t, int ax, int ay, const char* text, float grow, int chars = -1) {
+// (Any canvas: on one that draws round shapes with soft edges, the bubble has them.)
+template <class G>
+inline void bubble(G& d, const Theme& t, int ax, int ay, const char* text, float grow, int chars = -1) {
   d.setFont(&fonts::Font2);
   const int fullW = d.textWidth(text) + 18, fullH = 22;
   const float g = grow < 0.35f ? 0.35f : (grow > 1 ? 1 : grow);

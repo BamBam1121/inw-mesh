@@ -13,7 +13,18 @@
 #define BOARD_ROW_H 20
 #endif
 
+// What every screen draws onto. A board with big pixels (the T-Deck) has its round
+// shapes and slanted lines drawn with soft edges (src/tdeck/smooth_canvas.h); the
+// calls are the same either way.
+#ifndef BOARD_SMOOTH_SHAPES
+#define BOARD_SMOOTH_SHAPES 0
+#endif
+#if BOARD_SMOOTH_SHAPES
+#include "smooth_canvas.h"
+using Canvas = SmoothCanvas;
+#else
 using Canvas = lgfx::LGFX_Sprite;
+#endif
 
 namespace fx { bool active(); }       // fx.h: effects running keep the screen redrawing
 
