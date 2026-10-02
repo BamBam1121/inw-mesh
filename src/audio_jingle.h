@@ -33,7 +33,7 @@ public:
     if (!j || !_codec || !_codec->ok() || _busy || !_vol) return;
     _busy = true;
     _j = j;
-    if (xTaskCreatePinnedToCore(task, "jingle", 4096, this, 2, nullptr, 0) != pdPASS) { _busy = false; _fail = 1; }
+    if (xTaskCreatePinnedToCore(task, "jingle", 4096, this, 5, nullptr, 0) != pdPASS) { _busy = false; _fail = 1; }
   }
 
   // Why the last sound didn't play (1: no task, 2: I2S wouldn't start), once,
@@ -50,9 +50,15 @@ private:
       p->_codec->setVolumePercent(p->_vol);
       p->_codec->setMute(false);
       p->tone({0, 60});                  // the amp needs a moment after power-up, or the first note is clipped
+      p->_late = 0; p->_fed = millis();
       for (uint8_t i = 0; i < p->_j->count; i++) p->tone(p->_j->steps[i]);
-      p->tone({0, 40});                  // let the last note drain before power-down
+      // The speaker holds Es8311::QUEUE_MS of sound; fed later than that, it ran dry and
+      // the tune had a hole in it. Say so, with how late: it is the only trace of one.
+      const uint32_t late = p->_late;
+      p->tone({0, (uint16_t)(40 + Es8311::QUEUE_MS)});   // let the last note play out before power-down
       p->_codec->stop();
+      if (late > Es8311::QUEUE_MS) Serial.printf("[jingle] %s had a gap: fed %lu ms late (the speaker holds %u ms)\n", p->_j->name, (unsigned long)late, (unsigned)Es8311::QUEUE_MS);
+      else Serial.printf("[jingle] %s played through (latest feed %lu ms, the speaker holds %u ms)\n", p->_j->name, (unsigned long)late, (unsigned)Es8311::QUEUE_MS);
     } else p->_fail = 2;
     if (p->_amp) p->_amp(false);
     p->_busy = false;
@@ -96,6 +102,9 @@ private:
         }
       }
       _codec->write(buf, n);
+      const uint32_t now = millis();     // how long since the speaker was last given sound
+      if (now - _fed > _late) _late = now - _fed;
+      _fed = now;
     }
   }
 
@@ -106,4 +115,5 @@ private:
   volatile bool _busy = false;
   uint8_t _vol = 60;
   float _phase = 0;
+  uint32_t _fed = 0, _late = 0;
 };

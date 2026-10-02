@@ -12,6 +12,10 @@
 class Es8311 {
 public:
   static constexpr uint32_t SAMPLE_RATE = 16000;
+  // How much sound waits in the speaker's queue. Whoever feeds it can be held up for
+  // this long (the flash being written, Wi-Fi starting) before the tune has a hole.
+  static constexpr int QUEUE_BUFS = 8, QUEUE_LEN = 512;      // 256 ms (it was 64: start-up left holes in the tune)
+  static constexpr uint32_t QUEUE_MS = (uint32_t)QUEUE_BUFS * QUEUE_LEN * 1000 / SAMPLE_RATE;
   static constexpr i2s_port_t PORT = I2S_NUM_0;
 
   bool begin(TwoWire& w = Wire) {
@@ -43,8 +47,8 @@ public:
     cfg.bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT;
     cfg.channel_format = I2S_CHANNEL_FMT_ONLY_LEFT;
     cfg.communication_format = I2S_COMM_FORMAT_STAND_I2S;
-    cfg.dma_buf_count = 4;
-    cfg.dma_buf_len = 256;
+    cfg.dma_buf_count = QUEUE_BUFS;
+    cfg.dma_buf_len = QUEUE_LEN;
     cfg.tx_desc_auto_clear = true;
     if (i2s_driver_install(PORT, &cfg, 0, nullptr) != ESP_OK) return false;
     i2s_pin_config_t pins = {};
