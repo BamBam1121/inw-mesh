@@ -1524,6 +1524,13 @@ void setup() {
   }
 
   display.init();
+  // Start the shared bus for the SD card and the radio now, while nothing is drawing.
+  // Its first begin() hardware-resets the SPI peripheral the panel also uses, and it
+  // takes no lock to do it. Left to the SD step, that reset could land in the middle of
+  // a boot-animation frame (drawn from its own task) and leave the panel showing junk
+  // until the next restart. Every later begin() is a no-op, so the bus ends up set
+  // exactly as before, only safely.
+  inw_spi.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, -1);
 #if BOARD_HAS_TOUCH
   display.setRotation(TFT_ROTATION ^ ((ui_settings.orient & 1) ? 2 : 0));   // Settings > Display: upside down
 #else
