@@ -93,6 +93,9 @@ bool InwNode::transmitDM(PendingDM& p, const char* text) {
   p.acks[p.attempt & 3] = ack;
   p.sentAt = millis();
   p.deadline = p.sentAt + est + 2000;
+  // From the fourth try the gap grows (3 s more each time, up to 30 s): the tries are
+  // spread over a few minutes instead of filling the air at once.
+  if (p.attempt >= 3) p.deadline += min<uint32_t>(30000, (p.attempt - 2) * 3000UL);
   if (_awaitCount < 4) _awaitTx[_awaitCount++] = p.histId;
   return true;
 }
@@ -119,11 +122,14 @@ void InwNode::tick() {
   for (auto& p : _pending) {
     if (!p.used || (int32_t)(now - p.deadline) < 0) continue;
     HistMsg* m = history.find(p.histId);
-    const uint8_t maxAttempts = inwAutoRetry() ? 3 : 1;
+    // Up to 15 tries (the receiving end shows a retried copy once). A try past the
+    // fourth carries its number in two more bytes, which the longest texts have no room for.
+    uint8_t maxAttempts = inwAutoRetry() ? 15 : 1;
+    if (m && maxAttempts > 4 && strlen(m->text) > MAX_TEXT_LEN - 2) maxAttempts = 4;
     if (m && p.attempt + 1 < maxAttempts) {
       p.attempt++;
-      // Last try: the stored route may be stale, so drop it and flood.
-      if (p.attempt == maxAttempts - 1 && inwAutoResetPath()) {
+      // Third try: the stored route may be stale, so drop it and flood from here on.
+      if (p.attempt == 2 && inwAutoResetPath()) {
         ContactInfo* c = contact(p.pub);
         if (c && c->out_path_len != OUT_PATH_UNKNOWN) resetPathTo(*c);
       }
@@ -229,7 +235,21 @@ bool InwNode::removeChannel(uint8_t idx) {
 }
 
 // ---- receive hooks -------------------------------------------------------------
+// True for a message already taken from this sender; otherwise remembers it.
+bool InwNode::seenBefore(const uint8_t* pub, uint32_t ts, const char* text) {
+  uint32_t who, h = 2166136261u;
+  memcpy(&who, pub, 4);
+  for (const char* p = text; *p; p++) h = (h ^ (uint8_t)*p) * 16777619u;
+  for (const GotDM& g : _got) if (g.ts == ts && g.who == who && g.textHash == h && ts) return true;
+  _got[_gotNext] = {who, ts, h};
+  _gotNext = (_gotNext + 1) % (sizeof(_got) / sizeof(_got[0]));
+  return false;
+}
+
 void InwNode::onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t ts, const char* text) {
+  // A retry of one we have: our ack was lost on the way back. MeshCore acks it again
+  // after this returns; it isn't shown, queued for the phone or announced a second time.
+  if (seenBefore(from.id.pub_key, ts, text)) return;
   MyMesh::onMessageRecv(from, pkt, ts, text);
   const bool room = from.type == ADV_TYPE_ROOM;
   uint8_t flags = mentions(text, getNodeName()) ? HF_MENTION : 0;

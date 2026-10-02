@@ -193,6 +193,12 @@ private:
 
   static constexpr uint8_t PENDING_MAX = 8;
   PendingDM _pending[PENDING_MAX];
+  // Direct messages lately received, to know a retried copy when it comes: the sender
+  // keeps the timestamp across its tries (the ack still goes back for each one).
+  struct GotDM { uint32_t who, ts, textHash; };
+  GotDM _got[24] = {};
+  uint8_t _gotNext = 0;
+  bool seenBefore(const uint8_t* pub, uint32_t ts, const char* text);
 
   // Our own originated flood posts, by packet hash, so repeats heard back can be
   // counted against the message that caused them.
