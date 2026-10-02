@@ -129,14 +129,21 @@ static String deviceId() {
 }
 
 // ---- the store ---------------------------------------------------------------------------
+// How many reports are waiting to go. Counted from the store once, then kept: SPIFFS
+// has no real folders, so finding ours means listing every file there is, and with a
+// thousand contacts' worth of files that takes over a second. tick() used to do that
+// every minute, and the whole device stood still for it each time.
+static int16_t s_waiting = -1;              // -1: not counted yet
 uint8_t waiting() {
   if (!s_mounted) return 0;
-  uint8_t n = 0;
-  // SPIFFS has no real folders: list the root and count our prefix.
-  File root = SPIFFS.open("/");
-  for (File f = root.openNextFile(); f; f = root.openNextFile())
-    if (!strncmp(f.path(), DIR, 4)) n++;
-  return n;
+  if (s_waiting < 0) {
+    int16_t n = 0;
+    File root = SPIFFS.open("/");
+    for (File f = root.openNextFile(); f; f = root.openNextFile())
+      if (!strncmp(f.path(), DIR, 4)) n++;
+    s_waiting = n;
+  }
+  return (uint8_t)min<int16_t>(s_waiting, 255);
 }
 
 static bool save(const String& json) {
@@ -148,6 +155,7 @@ static bool save(const String& json) {
   const bool ok = f.print(json) == json.length();
   f.close();
   if (!ok) SPIFFS.remove(path);
+  else s_waiting++;
   return ok;
 }
 
@@ -312,18 +320,20 @@ void tick() {
   }
   if (s_sent >= MAX_PER_BOOT) return;
   lastTry = millis();
+  if (!waiting()) return;                               // nothing to send: no listing of the store
   File root = SPIFFS.open("/");
   String path;
   for (File f = root.openNextFile(); f; f = root.openNextFile())
     if (!strncmp(f.path(), DIR, 4)) { path = f.path(); break; }
   root.close();
-  if (!path.length()) return;
+  if (!path.length()) { s_waiting = 0; return; }
   File f = SPIFFS.open(path, FILE_READ);
   if (!f) return;
   const String body = f.readString();
   f.close();
   if (!body.length() || post(withName(body))) {
     SPIFFS.remove(path);
+    if (s_waiting > 0) s_waiting--;
     s_sent++;
     Serial.printf("[report] sent %s\n", path.c_str());
   }

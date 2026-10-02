@@ -864,7 +864,24 @@ static void telemetryMenu() {
 
 static void backupsMenu() {
   auto* m = new MenuView("Backups");
-  m->info("sd card", []() -> String { return sdMount() ? String((unsigned long)(sdFreeBytes() / 1048576ULL)) + " MB free" : String("not found"); });
+  m->info("sd card", []() -> String {
+    const SdState st = sdState();
+    return st == SD_MOUNTED ? String((unsigned long)(sdFreeBytes() / 1048576ULL)) + " MB free"
+         : st == SD_UNREADABLE ? String("can't be read") : String("not found");
+  });
+  // A card this device can't read (exFAT, or a Mac's partition scheme) can be made one it
+  // can. Offered only then: a card that works is never formatted.
+  if (sdState() == SD_UNREADABLE) {
+    m->action("format this card", [] {
+      confirm("Format the SD card?", "everything on the card is erased. it becomes FAT32, which this device reads. large cards take a minute",
+              [] {
+                nav.busy("formatting the card...");
+                const char* r = sdFormat();
+                if (!strcmp(r, "formatted")) { nav.busy("formatted. backing up to it..."); nav.toast(sdBackupNow(), 4000); }
+                else nav.toast(r, 4000);
+              });
+    });
+  }
   m->info("last sd backup", []() -> String { return ui_settings.lastSdBackup ? String(timeAgo(ui_settings.lastSdBackup)) + " ago" : String("never"); });
   m->action("back up to sd now", [] { nav.busy("backing up..."); nav.toast(sdBackupNow(), 3500); });
   m->action("export meshcore json (includes key!)", [] {

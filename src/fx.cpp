@@ -488,6 +488,7 @@ lgfx::LovyanGFX* P() { return s_target ? s_target : (lgfx::LovyanGFX*)nav.displa
 uint32_t tnow() { return s_test ? s_vclock : millis(); }
 bool testStop(uint32_t t0) {
   s_frames++;
+  if (!s_test) { app::keysPump(); return false; }   // once a frame: keys typed during the animation are kept
   if (!s_test) return false;
   s_vclock += 16;
   if (s_vclock - t0 > s_stopMs) s_stopped = true;

@@ -11,6 +11,15 @@
 bool sdMount();
 bool sdMounted();
 uint64_t sdFreeBytes();
+// No card, a card that answers but has no file system the pager reads (exFAT, a Mac's
+// GUID partition map), or mounted. Probes at most every 10 s.
+enum SdState : uint8_t { SD_NONE, SD_UNREADABLE, SD_MOUNTED };
+SdState sdState();
+// Formats a card that does NOT mount as FAT32; refuses one that mounts. Erases the card.
+const char* sdFormat();
+#if INW_DEV
+const char* sdTest(const char* what);   // developer build: info | ls | keep | gpt | back | format
+#endif
 
 // Before nodeBegin(): make sure the SPIFFS store has everything it should.
 // Writes a human-readable summary line into `report`.

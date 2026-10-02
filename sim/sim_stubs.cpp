@@ -139,6 +139,7 @@ void applyTheme() {
 static bool s_animate = true;
 bool screenChangesAnimate() { return s_animate; }
 void setScreenChangesAnimate(bool on) { s_animate = on; }
+void keysPump() {}
 void testNotify() {}
 void lock() {}
 void reboot() {}
@@ -222,6 +223,8 @@ void setEnabled(bool on) { s_on = on; }
 bool sendLog(const char*) { return true; }
 }
 #include "dataio.h"
+SdState sdState() { return SD_MOUNTED; }
+const char* sdFormat() { return "this card works: not formatting it"; }
 #include "fieldtools.h"
 bool sdMount() { return true; }
 const char* sdBackupNow(bool) { return "simulator"; }

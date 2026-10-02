@@ -1,5 +1,12 @@
 #include "dataio.h"
 #include <SD.h>
+#include <sd_diskio.h>
+extern "C" {
+#include <ff.h>
+#include <diskio.h>      // disk_initialize: start the card without mounting anything
+}
+#include <functional>
+#include <esp_rom_crc.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
@@ -24,22 +31,261 @@ static const size_t CONTACT_REC = 152;   // DataStore's /contacts3 record
 static const size_t CHANNEL_REC = 68;    // DataStore's /channels2 record
 static const char* JSON_PATH = "/meshcore-backup.json";
 
+// ---- the card ----------------------------------------------------------------------------------
+// The pager reads FAT32 (or FAT16), with or without an ordinary partition table. A card a
+// computer reads happily can still not be one of those: exFAT (what cards over 32 GB come
+// as), or a Mac's "GUID Partition Map".
+//
+// A mount that fails is never tried. The SD library's way out of a failed mount frees
+// the file system object and only then tells FatFs to forget it, and FatFs writes to it
+// and deletes its lock on the way: a use of freed memory, harmless if nothing else took
+// that memory in between, a crash or a corrupted byte somewhere if something did. With
+// no card in, the map used to ask for a mount for every tile. So the card is looked at
+// first, below the file system: does one answer, and does its first block lead to a FAT
+// volume? Only then is it mounted.
+static SdState s_state = SD_NONE;
+
+static void sdLetGo() {
+  // The radio and the screen are on these wires too. Deselect the card and clock it a
+  // few bytes, which is what makes a card release the data line.
+  pinMode(PIN_SD_CS, OUTPUT);
+  digitalWrite(PIN_SD_CS, HIGH);
+  inw_spi.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
+  for (int i = 0; i < 16; i++) inw_spi.transfer(0xFF);
+  inw_spi.endTransaction();
+}
+
+// With the card not mounted: start it without a file system and run fn(pdrv) on it.
+// False if no card answers (or fn says so).
+static bool sdRaw(const std::function<bool(uint8_t)>& fn) {
+  if (s_sd) return false;
+  inw_spi.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, -1);   // no-op if the radio already did
+  const uint8_t pdrv = sdcard_init(PIN_SD_CS, &inw_spi, 4000000);
+  if (pdrv == 0xFF) return false;
+  bool ok = false;
+  if (!(disk_initialize(pdrv) & STA_NOINIT)) ok = fn ? fn(pdrv) : true;
+  sdcard_uninit(pdrv);
+  sdLetGo();
+  return ok;
+}
+
+static bool fatVolume(const uint8_t* b) {
+  return b[510] == 0x55 && b[511] == 0xAA && (b[0] == 0xEB || b[0] == 0xE9 || b[0] == 0xE8) &&
+         (!memcmp(b + 54, "FAT", 3) || !memcmp(b + 82, "FAT32", 5));
+}
+
+// What is in the slot: nothing, a card FatFs won't mount, or one it will (SD_MOUNTED
+// here means "will mount").
+static SdState sdProbe() {
+  static uint8_t blk[512], vol[512];
+  SdState st = SD_NONE;
+  sdRaw([&st](uint8_t pdrv) {
+    st = SD_UNREADABLE;
+    if (!sd_read_raw(pdrv, blk, 0) || blk[510] != 0x55 || blk[511] != 0xAA) return true;
+    if (fatVolume(blk)) { st = SD_MOUNTED; return true; }          // no partition table: the volume starts here
+    for (int i = 0; i < 4; i++) {
+      const uint8_t* e = blk + 446 + i * 16;
+      const uint32_t lba = (uint32_t)e[8] | ((uint32_t)e[9] << 8) | ((uint32_t)e[10] << 16) | ((uint32_t)e[11] << 24);
+      if (!e[4] || e[4] == 0xEE || !lba) continue;                   // empty, or a GUID card's stand-in entry
+      if (sd_read_raw(pdrv, vol, lba) && fatVolume(vol)) { st = SD_MOUNTED; break; }
+    }
+    return true;
+  });
+  return st;
+}
+
+// After a look that found nothing to mount, the next one waits 10 s: a look is a whole
+// card start-up, a good part of a second with no card in, and callers ask often.
+static uint32_t s_lookedAt = 0;
+static void sdLookAgain() { s_lookedAt = 0; }
+
 bool sdMount() {
   if (s_sd) return true;
-  // No card in (a T-Deck often has none): SD.begin takes a good part of a second to
-  // give up, and the map asked once for every tile it drew, so panning crawled. After
-  // a failure, try again at most every 10 s.
-  static bool failed = false;
-  static uint32_t failedAt = 0;
-  if (failed && millis() - failedAt < 10000) return false;
-  inw_spi.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, -1);   // no-op if the radio already did
+  if (s_lookedAt && millis() - s_lookedAt < 10000) return false;
+  s_state = sdProbe();
+  s_lookedAt = millis() | 1;
+  if (s_state != SD_MOUNTED) return false;
+  inw_spi.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, -1);
   s_sd = SD.begin(PIN_SD_CS, inw_spi, 4000000, "/sd", 5, false);
-  failed = !s_sd;
-  failedAt = millis();
+  if (!s_sd) { s_state = SD_UNREADABLE; sdLetGo(); }               // looked like FAT, didn't mount
   return s_sd;
 }
 bool sdMounted() { return s_sd; }
 uint64_t sdFreeBytes() { return s_sd ? SD.totalBytes() - SD.usedBytes() : 0; }
+
+SdState sdState() {
+  if (s_sd) return SD_MOUNTED;
+  sdMount();                                   // looks again only when the last look is 10 s old
+  return s_sd ? SD_MOUNTED : s_state;
+}
+
+// Make an unreadable card one the pager reads: FAT32, one ordinary partition. Everything
+// on it is erased. Only ever for a card that does not mount: a card that mounts is never
+// formatted, so backups and maps on a working card can't be lost this way.
+const char* sdFormat() {
+  sdLookAgain();
+  if (s_sd || sdMount()) return "this card works: not formatting it";
+  if (s_state != SD_UNREADABLE) return "no sd card";
+  inw_spi.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, -1);
+  s_sd = SD.begin(PIN_SD_CS, inw_spi, 4000000, "/sd", 5, true);   // true: no file system found -> make one
+  if (!s_sd) { sdLetGo(); logs.add(LOG_WARN, "sd format failed"); return "couldn't format it"; }
+  s_state = SD_MOUNTED;
+  logs.add(LOG_INFO, "sd card formatted, %llu MB", (unsigned long long)(SD.totalBytes() / 1048576ULL));
+  return "formatted";
+}
+
+#if INW_DEV
+// For testing the above on a card with things on it, without losing them: the card's
+// first block (its partition table) is kept, swapped for one a Mac's "GUID Partition
+// Map" card starts with, and put back. Nothing else on the card is touched.
+static const char* SD0_KEEP = "/sd0.bak";
+const char* sdTest(const char* what) {
+  static uint8_t blk[512];
+  static char msg[96];
+  if (!strcmp(what, "info")) {
+    sdLookAgain();
+    const SdState st = sdState();
+    if (st == SD_MOUNTED) snprintf(msg, sizeof(msg), "mounted, type %d, %llu MB, %llu MB free", (int)SD.cardType(), (unsigned long long)(SD.cardSize() / 1048576ULL), (unsigned long long)(sdFreeBytes() / 1048576ULL));
+    else snprintf(msg, sizeof(msg), "%s", st == SD_UNREADABLE ? "a card answers but can't be read" : "no card");
+    return msg;
+  }
+  if (!strcmp(what, "keep")) {                     // the first block, into the pager's own store
+    if (!sdMount()) return "not mounted";
+    if (!SD.readRAW(blk, 0)) return "couldn't read block 0";
+    File f = SPIFFS.open(SD0_KEEP, "w");
+    if (!f || f.write(blk, 512) != 512) return "couldn't keep it";
+    f.close();
+    for (int i = 0; i < 512; i++) Serial.printf("%02x", blk[i]);
+    Serial.println();
+    snprintf(msg, sizeof(msg), "kept, ends %02x%02x, partition type %02x", blk[510], blk[511], blk[450]);
+    return msg;
+  }
+  if (!strcmp(what, "gpt")) {                      // as a GUID card starts: one "protective" entry
+    if (!SPIFFS.exists(SD0_KEEP)) return "keep it first";
+    if (!sdMount()) return "not mounted";
+    memset(blk, 0, 512);
+    blk[446 + 2] = 0x02; blk[446 + 4] = 0xEE;        // type EE, from block 1 to the end
+    blk[446 + 5] = 0xFF; blk[446 + 6] = 0xFF; blk[446 + 7] = 0xFF;
+    blk[446 + 8] = 1;
+    blk[446 + 12] = 0xFF; blk[446 + 13] = 0xFF; blk[446 + 14] = 0xFF; blk[446 + 15] = 0xFF;
+    blk[510] = 0x55; blk[511] = 0xAA;
+    const bool ok = SD.writeRAW(blk, 0);
+    SD.end(); s_sd = false; sdLetGo(); sdLookAgain();
+    return ok ? "block 0 is now a GUID card's; not mounted" : "write failed";
+  }
+  if (!strcmp(what, "back")) {                     // the kept block, put back
+    File f = SPIFFS.open(SD0_KEEP, "r");
+    if (!f || f.read(blk, 512) != 512) return "nothing kept";
+    f.close();
+    if (blk[510] != 0x55 || blk[511] != 0xAA) return "what was kept is not a first block";
+    bool ok;
+    if (s_sd) ok = SD.writeRAW(blk, 0);
+    else ok = sdRaw([](uint8_t pdrv) { return sd_write_raw(pdrv, blk, 0); });
+    if (s_sd) { SD.end(); s_sd = false; sdLetGo(); }
+    sdLookAgain();
+    if (!ok) return "couldn't write it back";
+    snprintf(msg, sizeof(msg), "put back; %s", sdMount() ? "mounted again" : "NOT mounting");
+    return msg;
+  }
+  if (!strcmp(what, "format")) return sdFormat();
+  if (!strcmp(what, "ls")) {                       // what's on it, with sizes
+    if (!sdMount()) return "not mounted";
+    uint32_t files = 0; uint64_t bytes = 0;
+    std::function<void(const char*, int)> walk = [&](const char* dir, int depth) {
+      File d = SD.open(dir);
+      if (!d) return;
+      uint32_t n = 0; uint64_t b = 0;
+      for (File f = d.openNextFile(); f; f = d.openNextFile()) {
+        if (f.isDirectory()) { if (depth < 6) { String p = f.path(); f.close(); walk(p.c_str(), depth + 1); } }
+        else { n++; b += f.size(); if (depth < 2) Serial.printf("[sd]   %s %u\n", f.path(), (unsigned)f.size()); }
+      }
+      Serial.printf("[sd] %s: %u files, %llu bytes\n", dir, (unsigned)n, (unsigned long long)b);
+      files += n; bytes += b;
+    };
+    walk("/", 0);
+    snprintf(msg, sizeof(msg), "%u files, %llu bytes in all", (unsigned)files, (unsigned long long)bytes);
+    return msg;
+  }
+  if (!strcmp(what, "find")) {                     // every file, with its size: "[sdf] SIZE PATH"
+    if (!sdMount()) return "not mounted";
+    uint32_t files = 0; uint64_t bytes = 0;
+    std::function<void(const char*, int)> walk = [&](const char* dir, int depth) {
+      File d = SD.open(dir);
+      if (!d) return;
+      for (File f = d.openNextFile(); f; f = d.openNextFile()) {
+        if (f.isDirectory()) { if (depth < 8) { String p = f.path(); f.close(); walk(p.c_str(), depth + 1); } }
+        else { files++; bytes += f.size(); Serial.printf("[sdf] %u %s\n", (unsigned)f.size(), f.path()); }
+      }
+    };
+    walk("/", 0);
+    snprintf(msg, sizeof(msg), "%u files, %llu bytes", (unsigned)files, (unsigned long long)bytes);
+    return msg;
+  }
+  if (!strncmp(what, "get ", 4)) {                 // a file out over USB, as hex, 192 bytes a line
+    if (!sdMount()) return "not mounted";
+    File f = SD.open(what + 4);
+    if (!f || f.isDirectory()) return "no such file";
+    Serial.printf("[sdget] %u\n", (unsigned)f.size());
+    uint32_t crc = 0; int n;
+    while ((n = f.read(blk, 192)) > 0) {
+      crc = esp_rom_crc32_le(crc, blk, n);
+      for (int i = 0; i < n; i++) Serial.printf("%02x", blk[i]);
+      Serial.println();
+    }
+    snprintf(msg, sizeof(msg), "end %08x", (unsigned)crc);
+    return msg;
+  }
+  if (!strncmp(what, "put ", 4)) {                 // "put SIZE PATH", then hex lines; "." after each one taken
+    if (!sdMount()) return "not mounted";
+    char* end;
+    const uint32_t size = strtoul(what + 4, &end, 10);
+    while (*end == ' ') end++;
+    String path = end;
+    for (int i = 1; i < (int)path.length(); i++)   // the folders it sits in
+      if (path[i] == '/') { const String dir = path.substring(0, i); if (!SD.exists(dir)) SD.mkdir(dir); }
+    File f = SD.open(path, "w");
+    if (!f) return "couldn't create it";
+    Serial.println("[sdput] go");
+    // Each line: 8 hex digits of where it goes, the bytes in hex, 2 hex digits of their
+    // sum. A line that arrives whole and in turn is written and answered "."; one that
+    // was already taken is answered "." again; anything else "!", and the sender repeats.
+    // (Bytes do go missing on the way in now and then; without this a file stalled.)
+    uint32_t got = 0, idle = millis();
+    static char ln[260];
+    int len = 0;
+    auto hex = [](char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1; };
+    while (got < size && millis() - idle < 15000) {
+      const int c = Serial.read();
+      if (c < 0) { delay(1); continue; }
+      idle = millis();
+      if (c != '\n') { if (c != '\r' && len < (int)sizeof(ln) - 1) ln[len++] = (char)c; continue; }
+      bool good = len >= 12 && (len % 2) == 0;
+      for (int i = 0; good && i < len; i++) good = hex(ln[i]) >= 0;
+      uint32_t at = 0;
+      int n = 0;
+      if (good) {
+        for (int i = 0; i < 8; i++) at = at << 4 | (uint32_t)hex(ln[i]);
+        n = (len - 10) / 2;
+        uint8_t sum = 0;
+        for (int i = 0; i < n; i++) { blk[i] = (uint8_t)(hex(ln[8 + i * 2]) << 4 | hex(ln[9 + i * 2])); sum += blk[i]; }
+        good = sum == (uint8_t)(hex(ln[len - 2]) << 4 | hex(ln[len - 1]));
+      }
+      len = 0;
+      // Answered with how much has been taken, so the sender always knows where to go on from.
+      if (good && at == got) { f.write(blk, n); got += n; }
+      if (got < size) Serial.printf("@%u\n", (unsigned)got);
+    }
+    f.close();
+    // What the card now holds, read back.
+    File r = SD.open(path);
+    uint32_t crc = 0, back = 0; int n;
+    while (r && (n = r.read(blk, 512)) > 0) { crc = esp_rom_crc32_le(crc, blk, n); back += n; }
+    snprintf(msg, sizeof(msg), "%s %u of %u, on the card %u, %08x", got == size && back == size ? "ok" : "SHORT", (unsigned)got, (unsigned)size, (unsigned)back, (unsigned)crc);
+    return msg;
+  }
+  return "info | ls | find | get PATH | put SIZE PATH | keep | gpt | back | format";
+}
+#endif
 
 void inwProgress(const char* what, uint32_t done, uint32_t total);   // main.cpp
 static const char* s_progress = nullptr;   // set while a backup runs: copies show a progress screen

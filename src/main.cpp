@@ -403,6 +403,25 @@ void app::setScreenChangesAnimate(bool on) {
   Preferences p;
   if (p.begin("inw-fx", false)) { p.putBool("off", !on); p.end(); }
 }
+// Keys read while the loop is held up (a screen-change animation runs for half a
+// second) wait here, in order, until the loop takes them. Without this the T-Deck's
+// keyboard, which remembers only the last key pressed, lost what was typed meanwhile.
+static KeyEvent s_keyq[24];
+static uint8_t s_keyHead = 0, s_keyTail = 0;
+void app::keysPump() {
+  KeyEvent ev;
+  while (keyboard.read(ev)) {
+    const uint8_t next = (uint8_t)((s_keyHead + 1) % 24);
+    if (next == s_keyTail) break;                 // full: the rest stay with the keyboard
+    s_keyq[s_keyHead] = ev;
+    s_keyHead = next;
+  }
+}
+static bool nextKey(KeyEvent& ev) {
+  if (s_keyTail != s_keyHead) { ev = s_keyq[s_keyTail]; s_keyTail = (uint8_t)((s_keyTail + 1) % 24); return true; }
+  return keyboard.read(ev);
+}
+
 bool app::animationsOk() { return s_uiReady && !dimmer.asleep() && !s_panelOff; }
 
 // The side button waking the screen: the theme's turn-on animation, revealing
@@ -868,6 +887,10 @@ static void usbCommands() {
       int files = 0; size_t bytes = 0;
       for (File f = root.openNextFile(); f; f = root.openNextFile()) { files++; bytes += f.size(); }
       Serial.printf("[fs] %d files, %u bytes\n", files, (unsigned)bytes);
+      continue;
+    }
+    if (!strncmp(line, "sd ", 3)) {         // the card: info | ls | keep | gpt | back | format (dataio.cpp)
+      Serial.printf("[sd] %s: %s\n", line + 3, sdTest(line + 3));
       continue;
     }
     if (!strcmp(line, "backup")) {          // same job as Settings -> back up to sd now
@@ -1677,7 +1700,7 @@ void loop() {
   char chars[16];
   uint8_t nchars = 0;
   KeyEvent ev;
-  while (keyboard.read(ev)) {
+  while (nextKey(ev)) {
     if (!ev.pressed) continue;
     anyKey = true;
     if (ev.index == KEY_IDX_BACKSPACE) backspace = true;
@@ -1932,7 +1955,11 @@ void loop() {
   // for contacts - is a save lost when it's switched off with the screen on. Hold
   // them only while someone is actually touching or typing: a few dropped frames
   // on a screen nobody is moving beat losing a chat.
-  inwSetUserBusy(!dimmer.asleep() && dimmer.idleFor() < 3000);
+  // And while a message is being typed (a screen that takes text is on top), for up
+  // to 20 s after the last key: a write starting between two words froze the typing.
+  // Each kind of save still has its own deadline, so nothing waits past that.
+  inwSetUserBusy(!dimmer.asleep() && (dimmer.idleFor() < 3000 ||
+                 (nav.top() && nav.top()->wantsAllKeys() && dimmer.idleFor() < 20000)));
 #endif
   lap(7);
   const uint32_t total = millis() - tLoop;
