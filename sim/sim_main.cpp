@@ -472,6 +472,7 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
   // every place (sp_COSTUME_PLACE), then one of them waking, talking and with a
   // message waiting.
   if (argc > 2 && !strcmp(argv[2], "spooky")) {
+    if (argc > 3) strlcpy(g_node->prefs().node_name, argv[3], sizeof(g_node->prefs().node_name));
     ui_settings.themeId = 4;
     app::applyTheme();
     populateHistory();

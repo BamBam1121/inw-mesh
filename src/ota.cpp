@@ -233,6 +233,20 @@ void setAutoInstall(bool on) {
   if (p.begin("inw-ota", false)) { p.putBool("auto", on); p.end(); }
 }
 
+// An update the owner said no to isn't offered again: not at the next restart, not
+// six hours later. Settings > System > check for updates still offers it, and a
+// newer version asks afresh.
+static String declined() {
+  Preferences p;
+  String v;
+  if (p.begin("inw-ota", true)) { v = p.getString("no", ""); p.end(); }
+  return v;
+}
+static void setDeclined(const char* version) {
+  Preferences p;
+  if (p.begin("inw-ota", false)) { p.putString("no", version); p.end(); }
+}
+
 void announce() {
   Preferences p;
   if (!p.begin("inw-ota", false)) return;
@@ -256,13 +270,35 @@ static bool idleForUpdate() {
          !bleConnected();                        // the phone app mid-sync
 }
 
+// The question is put only where it can be answered on purpose: on the home screen,
+// lit and unlocked. Never over the lock screen (a key pressed in a pocket could
+// answer it) and never over a message being typed (a "y" or "n" in it would).
+static bool canAsk() {
+  return !dimmer.asleep() && nav.top() && nav.top()->isHome() && !nav.overlayActive();
+}
+
 // A while after Wi-Fi comes up, so it doesn't compete with startup; once per boot, or
 // every 6 hours where updates install by themselves.
 void tick() {
-  static bool checked = false, pending = false;
+  static bool checked = false, pending = false, asking = false;
   static uint32_t connectedAt = 0, lastCheck = 0;
   static Info found;
   const bool autoOn = autoInstall();
+  if (asking) {                                  // found one to ask about: wait for the home screen
+    if (!canAsk()) return;
+    asking = false;
+    const Info info = found;
+    const String body = String("version ") + info.version + (info.notes[0] ? String(" - ") + info.notes : String("")) +
+                        ". takes about a minute; messages pause while it downloads.";
+    confirm(String("Update to ") + info.version + "?", body,
+            [info] { nav.toast(install(info), 5000); },
+            [info] {
+              setDeclined(info.version);
+              logs.add(LOG_INFO, "update %s declined", info.version);
+              nav.toast("ok. it's in Settings > System when you want it", 4000);
+            });
+    return;
+  }
   if (!ui_settings.autoUpdateCheck && !autoOn) return;
   if (!wifi::connected()) { connectedAt = 0; return; }
   if (!connectedAt) { connectedAt = millis(); return; }
@@ -308,9 +344,9 @@ void tick() {
     logs.add(LOG_INFO, "%s installs itself when idle", info.version);
     return;
   }
-  const String body = String("version ") + info.version + (info.notes[0] ? String(" - ") + info.notes : String("")) +
-                      ". takes about a minute; messages pause while it downloads.";
-  confirm(String("Update to ") + info.version + "?", body, [info] { nav.toast(install(info), 5000); });
+  if (declined() == info.version) { logs.add(LOG_INFO, "%s was declined: not asking again", info.version); return; }
+  found = info;
+  asking = true;
 }
 
 }  // namespace ota
