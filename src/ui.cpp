@@ -91,7 +91,30 @@ void animateBatteryIcon(lgfx::LovyanGFX* panel, const Theme& t) {
   s.pushSprite(panel, battX() - 1, BATT_Y - 2);
 }
 
+static int s_sigX = -1;                 // where the status bar last drew the small bars; -1 = it didn't
+static void smallSignal(lgfx::LovyanGFX& d, const Theme& t, int x, int base) {
+  const uint8_t m = app::signalMask();
+  for (int i = 0; i < 4; i++) {
+    const int h = 4 + i * 3;
+    d.fillRect(x + i * 4, base - h, 3, h, (m >> i) & 1 ? t.green : t.line);
+  }
+}
+void animateSignalIcon(lgfx::LovyanGFX* panel, const Theme& t) {
+  static uint32_t last = 0;
+  static bool was = false;
+  const bool on = app::signalBars() && app::signalAnimating();
+  if (!panel || s_sigX < 0 || (!on && !was) || millis() - last < 50) return;
+  last = millis();
+  was = on;                             // one more paint after it ends: the settled level
+  static LGFX_Sprite s;
+  if (!s.getBuffer()) { s.setColorDepth(16); if (!s.createSprite(16, 13)) return; }
+  s.fillSprite(t.panel);
+  smallSignal(s, t, 0, 13);
+  s.pushSprite(panel, s_sigX, 2);
+}
+
 void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
+  s_sigX = -1;
   d.setFont(&fonts::Font2);
   d.fillRect(0, 0, L::W, 17, t.panel);
   d.drawFastHLine(0, 17, L::W, t.line);
@@ -139,12 +162,9 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
   d.setTextColor(t.dim, t.panel);
   d.drawString(bt, rx, 1);
   if (app::signalBars() && withClock) { // four bars, short to tall; lit by the last packet's SNR (the lock face draws its own)
-    const int lv = app::signalLevel();
     rx -= 20;
-    for (int i = 0; i < 4; i++) {
-      const int h = 4 + i * 3;
-      d.fillRect(rx + i * 4, 15 - h, 3, h, i < lv ? t.green : t.line);
-    }
+    s_sigX = rx;
+    smallSignal(d, t, rx, 15);
   }
   if (power::saver()) {
     rx -= 44;
@@ -179,11 +199,11 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
 
 void drawLockSignal(lgfx::LovyanGFX& d, const Theme& t) {
   if (!app::signalBars()) return;
-  const int lv = app::signalLevel();
+  const uint8_t m = app::signalMask();
   const int x = L::W - 36, base = 46;
   for (int i = 0; i < 4; i++) {
     const int h = 6 + i * 5;
-    if (i < lv) d.fillRect(x + i * 7, base - h, 5, h, t.green);
+    if ((m >> i) & 1) d.fillRect(x + i * 7, base - h, 5, h, t.green);
     else        d.drawRect(x + i * 7, base - h, 5, h, t.greenDim);
   }
 }

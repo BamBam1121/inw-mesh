@@ -44,6 +44,8 @@ namespace app {
   bool     signalBars();             // the status bar's signal bars (Settings > Display)
   void     setSignalBars(bool on);
   int      signalLevel();            // 0 nothing heard lately, 1-4 by the last packet's SNR
+  uint8_t  signalMask();             // which of the four bars are lit right now (bit 0 = shortest): the level, or its animation
+  bool     signalAnimating();        // a check is out, or the bars are filling
   uint8_t  signalCheckMins();        // ask nearby repeaters this often when nothing is heard; 0 = never
   void     setSignalCheckMins(uint8_t mins);
   void     applyTheme();          // colours, tick and vibration of ui_settings.themeId

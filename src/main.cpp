@@ -443,6 +443,23 @@ int app::signalLevel() {
   const int snr = g_node->heardSnr;
   return snr >= 5 ? 4 : snr >= 0 ? 3 : snr >= -7 ? 2 : 1;
 }
+// The bars' two animations. While a check is out and unanswered, one bar runs up and
+// back like a ping; when the answer comes, or the level changes, they fill one by one.
+static uint32_t s_sigAsked = 0, s_sigRise = 0;      // millis | 1; 0 = not running
+bool app::signalAnimating() {
+  const uint32_t now = millis();
+  return (s_sigAsked && now - s_sigAsked < 3000) || (s_sigRise && now - s_sigRise < 600);
+}
+uint8_t app::signalMask() {
+  const uint32_t now = millis();
+  if (s_sigAsked && now - s_sigAsked < 3000) {
+    static const uint8_t ping[6] = {1, 2, 4, 8, 4, 2};
+    return ping[((now - s_sigAsked) / 110) % 6];
+  }
+  int n = signalLevel();
+  if (s_sigRise && now - s_sigRise < 600) n = min(n, (int)((now - s_sigRise) / 130));
+  return (uint8_t)((1 << n) - 1);
+}
 // Keys read while the loop is held up (a screen-change animation runs for half a
 // second) wait here, in order, until the loop takes them. Without this the T-Deck's
 // keyboard, which remembers only the last key pressed, lost what was typed meanwhile.
@@ -1870,13 +1887,23 @@ void loop() {
   lap(1);
   wifi::tick();
   { static bool w = false; if (wifi::connected() != w) { w = wifi::connected(); nav.statusChanged(); } }
-  { static int8_t lv = 0; if (app::signalBars() && app::signalLevel() != lv) { lv = app::signalLevel(); nav.statusChanged(); } }
+  {
+    static int8_t lv = 0;
+    if (s_sigAsked && g_node && g_node->heardAt && (int32_t)(g_node->heardAt - s_sigAsked) > 0) { s_sigAsked = 0; s_sigRise = millis() | 1; }
+    if (s_sigAsked && millis() - s_sigAsked >= 3000) { s_sigAsked = 0; nav.statusChanged(); }
+    if (app::signalBars() && app::signalLevel() != lv) {
+      if (app::signalLevel() > lv && !s_sigRise) s_sigRise = millis() | 1;
+      lv = app::signalLevel();
+      nav.statusChanged();
+    }
+    if (s_sigRise && millis() - s_sigRise >= 600) { s_sigRise = 0; nav.statusChanged(); }
+  }
   {
     static uint32_t asked = 0;
     const uint32_t every = app::signalCheckMins() * 60000UL;
     if (every && app::signalBars() && g_node && app::radioOk() && !dimmer.asleep() && !power::saver() &&
         (!asked || millis() - asked > every) && (!g_node->heardAt || millis() - g_node->heardAt > every)) {
-      g_node->signalCheck();
+      if (g_node->signalCheck()) s_sigAsked = millis() | 1;
       asked = millis() | 1;
     }
   }
@@ -1911,6 +1938,7 @@ void loop() {
   lap(4);
   if (!dimmer.asleep() || nav.overlayActive()) nav.draw();
   if (!dimmer.asleep() && nav.top() && !nav.top()->isLock()) animateBatteryIcon(nav.display(), theme);
+  if (!dimmer.asleep() && nav.top() && !nav.top()->isLock() && !nav.overlayActive()) animateSignalIcon(nav.display(), theme);
   lap(5);
   dimmer.tick();
   jingle.tick();

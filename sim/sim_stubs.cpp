@@ -142,6 +142,8 @@ void setScreenChangesAnimate(bool on) { s_animate = on; }
 bool signalBars() { return true; }
 void setSignalBars(bool) {}
 int signalLevel() { return 3; }
+uint8_t signalMask() { return 7; }
+bool signalAnimating() { return false; }
 uint8_t signalCheckMins() { return 5; }
 void setSignalCheckMins(uint8_t) {}
 void keysPump() {}
