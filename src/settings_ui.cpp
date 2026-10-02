@@ -759,6 +759,24 @@ static void themeMenu() {
     v.action("@mention", [] { previewSound(app::themeSpec().mention);
       haptic.pattern(app::themeSpec().vibeMention.seq, app::themeSpec().vibeMention.n); });
     v.action("see the lock screen", [] { app::lock(); });
+    // The owner's own can be taken off here too, not only from the theme maker.
+    if (themes::count() > THEME_COUNT) {
+      v.header("your own themes");
+      for (uint8_t n = THEME_COUNT; n < themes::count(); n++) {
+        const uint8_t i = themes::idAt(n);
+        const String name = themes::spec(i).name;
+        v.action(String("remove ") + name, [i, name] {
+          confirm(String("Remove ") + name + "?", "it can be sent again from squatchmesh.com/theme-maker", [i] {
+            const CustomTheme* c = themes::custom(i);
+            if (!c) return;
+            const uint8_t look = c->look < THEME_COUNT ? c->look : 0;   // the one showing goes back to the look it wore
+            themes::remove(i);
+            if (ui_settings.themeId == i) { ui_settings.themeId = look; app::applyTheme(); markUiDirty(); }
+            nav.toast("removed", 2500);
+          });
+        });
+      }
+    }
   };
   m->rebuild(*m);
   nav.push(m);
