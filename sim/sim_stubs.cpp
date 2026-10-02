@@ -139,8 +139,13 @@ void applyTheme() {
 static bool s_animate = true;
 bool screenChangesAnimate() { return s_animate; }
 void setScreenChangesAnimate(bool on) { s_animate = on; }
-bool signalBars() { return true; }
-void setSignalBars(bool) {}
+static uint8_t s_simSig = 1, s_simLock = 1; static bool s_simLeft = false;
+uint8_t signalSize() { return s_simSig; }
+void setSignalSize(uint8_t n) { s_simSig = n; }
+uint8_t lockSignalSize() { return s_simLock; }
+void setLockSignalSize(uint8_t n) { s_simLock = n; }
+bool lockSignalLeft() { return s_simLeft; }
+void setLockSignalLeft(bool l) { s_simLeft = l; }
 int signalLevel() { return 3; }
 uint8_t signalMask() { return 7; }
 bool signalAnimating() { return false; }

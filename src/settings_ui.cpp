@@ -708,8 +708,14 @@ static void displayMenu() {
     app::setScreenChangesAnimate(!app::screenChangesAnimate());
     nav.toast(app::screenChangesAnimate() ? "screens change with the theme's animation" : "screens change at once", 3000);
   });
-  // Four bars in the status bar: how well the last packet was heard (dim after 5 min).
-  m->toggle("signal bars", [] { return app::signalBars(); }, [] { app::setSignalBars(!app::signalBars()); });
+  // Signal bars: how well the last packet was heard (dim when nothing was heard lately).
+  static const char* const SIG_SIZE[] = {"off", "small", "large"};
+  m->adjust("signal bars", []() -> String { return SIG_SIZE[app::signalSize()]; },
+            [](int d) { app::setSignalSize(constrain((int)app::signalSize() + d, 0, 2)); });
+  m->adjust("lock screen signal", []() -> String { return SIG_SIZE[app::lockSignalSize()]; },
+            [](int d) { app::setLockSignalSize(constrain((int)app::lockSignalSize() + d, 0, 2)); });
+  m->adjust("lock screen signal side", []() -> String { return app::lockSignalLeft() ? "left" : "right"; },
+            [](int d) { app::setLockSignalLeft(d < 0); });
   // With nothing heard for this long and the screen on, nearby repeaters are asked to
   // answer (zero hop: the question is never repeated across the mesh).
   m->adjust("signal check every", []() -> String {

@@ -92,25 +92,35 @@ void animateBatteryIcon(lgfx::LovyanGFX* panel, const Theme& t) {
 }
 
 static int s_sigX = -1;                 // where the status bar last drew the small bars; -1 = it didn't
-static void smallSignal(lgfx::LovyanGFX& d, const Theme& t, int x, int base) {
+// Four bars, short to tall, standing on y = base. Unlit ones are filled in `off`, or
+// only outlined where there is a picture behind them (the lock face).
+static void signalIcon(lgfx::LovyanGFX& d, int x, int base, int w, int gap, int h0, int step, uint16_t lit, uint16_t off, bool outline) {
   const uint8_t m = app::signalMask();
   for (int i = 0; i < 4; i++) {
-    const int h = 4 + i * 3;
-    d.fillRect(x + i * 4, base - h, 3, h, (m >> i) & 1 ? t.green : t.line);
+    const int h = h0 + i * step, bx = x + i * (w + gap);
+    if ((m >> i) & 1) d.fillRect(bx, base - h, w, h, lit);
+    else if (outline) d.drawRect(bx, base - h, w, h, off);
+    else d.fillRect(bx, base - h, w, h, off);
   }
+}
+// The status bar's: small is 15 px wide, large 19 and the full height of the bar.
+static int smallW() { return app::signalSize() == 2 ? 19 : 15; }
+static void smallSignal(lgfx::LovyanGFX& d, const Theme& t, int x, int base) {
+  if (app::signalSize() == 2) signalIcon(d, x, base, 4, 1, 6, 3, t.green, t.line, false);
+  else                        signalIcon(d, x, base, 3, 1, 4, 3, t.green, t.line, false);
 }
 void animateSignalIcon(lgfx::LovyanGFX* panel, const Theme& t) {
   static uint32_t last = 0;
   static bool was = false;
-  const bool on = app::signalBars() && app::signalAnimating();
+  const bool on = app::signalSize() && app::signalAnimating();
   if (!panel || s_sigX < 0 || (!on && !was) || millis() - last < 50) return;
   last = millis();
   was = on;                             // one more paint after it ends: the settled level
   static LGFX_Sprite s;
-  if (!s.getBuffer()) { s.setColorDepth(16); if (!s.createSprite(16, 13)) return; }
+  if (!s.getBuffer()) { s.setColorDepth(16); if (!s.createSprite(20, 15)) return; }
   s.fillSprite(t.panel);
-  smallSignal(s, t, 0, 13);
-  s.pushSprite(panel, s_sigX, 2);
+  smallSignal(s, t, 0, 15);
+  s.pushSprite(panel, s_sigX, 1);
 }
 
 void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
@@ -161,10 +171,10 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
   rx -= d.textWidth(bt) + 4;
   d.setTextColor(t.dim, t.panel);
   d.drawString(bt, rx, 1);
-  if (app::signalBars() && withClock) { // four bars, short to tall; lit by the last packet's SNR (the lock face draws its own)
-    rx -= 20;
+  if (app::signalSize() && withClock) { // four bars, short to tall; lit by the last packet's SNR (the lock face draws its own)
+    rx -= smallW() + 5;
     s_sigX = rx;
-    smallSignal(d, t, rx, 15);
+    smallSignal(d, t, rx, 16);
   }
   if (power::saver()) {
     rx -= 44;
@@ -198,14 +208,12 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
 }
 
 void drawLockSignal(lgfx::LovyanGFX& d, const Theme& t) {
-  if (!app::signalBars()) return;
-  const uint8_t m = app::signalMask();
-  const int x = L::W - 36, base = 46;
-  for (int i = 0; i < 4; i++) {
-    const int h = 6 + i * 5;
-    if ((m >> i) & 1) d.fillRect(x + i * 7, base - h, 5, h, t.green);
-    else        d.drawRect(x + i * 7, base - h, 5, h, t.greenDim);
-  }
+  const uint8_t sz = app::lockSignalSize();
+  if (!sz) return;
+  const int w = sz == 2 ? 8 : 5, gap = sz == 2 ? 3 : 2, h0 = sz == 2 ? 10 : 6, step = sz == 2 ? 8 : 5;
+  const int wide = 4 * w + 3 * gap;
+  const int x = app::lockSignalLeft() ? 8 : L::W - 8 - wide;
+  signalIcon(d, x, 24 + h0 + 3 * step, w, gap, h0, step, t.green, t.greenDim, true);
 }
 
 // ---- helpers ----------------------------------------------------------------------

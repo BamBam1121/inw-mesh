@@ -41,8 +41,14 @@ namespace app {
   void     keysPump();               // read the keyboard now, into the queue the loop takes keys from (fx calls it each frame)
   bool     screenChangesAnimate();   // the themes' animations between screens (Settings > Display)
   void     setScreenChangesAnimate(bool on);
-  bool     signalBars();             // the status bar's signal bars (Settings > Display)
-  void     setSignalBars(bool on);
+  // Signal bars (Settings > Display). Sizes: 0 off, 1 small, 2 large.
+  uint8_t  signalSize();             // in the status bar
+  void     setSignalSize(uint8_t n);
+  uint8_t  lockSignalSize();         // on the lock face
+  void     setLockSignalSize(uint8_t n);
+  bool     lockSignalLeft();         // lock face: top left instead of top right
+  void     setLockSignalLeft(bool left);
+  inline bool signalBars() { return signalSize() || lockSignalSize(); }   // shown anywhere
   int      signalLevel();            // 0 nothing heard lately, 1-4 by the last packet's SNR
   uint8_t  signalMask();             // which of the four bars are lit right now (bit 0 = shortest): the level, or its animation
   bool     signalAnimating();        // a check is out, or the bars are filling

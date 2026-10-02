@@ -405,20 +405,31 @@ void app::setScreenChangesAnimate(bool on) {
 }
 // Signal bars in the status bar, as Wadamesh has them: how well the last packet was
 // heard. On unless turned off in Settings > Display.
-static int8_t s_sigOff = -1;                // -1: not read yet
-bool app::signalBars() {
-  if (s_sigOff < 0) {
-    Preferences p;
-    s_sigOff = 0;
-    if (p.begin("inw-fx", true)) { s_sigOff = p.getBool("nosig", false) ? 1 : 0; p.end(); }
-  }
-  return s_sigOff == 0;
-}
-void app::setSignalBars(bool on) {
-  s_sigOff = on ? 0 : 1;
+static int8_t s_sigSz = -1, s_lockSz = -1, s_lockLeft = -1;   // -1: not read yet
+static void sigRead() {
+  if (s_sigSz >= 0) return;
+  s_sigSz = 1; s_lockSz = 1; s_lockLeft = 0;
   Preferences p;
-  if (p.begin("inw-fx", false)) { p.putBool("nosig", !on); p.end(); }
+  if (!p.begin("inw-fx", true)) return;
+  s_sigSz = min<int>(p.getUChar("sigsz", 1), 2);
+  s_lockSz = min<int>(p.getUChar("locksz", 1), 2);
+  s_lockLeft = p.getBool("lockleft", false) ? 1 : 0;
+  p.end();
+}
+static void sigPut(const char* key, uint8_t v) {
+  Preferences p;
+  if (p.begin("inw-fx", false)) { p.putUChar(key, v); p.end(); }
   nav.statusChanged();
+}
+uint8_t app::signalSize()     { sigRead(); return s_sigSz; }
+uint8_t app::lockSignalSize() { sigRead(); return s_lockSz; }
+bool    app::lockSignalLeft() { sigRead(); return s_lockLeft == 1; }
+void app::setSignalSize(uint8_t n)     { sigRead(); s_sigSz = n; sigPut("sigsz", n); }
+void app::setLockSignalSize(uint8_t n) { sigRead(); s_lockSz = n; sigPut("locksz", n); }
+void app::setLockSignalLeft(bool left) {
+  sigRead(); s_lockLeft = left ? 1 : 0;
+  Preferences p;
+  if (p.begin("inw-fx", false)) { p.putBool("lockleft", left); p.end(); }
 }
 // With nothing heard for the chosen time, and only while the screen is lit, the pager
 // asks the repeaters in direct range to answer (a zero-hop discover: never repeated).
