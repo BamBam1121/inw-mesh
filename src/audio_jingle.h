@@ -28,12 +28,15 @@ public:
   void setAmp(void (*fn)(bool on)) { _amp = fn; }
   void setVolume(uint8_t pct) { _vol = pct; }
 
+  // The task runs on core 1, beside the screen loop, not on core 0 with the radio stacks:
+  // Wi-Fi starting up there held it off for 433 ms (measured), a hole in the start-up tune
+  // just as the lock screen came up. On core 1 the same start-up feeds it within 32 ms.
   // Ignored while one is already playing: two chimes at once is just noise.
   void play(const Jingle* j) {
     if (!j || !_codec || !_codec->ok() || _busy || !_vol) return;
     _busy = true;
     _j = j;
-    if (xTaskCreatePinnedToCore(task, "jingle", 4096, this, 5, nullptr, 0) != pdPASS) { _busy = false; _fail = 1; }
+    if (xTaskCreatePinnedToCore(task, "jingle", 4096, this, 5, nullptr, 1) != pdPASS) { _busy = false; _fail = 1; }
   }
 
   // Why the last sound didn't play (1: no task, 2: I2S wouldn't start), once,
