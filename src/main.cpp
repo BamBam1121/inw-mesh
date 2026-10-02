@@ -385,6 +385,29 @@ void app::lock() { if (!nav.top() || !nav.top()->isLock()) nav.push(makeLockView
 
 // The panel gets its own sleep command a moment after the backlight goes dark.
 static bool s_panelOff = false;
+static uint32_t s_panelAt = 0;   // millis of the last Sleep In or Sleep Out sent to the panel
+// The panel's own rules (its datasheet; LovyanGFX's wakeup() keeps none of them): after
+// Sleep In, 120 ms before Sleep Out; after Sleep Out, a wait before anything else, and
+// it doesn't show its memory properly for a while (its init waits 130 ms). The light
+// only comes up after this returns. Lit while the panel was still asleep or just woken,
+// it showed rainbow static, mostly when a message woke the screen: the light came on
+// first and the panel was told to wake after.
+static void panelWake() {
+  if (!s_panelOff) return;
+  const uint32_t since = millis() - s_panelAt;
+  if (since < 120) delay(120 - since);
+  display.wakeup();
+  delay(120);
+  s_panelAt = millis();
+  s_panelOff = false;
+  nav.invalidate();
+}
+static void panelSleep() {
+  if (s_panelOff || millis() - s_panelAt < 120) return;
+  display.sleep();
+  s_panelAt = millis();
+  s_panelOff = true;
+}
 static bool s_uiReady = false;   // set once setup() is done: no animations while booting
 // Screen-change animations can be turned off (Settings > Display): each one holds the
 // screen for about half a second, and keys typed during it are not seen. Kept in its
@@ -496,7 +519,7 @@ bool app::animationsOk() { return s_uiReady && !dimmer.asleep() && !s_panelOff; 
 // The side button waking the screen: the theme's turn-on animation, revealing
 // whatever is on top (usually the lock screen), then back to normal drawing.
 static void screenWakeAnimated() {
-  if (s_panelOff) { display.wakeup(); s_panelOff = false; }
+  panelWake();
   nav.cancelTransition();                        // the wake animation is the transition
   nav.tick();                                    // let the top view catch up (the clock, say)
   nav.compose();
@@ -1364,6 +1387,7 @@ static void drawBootLogo() { boot::drawLogo(display); }
 
 static void powerOffShow() {
   Canvas& g = nav.canvas();
+  panelWake();                             // lit only once the panel is awake
   backlight.setLevel(dimmer.full());       // the dimmer isn't ticking from here on
   // Save first, with the boot logo turning, until storage is idle. At most 45 s:
   // an interrupted write leaves the previous file whole anyway.
@@ -1955,10 +1979,14 @@ void loop() {
   lap(3);
   nav.tick();
   lap(4);
+  // Something woke the screen (a message, say): the panel wakes before it is drawn
+  // on or lit.
+  if (!dimmer.asleep()) panelWake();
   if (!dimmer.asleep() || nav.overlayActive()) nav.draw();
   if (!dimmer.asleep() && nav.top() && !nav.top()->isLock()) animateBatteryIcon(nav.display(), theme);
   if (!dimmer.asleep() && nav.top() && !nav.top()->isLock() && !nav.overlayActive()) animateSignalIcon(nav.display(), theme);
   lap(5);
+  if (!dimmer.asleep()) panelWake();       // before the light can come up
   dimmer.tick();
   jingle.tick();
   if (const uint8_t f = jingle.takeFailure())
@@ -1974,10 +2002,10 @@ void loop() {
     if (dimmer.asleep()) {
       s_lastDarkAt = millis();
       if (!darkSince) darkSince = millis() | 1;
-      if (!s_panelOff && (int32_t)(millis() - darkSince) > 1000) { display.sleep(); s_panelOff = true; }
+      if (!s_panelOff && (int32_t)(millis() - darkSince) > 1000) panelSleep();
     } else {
       darkSince = 0;
-      if (s_panelOff) { display.wakeup(); s_panelOff = false; nav.invalidate(); }
+      panelWake();
     }
   }
 #if BOARD_RADIO_ONLY_WHEN_DARK
