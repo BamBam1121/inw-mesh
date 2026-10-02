@@ -451,7 +451,8 @@ void app::setSignalCheckMins(uint8_t mins) {
 int app::signalLevel() {
   const uint32_t stale = app::signalCheckMins() ? max(300000UL, app::signalCheckMins() * 120000UL) : 300000UL;
   if (!g_node || !g_node->heardAt || millis() - g_node->heardAt > stale) return 0;
-  const int snr = g_node->heardSnr;
+  int snr = g_node->heardSnr;
+  g_node->bestSnrSince(120000UL, snr);       // the best of the last two minutes, if any
   return snr >= 5 ? 4 : snr >= 0 ? 3 : snr >= -7 ? 2 : 1;
 }
 // The bars' two animations. While a check is out and unanswered, one bar runs up and

@@ -717,6 +717,9 @@ void InwNode::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
   if (len < 2) return;
   heardAt = millis() | 1;
   heardSnr = (int8_t)constrain((int)lroundf(snr), -127, 127);
+  heardTimes[heardNext] = heardAt;
+  heardSnrs[heardNext] = heardSnr;
+  heardNext = (heardNext + 1) % 16;
   const uint8_t header = raw[0];
   const uint8_t route = header & 0x03;
   // Transport-coded routes carry 4 bytes of codes before the path length.

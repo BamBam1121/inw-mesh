@@ -151,6 +151,17 @@ public:
   // and its SNR in dB.
   uint32_t heardAt = 0;
   int8_t   heardSnr = 0;
+  // The last 16 packets heard (when, SNR): the bars show the best of the last two
+  // minutes, so one weak packet from a far node doesn't drop them.
+  uint32_t heardTimes[16] = {0};
+  int8_t   heardSnrs[16] = {0};
+  uint8_t  heardNext = 0;
+  bool bestSnrSince(uint32_t ms, int& best) const {
+    bool any = false;
+    for (uint8_t i = 0; i < 16; i++)
+      if (heardTimes[i] && millis() - heardTimes[i] <= ms && (!any || heardSnrs[i] > best)) { best = heardSnrs[i]; any = true; }
+    return any;
+  }
   uint32_t rxCount() { return radio_driver.getPacketsRecv(); }
   uint32_t txCount() { return radio_driver.getPacketsSent(); }
   uint32_t rxErrors() { return radio_driver.getPacketsRecvErrors(); }
