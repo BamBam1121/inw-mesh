@@ -505,6 +505,9 @@ void Nav::begin(LGFX* d, Theme* t) {
 // (popToHome, replaceTop) make one transition, from the first picture to the last.
 void Nav::beginTransition(uint8_t kind) {
   if (_trans || !_d || !top() || !app::animationsOk()) return;
+  // Going forward and back can be set to change at once (Settings > Display); locking
+  // and unlocking keep their animation.
+  if ((kind == (uint8_t)fx::Trans::Forward || kind == (uint8_t)fx::Trans::Back) && !app::screenChangesAnimate()) return;
   Canvas* old = fx::scratch();
   if (!old) return;
   compose();                               // exactly what's on the panel now
@@ -1057,7 +1060,7 @@ void PromptView::draw(Canvas& g) {
 #if BOARD_HAS_TOUCH
   // Buttons a finger can find; enter and backspace still do the same.
   g.setTextColor(t.dim, t.bg);
-  g.drawString("enter saves  -  alt + key for 123", 12, fy + fh + 26);
+  g.drawString("enter saves  -  sym, then a key, for 123", 12, fy + fh + 26);
   const int by = L::H - BTN_H - 6, bw = (L::W - 36) / 2;
   drawPill(g, 12, by, bw, BTN_H, t.panel, t.txt, "cancel");
   drawPill(g, 24 + bw, by, bw, BTN_H, t.green, t.bg, "save");

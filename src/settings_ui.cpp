@@ -702,6 +702,12 @@ static void displayMenu() {
   // The lock screen's sasquatch and his speech bubble (squatch_talk.h).
   m->toggle("sasquatch talks", [] { return !ui_settings.squatchQuiet; },
             [] { ui_settings.squatchQuiet = !ui_settings.squatchQuiet; markUiDirty(); });
+  // Each theme animates the change from one screen to the next, about half a second a
+  // time. Off: screens change at once (waking, sleeping and locking still animate).
+  m->toggle("animate screen changes", [] { return app::screenChangesAnimate(); }, [] {
+    app::setScreenChangesAnimate(!app::screenChangesAnimate());
+    nav.toast(app::screenChangesAnimate() ? "screens change with the theme's animation" : "screens change at once", 3000);
+  });
 #if BOARD_HAS_TOUCH
   // For a unit that comes out different from the ones this was made from: put it
   // right here instead of needing another build. The touch test shows the result.

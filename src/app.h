@@ -38,6 +38,8 @@ namespace app {
   void     applyDisplay();        // brightness, timeouts, keyboard light
   void     applySound();
   void     applyHaptics();
+  bool     screenChangesAnimate();   // the themes' animations between screens (Settings > Display)
+  void     setScreenChangesAnimate(bool on);
   void     applyTheme();          // colours, tick and vibration of ui_settings.themeId
   const ThemeSpec& themeSpec();
   void     testNotify();

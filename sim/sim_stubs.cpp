@@ -136,6 +136,9 @@ void applyTheme() {
   theme.scene = th.scene;
   nav.invalidate();
 }
+static bool s_animate = true;
+bool screenChangesAnimate() { return s_animate; }
+void setScreenChangesAnimate(bool on) { s_animate = on; }
 void testNotify() {}
 void lock() {}
 void reboot() {}

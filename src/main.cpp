@@ -386,6 +386,23 @@ void app::lock() { if (!nav.top() || !nav.top()->isLock()) nav.push(makeLockView
 // The panel gets its own sleep command a moment after the backlight goes dark.
 static bool s_panelOff = false;
 static bool s_uiReady = false;   // set once setup() is done: no animations while booting
+// Screen-change animations can be turned off (Settings > Display): each one holds the
+// screen for about half a second, and keys typed during it are not seen. Kept in its
+// own NVS key, like the other late additions, so the settings blob's layout is untouched.
+static int8_t s_fxOff = -1;                 // -1: not read yet
+bool app::screenChangesAnimate() {
+  if (s_fxOff < 0) {
+    Preferences p;
+    s_fxOff = 0;
+    if (p.begin("inw-fx", true)) { s_fxOff = p.getBool("off", false) ? 1 : 0; p.end(); }
+  }
+  return s_fxOff == 0;
+}
+void app::setScreenChangesAnimate(bool on) {
+  s_fxOff = on ? 0 : 1;
+  Preferences p;
+  if (p.begin("inw-fx", false)) { p.putBool("off", !on); p.end(); }
+}
 bool app::animationsOk() { return s_uiReady && !dimmer.asleep() && !s_panelOff; }
 
 // The side button waking the screen: the theme's turn-on animation, revealing
