@@ -139,6 +139,11 @@ void applyTheme() {
 static bool s_animate = true;
 bool screenChangesAnimate() { return s_animate; }
 void setScreenChangesAnimate(bool on) { s_animate = on; }
+bool signalBars() { return true; }
+void setSignalBars(bool) {}
+int signalLevel() { return 3; }
+uint8_t signalCheckMins() { return 5; }
+void setSignalCheckMins(uint8_t) {}
 void keysPump() {}
 void testNotify() {}
 void lock() {}

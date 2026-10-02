@@ -403,6 +403,46 @@ void app::setScreenChangesAnimate(bool on) {
   Preferences p;
   if (p.begin("inw-fx", false)) { p.putBool("off", !on); p.end(); }
 }
+// Signal bars in the status bar, as Wadamesh has them: how well the last packet was
+// heard. On unless turned off in Settings > Display.
+static int8_t s_sigOff = -1;                // -1: not read yet
+bool app::signalBars() {
+  if (s_sigOff < 0) {
+    Preferences p;
+    s_sigOff = 0;
+    if (p.begin("inw-fx", true)) { s_sigOff = p.getBool("nosig", false) ? 1 : 0; p.end(); }
+  }
+  return s_sigOff == 0;
+}
+void app::setSignalBars(bool on) {
+  s_sigOff = on ? 0 : 1;
+  Preferences p;
+  if (p.begin("inw-fx", false)) { p.putBool("nosig", !on); p.end(); }
+  nav.statusChanged();
+}
+// With nothing heard for the chosen time, and only while the screen is lit, the pager
+// asks the repeaters in direct range to answer (a zero-hop discover: never repeated).
+static int16_t s_sigMins = -1;              // -1: not read yet
+uint8_t app::signalCheckMins() {
+  if (s_sigMins < 0) {
+    Preferences p;
+    s_sigMins = 5;
+    if (p.begin("inw-fx", true)) { s_sigMins = p.getUChar("sigmin", 5); p.end(); }
+  }
+  return (uint8_t)s_sigMins;
+}
+void app::setSignalCheckMins(uint8_t mins) {
+  s_sigMins = mins;
+  Preferences p;
+  if (p.begin("inw-fx", false)) { p.putUChar("sigmin", mins); p.end(); }
+}
+// The bars go dim once the last packet is older than two checks (5 min with checks off).
+int app::signalLevel() {
+  const uint32_t stale = app::signalCheckMins() ? max(300000UL, app::signalCheckMins() * 120000UL) : 300000UL;
+  if (!g_node || !g_node->heardAt || millis() - g_node->heardAt > stale) return 0;
+  const int snr = g_node->heardSnr;
+  return snr >= 5 ? 4 : snr >= 0 ? 3 : snr >= -7 ? 2 : 1;
+}
 // Keys read while the loop is held up (a screen-change animation runs for half a
 // second) wait here, in order, until the loop takes them. Without this the T-Deck's
 // keyboard, which remembers only the last key pressed, lost what was typed meanwhile.
@@ -1830,6 +1870,16 @@ void loop() {
   lap(1);
   wifi::tick();
   { static bool w = false; if (wifi::connected() != w) { w = wifi::connected(); nav.statusChanged(); } }
+  { static int8_t lv = 0; if (app::signalBars() && app::signalLevel() != lv) { lv = app::signalLevel(); nav.statusChanged(); } }
+  {
+    static uint32_t asked = 0;
+    const uint32_t every = app::signalCheckMins() * 60000UL;
+    if (every && app::signalBars() && g_node && app::radioOk() && !dimmer.asleep() && !power::saver() &&
+        (!asked || millis() - asked > every) && (!g_node->heardAt || millis() - g_node->heardAt > every)) {
+      g_node->signalCheck();
+      asked = millis() | 1;
+    }
+  }
   lap(2);
 #if BOARD_BATTERY_FROM_VOLTAGE
   // The screen going dark (and Wi-Fi and the GPS with it) lifts the cell's voltage as

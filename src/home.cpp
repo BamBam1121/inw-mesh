@@ -127,6 +127,7 @@ public:
       default:           scenes::inw(d, t, _phase, _scroll, hasUnread); break;
     }
     scenes::mascotLift() = 0;
+    drawLockSignal(d, t);
     scenes::mascotPose() = SquatchPose();
     drawTalk(d, t);
     d.fillRect(0, scenes::GROUND + 2, L::W, L::H - scenes::GROUND - 2, t.bg);

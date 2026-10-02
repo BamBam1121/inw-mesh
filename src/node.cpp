@@ -540,6 +540,22 @@ bool InwNode::discover() {
   return true;
 }
 
+// Zero-hop, so it is never repeated: only repeaters in direct range hear it, and each
+// answers once. The answer counts as a heard packet (logRxRaw), which is all the
+// signal bars need; its tag matches no Discover in progress, so that list is untouched.
+bool InwNode::signalCheck() {
+  uint8_t data[10];
+  const uint32_t tag = getRNG()->nextInt(1, 0x7FFFFFFF);
+  data[0] = CTL_DISCOVER_REQ;
+  data[1] = (1 << ADV_TYPE_REPEATER);
+  memcpy(&data[2], &tag, 4);
+  memset(&data[6], 0, 4);
+  mesh::Packet* pkt = createControlData(data, sizeof(data));
+  if (!pkt) return false;
+  sendZeroHop(pkt);
+  return true;
+}
+
 void InwNode::onControlDataRecv(mesh::Packet* packet) {
   if ((packet->payload[0] & 0xF0) == CTL_DISCOVER_RESP && packet->payload_len >= 6 + PUB_KEY_SIZE && _discoverTag) {
     uint32_t tag;
@@ -679,6 +695,8 @@ void InwNode::logPacket(bool tx, uint8_t header, uint8_t pathLen, uint8_t len, f
 void InwNode::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
   MyMesh::logRxRaw(snr, rssi, raw, len);
   if (len < 2) return;
+  heardAt = millis() | 1;
+  heardSnr = (int8_t)constrain((int)lroundf(snr), -127, 127);
   const uint8_t header = raw[0];
   const uint8_t route = header & 0x03;
   // Transport-coded routes carry 4 bytes of codes before the path length.

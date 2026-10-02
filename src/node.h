@@ -88,6 +88,7 @@ public:
   bool sendCli(const uint8_t* pub, const char* cmd);
   bool trace(const uint8_t* pub);
   bool discover();
+  bool signalCheck();   // the same zero-hop question, for the signal bars: leaves the Discover list alone
   bool advertZeroHop();
   bool advertFlood();
   bool shareContact(const uint8_t* pub);
@@ -146,6 +147,10 @@ public:
 
   float lastRssi() { return radio_driver.getLastRSSI(); }
   float lastSnr()  { return radio_driver.getLastSNR(); }
+  // The status bar's signal bars: when the last packet was heard (millis, 0 = none yet)
+  // and its SNR in dB.
+  uint32_t heardAt = 0;
+  int8_t   heardSnr = 0;
   uint32_t rxCount() { return radio_driver.getPacketsRecv(); }
   uint32_t txCount() { return radio_driver.getPacketsSent(); }
   uint32_t rxErrors() { return radio_driver.getPacketsRecvErrors(); }
