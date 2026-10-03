@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <Update.h>
 #include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include <mbedtls/sha256.h>
 #include <ed_25519.h>
 #include "app.h"
@@ -43,6 +44,44 @@ static uint8_t s_sig[64];
 bool supported() {
   const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
   return next && next != esp_ota_get_running_partition();
+}
+
+// An update is written to the other app slot. On a board set up with a multi-boot
+// launcher that slot holds another firmware, and updates used to replace it without a
+// word. So the slot is looked at first: it starts like an app (0xE9) and nowhere says
+// any of the things every build of this firmware says (the update site it has had since
+// it could update itself, its boot line, the help site) - someone else's. Read once per
+// start: a few megabytes of flash, a second at most. Anything unclear (a read that
+// fails) counts as ours: the update goes ahead as it always did.
+bool replacesOther() {
+  static int8_t known = -1;
+  if (known >= 0) return known;
+  known = 0;
+  const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+  if (!next || next == esp_ota_get_running_partition()) return false;
+  static const char* const MARKS[] = {"github.io/inw-mesh", "squatchmesh.com", "[INW] boot"};
+  const size_t ML = 18, CHUNK = 4096;                              // ML: the longest of them
+  uint8_t* buf = (uint8_t*)malloc(CHUNK + ML);
+  if (!buf) return false;
+  bool app = false, ours = false, whole = true;
+  size_t carry = 0;
+  for (size_t off = 0; off < next->size && !ours; off += CHUNK) {
+    const size_t n = min(CHUNK, (size_t)(next->size - off));
+    if (esp_partition_read(next, off, buf + carry, n) != ESP_OK) { whole = false; break; }
+    if (off == 0) { app = buf[0] == 0xE9; if (!app) break; }       // empty, or not firmware at all
+    const size_t have = carry + n;
+    for (const char* m : MARKS) {
+      const size_t l = strlen(m);
+      for (size_t i = 0; i + l <= have && !ours; i++)
+        if (buf[i] == (uint8_t)m[0] && !memcmp(buf + i, m, l)) ours = true;
+    }
+    carry = min(ML - 1, have);                                     // a marker across two chunks
+    memmove(buf, buf + have - carry, carry);
+  }
+  free(buf);
+  known = app && whole && !ours;
+  if (known) logs.add(LOG_WARN, "another firmware is in the update slot (%s): updates won't replace it by themselves", next->label);
+  return known;
 }
 
 // "1.2.10" > "1.2.9", and a release comes after its betas:
@@ -338,6 +377,14 @@ void tick() {
   if (!info.newer) { logs.add(LOG_INFO, "update check: up to date (%s)", FW_VERSION); return; }
   logs.add(LOG_INFO, "update available: %s", info.version);
   if (!supported()) { nav.banner("Update available", "reinstall once over usb to enable wi-fi updates", 6000); return; }
+  // A multi-boot setup: say so once and leave it to the owner (their launcher, or
+  // Settings > System, which says what it replaces). Never by itself, and no prompt.
+  if (replacesOther()) {
+    static bool told = false;
+    if (!told) nav.banner("Update available", "use your launcher: updating here replaces another firmware", 8000);
+    told = true;
+    return;
+  }
   if (autoThis) {                              // no questions: it goes in when nobody's using it
     found = info;
     pending = true;

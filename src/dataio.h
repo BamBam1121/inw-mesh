@@ -62,4 +62,5 @@ void storeReport();              // record counts of every contact store, over U
 // Copies the identity, channels and mesh prefs into NVS, which survives a
 // partition layout change. Cheap when nothing changed.
 void keepEssentials();
+void keepEssentialsIfDue();   // after a save of the channels, mesh settings or key (call from the loop)
 void sdBackupTick();             // call from loop; runs sdBackupNow(false) once a day

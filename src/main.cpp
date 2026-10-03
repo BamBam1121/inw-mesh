@@ -2104,7 +2104,7 @@ void loop() {
   usbCommands();
 
   lap(6);
-  autoAdvertTick(); sdBackupTick(); inwStoreTick(); field::tick();
+  autoAdvertTick(); sdBackupTick(); inwStoreTick(); keepEssentialsIfDue(); field::tick();
   // Background flash writes wait for the screen to be off: they freeze PSRAM, where
   // the screen is drawn, so a write while it's lit is dropped frames (the choppy
   // animations). And off for 15 s, not just off: even a 276-byte file takes ~2.5 s

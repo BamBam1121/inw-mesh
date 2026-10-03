@@ -26,6 +26,7 @@ namespace ota {
   };
 
   bool supported();            // false on the older one-slot partition table
+  bool replacesOther();        // the slot an update goes into holds someone else's firmware (a multi-boot setup)
   Info check();                // blocking, a second or two; needs Wi-Fi (the channel Settings picks)
   Info check(bool beta);       // one channel: beta or official releases
   const char* install(const Info& info);   // blocking with a progress screen; reboots on success

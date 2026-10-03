@@ -547,6 +547,13 @@ void keepEssentials() {
   p.end();
 }
 
+static volatile bool s_keepDue = false;
+void keepEssentialsIfDue() {
+  if (!s_keepDue) return;
+  s_keepDue = false;
+  keepEssentials();
+}
+
 static bool restoreFromKeep(const char* key, const char* path) {
   Preferences p;
   if (!p.begin("inw-keep", true)) return false;
@@ -932,7 +939,13 @@ void storeReport() {
 // Called after every successful store save. A contact list that shrinks without
 // anyone forgetting contacts is how the 2026-09-16 loss looked, so a drop is logged
 // loudly with both counts; small drops (forgetting a few) are normal.
+// The channels, the mesh settings or the key changed on flash: bring the NVS safety
+// copy up to date soon (keepEssentialsIfDue, from the loop). It used to be refreshed
+// only at start-up and at the daily backup, so channels added since the last start
+// were not in it - and another firmware started from a multi-boot launcher can wipe
+// the store: coming back restored the channels as they were at that start.
 void inwStoreSaved(const char* path, size_t bytes) {
+  if (!strcmp(path, "/channels2") || !strcmp(path, "/prefs.json") || !strncmp(path, "/identity/", 10)) s_keepDue = true;
   if (strcmp(path, "/contacts3") != 0) return;
   static long last = -1;
   const long n = (long)(bytes / CONTACT_REC);

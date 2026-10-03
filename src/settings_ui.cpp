@@ -1026,6 +1026,13 @@ static void systemMenu() {
       const ota::Info info = ota::check();
       if (!info.ok) { nav.toast(info.error, 4000); return; }
       if (!info.newer) { nav.toast((String("up to date (") + FW_VERSION + ")").c_str(), 3000); return; }
+      // On a multi-boot setup the update goes over the other firmware: say so, and what to do instead.
+      if (ota::replacesOther())
+        confirm(String("Replace the other firmware?"),
+                String("this device has another firmware in the slot the update is written to (a multi-boot launcher). ") +
+                "updating here replaces it. to keep it, install " + info.version + " from your launcher instead.",
+                [info] { nav.toast(ota::install(info), 5000); });
+      else
       confirm(String("Update to ") + info.version + "?",
               String(info.notes[0] ? info.notes : "a new version is ready") + ". takes about a minute.",
               [info] { nav.toast(ota::install(info), 5000); });
