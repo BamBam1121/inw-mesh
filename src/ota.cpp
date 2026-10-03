@@ -1,6 +1,6 @@
 #include "ota.h"
 #include <HTTPClient.h>
-#include <WiFiClientSecure.h>
+#include "tls_client.h"   // WiFiClientSecure without its stray close(0)
 #include <ArduinoJson.h>
 #include <Update.h>
 #include <esp_ota_ops.h>
@@ -75,7 +75,7 @@ Info check() { return check(ui_settings.betaUpdates); }
 Info check(bool beta) {
   Info info;
   if (!wifi::connected()) { strlcpy(info.error, "connect to wi-fi first", sizeof(info.error)); return info; }
-  WiFiClientSecure tls;
+  TlsClient tls;
   tls.setInsecure();                     // authenticity comes from the signature, not TLS
   HTTPClient http;
   http.setTimeout(8000);
@@ -159,7 +159,7 @@ const char* install(const Info& info) {
   static char msg[48];
   if (!info.ok || !info.newer) return "no update to install";
   if (!supported()) return "needs a one-time usb reinstall first";
-  WiFiClientSecure tls;
+  TlsClient tls;
   tls.setInsecure();
   HTTPClient http;
   http.setTimeout(15000);

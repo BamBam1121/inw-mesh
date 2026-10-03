@@ -1,7 +1,7 @@
 #include "netwifi.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <WiFiClientSecure.h>
+#include "tls_client.h"   // WiFiClientSecure without its stray close(0)
 #include <Preferences.h>
 #include <esp_sntp.h>
 #include <esp_heap_caps.h>
@@ -381,7 +381,7 @@ static void fetchTask(void*) {
       s_lastCode = -99; s_fail++; vTaskDelay(pdMS_TO_TICKS(2000)); continue;
     }
     WiFiClient plain;
-    WiFiClientSecure secure;
+    TlsClient secure;
     if (https) secure.setInsecure();     // map imagery, nothing secret
     HTTPClient http;
     http.setConnectTimeout(4000);

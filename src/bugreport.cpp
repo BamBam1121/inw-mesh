@@ -1,7 +1,7 @@
 // Problem reports (bugreport.h).
 #include "bugreport.h"
 #include <SPIFFS.h>
-#include <WiFiClientSecure.h>
+#include "tls_client.h"   // WiFiClientSecure without its stray close(0)
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <esp_system.h>
@@ -259,7 +259,7 @@ void begin() {
 
 // ---- sending -----------------------------------------------------------------------------
 static bool post(const String& body, const char* url = URL) {
-  WiFiClientSecure tls;
+  TlsClient tls;
   tls.setInsecure();                          // nothing secret in it; the server checks the shape
   HTTPClient http;
   http.setTimeout(8000);
