@@ -1837,6 +1837,9 @@ void loop() {
       // lock face unlocking), the Swipe mustn't act on the screen underneath too.
       if (nav.top() != before) { gestures.dropQueued(); gestures.stopCoast(); }
     }
+    // A finger resting on the screen sends nothing, but someone is holding it and
+    // reading: that counts as use too (not on the lock face, where a pocket presses).
+    if (gestures.down() && !dimmer.asleep() && !(nav.top() && nav.top()->isLock())) dimmer.note();
   }
 #endif
 #if BOARD_HAS_SIDE_BUTTON
@@ -2032,6 +2035,16 @@ void loop() {
   gps.wakeTick();                       // a woken GPS gets nudged until it talks again
 #endif
 
+  // Each dim goes in the log with how long nothing had been touched and where, so a
+  // "dims while I'm using it" report shows what it took for idleness.
+  {
+    static bool wasDim = false;
+    if (dimmer.dimmed() && !wasDim)
+      logs.add(LOG_INFO, "screen dimmed: %lus idle on '%s' (dim after %us%s)", (unsigned long)(dimmer.idleFor() / 1000),
+               g_screenTitle, power::saver() ? (unsigned)min<uint16_t>(ui_settings.dimSecs, 10) : (unsigned)ui_settings.dimSecs,
+               power::saver() ? ", battery saver" : "");
+    wasDim = dimmer.dimmed();
+  }
   // Keyboard light follows the screen (or flashes for a message).
   {
     static uint8_t prev = 1;
