@@ -5,6 +5,7 @@
 #include <Update.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
+#include <esp_heap_caps.h>
 #include <mbedtls/sha256.h>
 #include <ed_25519.h>
 #include "app.h"
@@ -121,13 +122,26 @@ Info check(bool beta) {
   info.beta = beta;
   String url = String(SITE) + (info.beta ? "ota-beta.json" : "ota.json");
   if (!http.begin(tls, url)) { strlcpy(info.error, "couldn't reach the update site", sizeof(info.error)); return info; }
-  const int code = http.GET();
+  int code = http.GET();
+  if (code < 0) {
+    // Below zero the site never answered: the connection couldn't be opened or dropped
+    // (-1 is "refused", which is also what a TLS handshake short of memory looks like).
+    // Note what there was to work with, and try once more.
+    logs.add(LOG_WARN, "update check: no connection (%d %s), internal RAM %u kB free, largest %u kB", code,
+             HTTPClient::errorToString(code).c_str(),
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+             (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));
+    http.end();
+    delay(400);
+    if (http.begin(tls, url)) code = http.GET();
+  }
   if (code != 200) {
 #ifdef OTA_BOARD
     if (code == 404) strlcpy(info.error, "no updates for this device yet", sizeof(info.error));
     else
 #endif
-    snprintf(info.error, sizeof(info.error), "update site said %d", code);
+    if (code < 0) snprintf(info.error, sizeof(info.error), "couldn't connect to the update site (%d)", code);
+    else snprintf(info.error, sizeof(info.error), "update site said %d", code);
     http.end();
     return info;
   }
