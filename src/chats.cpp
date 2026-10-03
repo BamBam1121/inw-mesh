@@ -444,7 +444,9 @@ private:
           else w += snprintf(out + w, cap - w, "  %uh", m.hops);
         }
       }
-      if (ui_settings.showSnr && w < cap) snprintf(out + w, cap - w, "  %.1fdB", m.snr4 / 4.0);
+      if (ui_settings.showSnr && w < cap) w += snprintf(out + w, cap - w, "  %.1fdB", m.snr4 / 4.0);
+      // Copies of it that arrived (the sender's retries): shown once, counted here.
+      if (m.repeats && w < cap) snprintf(out + w, cap - w, "  x%u", m.repeats + 1);
     }
   }
 

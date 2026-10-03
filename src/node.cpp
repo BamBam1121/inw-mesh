@@ -235,29 +235,54 @@ bool InwNode::removeChannel(uint8_t idx) {
 }
 
 // ---- receive hooks -------------------------------------------------------------
-// True for a message already taken from this sender; otherwise remembers it.
-bool InwNode::seenBefore(const uint8_t* pub, uint32_t ts, const char* text) {
-  uint32_t who, h = 2166136261u;
+// The message (its history id) that this one is a copy of, by sender, timestamp and
+// text; 0 if it is new. `hash` comes back for gotDM().
+uint32_t InwNode::copyOf(const uint8_t* pub, uint32_t ts, const char* text, uint32_t& hash) {
+  uint32_t who;
   memcpy(&who, pub, 4);
-  for (const char* p = text; *p; p++) h = (h ^ (uint8_t)*p) * 16777619u;
-  for (const GotDM& g : _got) if (g.ts == ts && g.who == who && g.textHash == h && ts) return true;
-  _got[_gotNext] = {who, ts, h};
+  hash = 2166136261u;
+  for (const char* p = text; *p; p++) hash = (hash ^ (uint8_t)*p) * 16777619u;
+  for (const GotDM& g : _got) if (ts && g.ts == ts && g.who == who && g.textHash == hash) return g.histId;
+  return 0;
+}
+
+void InwNode::gotDM(const uint8_t* pub, uint32_t ts, uint32_t hash, uint32_t histId) {
+  uint32_t who;
+  memcpy(&who, pub, 4);
+  _got[_gotNext] = {who, ts, hash, histId};
   _gotNext = (_gotNext + 1) % (sizeof(_got) / sizeof(_got[0]));
-  return false;
 }
 
 void InwNode::onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t ts, const char* text) {
-  // A retry of one we have: our ack was lost on the way back. MeshCore acks it again
-  // after this returns; it isn't shown, queued for the phone or announced a second time.
-  if (seenBefore(from.id.pub_key, ts, text)) return;
+  // A copy of one we have, because our ack was lost on the way back. Same timestamp:
+  // the sender's own retry. A new timestamp but the same words as this sender's last
+  // message, under three minutes ago with nothing said in between: they gave up and
+  // pressed "send again". Either way MeshCore acks it again after this returns, and it
+  // is counted on the message already shown: not added, queued for the phone or
+  // announced a second time.
+  const ConvKey conv = ConvKey::contact(from.id.pub_key);
+  uint32_t hash = 0;
+  uint32_t had = copyOf(from.id.pub_key, ts, text, hash);
+  if (!had) {
+    HistMsg* prev = history.last(conv);
+    const uint32_t now = getRTCClock()->getCurrentTime();
+    if (prev && !(prev->flags & HF_OUT) && prev->status == ST_RECV && now >= prev->ts && now - prev->ts <= 180 &&
+        !strncmp(prev->text, text, sizeof(prev->text) - 1)) {
+      had = prev->id;
+      gotDM(from.id.pub_key, ts, hash, had);      // and its own retries after this one
+    }
+  }
+  if (had) { history.bumpRepeat(had); return; }
   MyMesh::onMessageRecv(from, pkt, ts, text);
   const bool room = from.type == ADV_TYPE_ROOM;
   uint8_t flags = mentions(text, getNodeName()) ? HF_MENTION : 0;
   if (room) flags |= HF_ROOM;
   uint8_t hp[8];
   const uint8_t hn = pathOf(pkt, hp, sizeof(hp));
-  keepRoute(history.add(ConvKey::contact(from.id.pub_key), flags, ST_RECV, from.name, text,
-                        getRTCClock()->getCurrentTime(), hopsOf(pkt), (int8_t)(pkt->getSNR() * 4), hp, hn), pkt);
+  const uint32_t id = history.add(conv, flags, ST_RECV, from.name, text,
+                                  getRTCClock()->getCurrentTime(), hopsOf(pkt), (int8_t)(pkt->getSNR() * 4), hp, hn);
+  keepRoute(id, pkt);
+  gotDM(from.id.pub_key, ts, hash, id);
   emit(room ? NodeEvent::RoomMsg : NodeEvent::DirectMsg, &from);
 }
 

@@ -206,10 +206,11 @@ private:
   PendingDM _pending[PENDING_MAX];
   // Direct messages lately received, to know a retried copy when it comes: the sender
   // keeps the timestamp across its tries (the ack still goes back for each one).
-  struct GotDM { uint32_t who, ts, textHash; };
+  struct GotDM { uint32_t who, ts, textHash, histId; };
   GotDM _got[24] = {};
   uint8_t _gotNext = 0;
-  bool seenBefore(const uint8_t* pub, uint32_t ts, const char* text);
+  uint32_t copyOf(const uint8_t* pub, uint32_t ts, const char* text, uint32_t& hash);   // the message it repeats, or 0
+  void gotDM(const uint8_t* pub, uint32_t ts, uint32_t hash, uint32_t histId);
 
   // Our own originated flood posts, by packet hash, so repeats heard back can be
   // counted against the message that caused them.
