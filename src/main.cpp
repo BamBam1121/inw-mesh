@@ -14,6 +14,7 @@
 #include "notify.h"
 #include "statusbar.h"
 #include "ota.h"
+#include "chats.h"
 #include <SD.h>
 #include <time.h>
 #include "board_pins.h"
@@ -195,6 +196,22 @@ uint16_t app::unread() {
   }
   cached = total;
   return cached;
+}
+
+// A tap on the status bar's "N new" badge: straight to what is new. One conversation
+// with unread messages opens; several open the Messages list, which shows which.
+void app::openUnread() {
+  ConvKey keys[64], one;
+  const uint16_t n = history.conversations(keys, 64);
+  int with = 0;
+  for (uint16_t i = 0; i < n; i++) {
+    if (keys[i].type == CONV_CHANNEL && !channelJoined(keys[i])) continue;
+    if (history.unread(keys[i])) { one = keys[i]; with++; }
+  }
+  if (!with || (with == 1 && g_openConv == one)) return;     // nothing new, or already looking at it
+  nav.popToHome();
+  if (with == 1) openThread(one);
+  else app::openChats();
 }
 
 #if BOARD_HAS_TOUCH

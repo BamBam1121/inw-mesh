@@ -1,6 +1,7 @@
 // Settings grid and its menus. Mesh values are saved a few seconds after the
 // last change so spinning a value doesn't wear the flash.
 
+#include <Preferences.h>
 #include "app.h"
 #include "node.h"
 #include "history.h"
@@ -105,14 +106,38 @@ static const float BWS[] = {7.8f, 10.4f, 15.6f, 20.8f, 31.25f, 41.7f, 62.5f, 125
 static void radioChanged() { g_node->applyRadio(); markPrefsDirty(); }
 
 // ---- where you are: region preset, time zone, first-start setup -------------------------------
+// Some presets share their radio settings (USA and Canada; Netherlands, Hungary and
+// Slovakia) and differ at most in the path hash size, which several leave alone. Going
+// by the radio's settings alone, the first of them in the list was always the one
+// ticked: on a mesh using 3-byte hashes, picking USA left the tick on Canada. So the
+// preset that was picked is remembered (its own NVS key, the settings blob untouched)
+// and wins for as long as the radio still matches it.
+static bool regionMatches(int i) {
+  const regional::Region& r = regional::REGIONS[i];
+  return fabsf(P().freq - r.freq) < 0.0006f && fabsf(P().bw - r.bw) < 0.05f && P().sf == r.sf && P().cr == r.cr &&
+         (r.hashMode < 0 || P().path_hash_mode == r.hashMode);
+}
+static int s_regionPick = -2;                // -2: not read yet; -1: none
+static int regionPick() {
+  if (s_regionPick == -2) {
+    Preferences p;
+    s_regionPick = -1;
+    if (p.begin("inw-region", true)) { s_regionPick = (int)p.getInt("pick", -1); p.end(); }
+  }
+  return s_regionPick;
+}
+static void setRegionPick(int i) {
+  s_regionPick = i;
+  Preferences p;
+  if (p.begin("inw-region", false)) { p.putInt("pick", i); p.end(); }
+}
+
 // The preset the radio is on now, or -1 for custom settings.
 static int currentRegion() {
   if (!g_node) return -1;
-  for (int i = 0; i < regional::REGION_COUNT; i++) {
-    const regional::Region& r = regional::REGIONS[i];
-    if (fabsf(P().freq - r.freq) < 0.0006f && fabsf(P().bw - r.bw) < 0.05f && P().sf == r.sf && P().cr == r.cr &&
-        (r.hashMode < 0 || P().path_hash_mode == r.hashMode)) return i;
-  }
+  const int pick = regionPick();
+  if (pick >= 0 && pick < regional::REGION_COUNT && regionMatches(pick)) return pick;
+  for (int i = 0; i < regional::REGION_COUNT; i++) if (regionMatches(i)) return i;
   return -1;
 }
 static String regionName() { const int i = currentRegion(); return i < 0 ? String("custom") : String(regional::REGIONS[i].name); }
@@ -121,6 +146,7 @@ static void applyRegion(int i) {
   const regional::Region& r = regional::REGIONS[i];
   P().freq = r.freq; P().bw = r.bw; P().sf = r.sf; P().cr = r.cr;
   if (r.hashMode >= 0) P().path_hash_mode = r.hashMode;
+  setRegionPick(i);
   radioChanged();
 }
 
@@ -664,11 +690,20 @@ static void clockMenu() {
   m->toggle("set from gps", [] { return ui_settings.gpsSetsClock; },
             [] { ui_settings.gpsSetsClock = !ui_settings.gpsSetsClock; markUiDirty(); });
   m->action("set time by hand", [] {
-    prompt("Set time", "local: YYYY-MM-DD HH:MM", "", 16, [](const String& s) {
+    // With a 12-hour clock the time is typed the way it is shown, "3:45 pm": there used
+    // to be no way to say pm short of typing 15:45. A 24-hour time is always taken too.
+    const bool h12 = !ui_settings.clock24;
+    prompt("Set time", h12 ? "local: YYYY-MM-DD H:MM am/pm" : "local: YYYY-MM-DD HH:MM", "", 20, [h12](const String& s) {
       struct tm tm = {};
-      if (sscanf(s.c_str(), "%d-%d-%d %d:%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min) != 5) {
-        nav.toast("use YYYY-MM-DD HH:MM"); return;
+      char ap[4] = "";
+      const int got = sscanf(s.c_str(), "%d-%d-%d %d:%d %3s", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min, ap);
+      const char half = (char)tolower((unsigned char)ap[0]);
+      if (got < 5 || (ap[0] && half != 'a' && half != 'p') || tm.tm_hour > 23 || tm.tm_min > 59 || (ap[0] && (tm.tm_hour < 1 || tm.tm_hour > 12))) {
+        nav.toast(h12 ? "use YYYY-MM-DD H:MM am or pm" : "use YYYY-MM-DD HH:MM"); return;
       }
+      if (half == 'p' && tm.tm_hour < 12) tm.tm_hour += 12;
+      else if (half == 'a' && tm.tm_hour == 12) tm.tm_hour = 0;
+      else if (!ap[0] && h12 && tm.tm_hour >= 1 && tm.tm_hour <= 12) { nav.toast("add am or pm after the time"); return; }
       tm.tm_year -= 1900; tm.tm_mon -= 1;
       // mktime in UTC (TZ is unset on this device), then undo the local offset.
       const time_t local = mktime(&tm);

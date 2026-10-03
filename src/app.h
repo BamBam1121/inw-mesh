@@ -69,6 +69,7 @@ namespace app {
   const char* fmtDistance(double km);
   // Open things from anywhere (defined in the view files).
   void openChats();
+  void openUnread();       // the conversation with unread messages, or the Messages list when several have
   void openContacts();
   void openMap(double lat = 0, double lon = 0, const char* focusName = nullptr);
   void openTools();

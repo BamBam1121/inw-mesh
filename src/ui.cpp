@@ -123,6 +123,7 @@ void animateSignalIcon(lgfx::LovyanGFX* panel, const Theme& t) {
   s.pushSprite(panel, s_sigX, 1);
 }
 
+static int s_badgeX0 = 0, s_badgeX1 = 0;   // the "N new" badge as last drawn; both 0 = not shown
 void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
   s_sigX = -1;
   d.setFont(&fonts::Font2);
@@ -151,9 +152,11 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
   }
   x += 8;
   const uint16_t un = app::unread();
+  s_badgeX0 = s_badgeX1 = 0;
   if (un) {
     char b[12];
     snprintf(b, sizeof(b), "%u new", un);
+    s_badgeX0 = x; s_badgeX1 = x + d.textWidth(b) + 8;      // where a tap on it lands (Nav::touch)
     d.fillRoundRect(x, 2, d.textWidth(b) + 8, 13, 6, t.amber);
     d.setTextColor(t.bg, t.amber);
     d.drawString(b, x + 4, 1);
@@ -619,6 +622,20 @@ bool Nav::touch(const TouchEvent& e) {
       _bannerTouch = false;
       if (e.type == TouchEvent::Swipe && e.dir == 'U') { _bannerUntil = 0; _bannerAt = 0; _bannerTap = nullptr; invalidate(); }
     }
+    return true;
+  }
+  // The "N new" badge in the status bar: a tap goes to the new messages. The bar is
+  // thin, so the tap may land a little around it. On the lock face it waits for the
+  // swipe up, as a tapped banner does.
+  if (e.type == TouchEvent::Tap && s_badgeX1 && e.y < L::HEAD_Y + 3 && e.x >= s_badgeX0 - 10 && e.x <= s_badgeX1 + 14) {
+    if (v->isLock()) {
+      _afterUnlock = [] { app::openUnread(); };
+      _afterUnlockAt = millis();
+      toast("swipe up to open it");
+    } else {
+      app::openUnread();
+    }
+    invalidate();
     return true;
   }
   if (_depth > 1 && !v->isLock() && !v->isHome()) {
