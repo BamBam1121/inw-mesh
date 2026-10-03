@@ -181,6 +181,19 @@ static bool channelJoined(const ConvKey& k) {
 // messages after you leave it, and those used to count too, so the badge could say
 // 2 with nothing there to open. Rechecked every few seconds as well, because
 // leaving a channel changes what counts without adding a message.
+// What one conversation adds to it: what would have notified. A muted one adds
+// nothing; one set to @mentions only (itself, or a channel under Settings >
+// Notifications > "only when @mentioned" or with channel notifications off) adds only
+// the messages that mention this node. The Messages list still shows every unread one.
+static uint16_t countedUnread(const ConvKey& k) {
+  if (k.type == CONV_CHANNEL && !channelJoined(k)) return 0;
+  const uint8_t mode = notifyMode(k);
+  if (mode == NM_MUTED) return 0;
+  const bool mentionsOnly = mode == NM_MENTIONS ||
+      (mode == NM_DEFAULT && k.type == CONV_CHANNEL && (!ui_settings.notifyChannel || ui_settings.channelMentionsOnly));
+  return mentionsOnly ? history.unreadMentions(k) : history.unread(k);
+}
+
 uint16_t app::unread() {
   static uint32_t gen = 0, at = 0;
   static uint16_t cached = 0;
@@ -190,10 +203,7 @@ uint16_t app::unread() {
   ConvKey keys[64];
   const uint16_t n = history.conversations(keys, 64);
   uint16_t total = 0;
-  for (uint16_t i = 0; i < n; i++) {
-    if (keys[i].type == CONV_CHANNEL && !channelJoined(keys[i])) continue;
-    total += history.unread(keys[i]);
-  }
+  for (uint16_t i = 0; i < n; i++) total += countedUnread(keys[i]);
   cached = total;
   return cached;
 }
@@ -205,8 +215,7 @@ void app::openUnread() {
   const uint16_t n = history.conversations(keys, 64);
   int with = 0;
   for (uint16_t i = 0; i < n; i++) {
-    if (keys[i].type == CONV_CHANNEL && !channelJoined(keys[i])) continue;
-    if (history.unread(keys[i])) { one = keys[i]; with++; }
+    if (countedUnread(keys[i])) { one = keys[i]; with++; }
   }
   if (!with || (with == 1 && g_openConv == one)) return;     // nothing new, or already looking at it
   nav.popToHome();

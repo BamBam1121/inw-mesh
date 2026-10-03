@@ -286,6 +286,16 @@ uint16_t History::unread(const ConvKey& k) {
   return n;
 }
 
+uint16_t History::unreadMentions(const ConvKey& k) {
+  const uint32_t mark = readMark(k);
+  uint16_t n = 0;
+  for (uint16_t i = 0; i < _count; i++) {
+    const HistMsg* m = at(i);
+    if (m->conv == k && !(m->flags & HF_OUT) && (m->flags & HF_MENTION) && m->id > mark) n++;
+  }
+  return n;
+}
+
 bool History::hasMention(const ConvKey& k) {
   const uint32_t mark = readMark(k);
   for (uint16_t i = 0; i < _count; i++) {

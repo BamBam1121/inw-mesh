@@ -11,7 +11,7 @@ enum NotifyMode : uint8_t {
   NM_ALL,            // every message, sound and vibration
   NM_MENTIONS,       // only when @mentioned
   NM_SILENT,         // banner only, no sound or vibration
-  NM_MUTED,          // nothing; still counted as unread
+  NM_MUTED,          // nothing, and not in the "N new" count; the Messages list still shows its unread
   NM_COUNT
 };
 

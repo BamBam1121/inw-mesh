@@ -93,6 +93,7 @@ public:
   HistMsg* last(const ConvKey& k);
   uint16_t count(const ConvKey& k);
   uint16_t unread(const ConvKey& k);
+  uint16_t unreadMentions(const ConvKey& k);   // of those, the ones that @mention this node
   uint16_t totalUnread();
   bool     hasMention(const ConvKey& k);
   void markRead(const ConvKey& k);
