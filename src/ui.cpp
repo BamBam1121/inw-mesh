@@ -124,7 +124,7 @@ void animateSignalIcon(lgfx::LovyanGFX* panel, const Theme& t) {
 }
 
 static int s_badgeX0 = 0, s_badgeX1 = 0;   // the "N new" badge as last drawn; both 0 = not shown
-void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
+void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock, bool withBars) {
   s_sigX = -1;
   d.setFont(&fonts::Font2);
   d.fillRect(0, 0, L::W, 17, t.panel);
@@ -174,7 +174,7 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
   rx -= d.textWidth(bt) + 4;
   d.setTextColor(t.dim, t.panel);
   d.drawString(bt, rx, 1);
-  if (app::signalSize() && withClock) { // four bars, short to tall; lit by the last packet's SNR (the lock face draws its own)
+  if (app::signalSize() && withBars) { // four bars, short to tall; lit by the last packet's SNR (the lock face draws its own)
     rx -= smallW() + 5;
     s_sigX = rx;
     smallSignal(d, t, rx, 16);
@@ -733,7 +733,7 @@ void Nav::compose(bool overlays) {
   View* v = top();
   if (!v || !_d) return;
   _canvas.fillScreen(_t->bg);
-  if (!v->isLock()) drawStatusBar(_canvas, *_t);
+  if (!v->isLock()) drawStatusBar(_canvas, *_t, !v->hasClock());
   v->draw(_canvas);
   if (overlays) drawOverlays(_canvas);
 }
@@ -815,7 +815,7 @@ void Nav::draw() {
     return;
   }
   _canvas.fillScreen(_t->bg);
-  if (!v->isLock()) drawStatusBar(_canvas, *_t);
+  if (!v->isLock()) drawStatusBar(_canvas, *_t, !v->hasClock());
   v->draw(_canvas);
   drawOverlays(_canvas);
   fx::draw(_canvas);

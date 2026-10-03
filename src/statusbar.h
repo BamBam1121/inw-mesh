@@ -3,7 +3,8 @@
 #include "theme.h"
 
 // withClock false: the lock face, whose big clock already says the time.
-void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock = true);
+// withBars false: the lock face again, which draws its own larger signal bars.
+void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock = true, bool withBars = true);
 // The lock face's larger signal bars, top right under the status bar (nothing when
 // the bars are turned off). Draw it after the scene.
 void drawLockSignal(lgfx::LovyanGFX& d, const Theme& t);

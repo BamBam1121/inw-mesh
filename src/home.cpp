@@ -115,7 +115,7 @@ public:
   bool isLock() override { return true; }
   void draw(Canvas& d) override {
     const Theme& t = nav.theme();
-    drawStatusBar(d, t, false);          // the big clock below is the time here
+    drawStatusBar(d, t, false, false);   // the big clock below is the time here, and the face has its own signal bars
     const bool hasUnread = app::unread() > 0;
     scenes::mascotLift() = _hop;          // mid-hop after a poke
     scenes::mascotPose() = pose();        // blinking, talking, waving...

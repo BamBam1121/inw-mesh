@@ -54,6 +54,7 @@ public:
   virtual void render(bool full) {}
   virtual bool isHome() { return false; }
   virtual bool isLock() { return false; }
+  virtual bool hasClock() { return false; }   // shows the time itself: the status bar leaves it out
   virtual bool wantsAllKeys() { return false; }  // don't treat letters as shortcuts
   // Touch (boards with a touchscreen only). True if the view used the event.
   virtual bool touch(const TouchEvent& e) { return false; }

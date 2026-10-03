@@ -1321,7 +1321,7 @@ static void usbCommands() {
       View* v = nav.top();
       Canvas& g = nav.canvas();
       g.fillScreen(theme.bg);
-      if (v && !v->isLock()) drawStatusBar(g, theme);
+      if (v && !v->isLock()) drawStatusBar(g, theme, !v->hasClock());
       if (v) v->draw(g);
       nav.drawOverlays(g);
       Serial.flush();

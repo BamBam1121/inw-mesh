@@ -222,6 +222,7 @@ namespace power { void setSaver(bool) {} }
 #include "ota.h"
 namespace ota {
 bool supported() { return true; }
+bool replacesOther() { return false; }
 Info check() { Info i; strlcpy(i.error, "simulator", sizeof(i.error)); return i; }
 const char* install(const Info&) { return "simulator"; }
 static bool s_auto = true;
@@ -241,6 +242,9 @@ const char* sdFormat() { return "this card works: not formatting it"; }
 #include "fieldtools.h"
 bool sdMount() { return true; }
 const char* sdBackupNow(bool) { return "simulator"; }
+static uint8_t s_simBackupHours = 24;
+uint8_t sdBackupHours() { return s_simBackupHours; }
+void setSdBackupHours(uint8_t h) { s_simBackupHours = h; }
 const char* exportJson() { return "simulator"; }
 const char* importJsonNow() { return "simulator"; }
 const char* recoverMissingContacts() { return "simulator"; }

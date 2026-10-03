@@ -127,7 +127,7 @@ static void shot(const char* name) {
   View* v = nav.top();
   Canvas& g = nav.canvas();
   g.fillScreen(theme.bg);
-  if (v && !v->isLock()) drawStatusBar(g, theme);
+  if (v && !v->isLock()) drawStatusBar(g, theme, !v->hasClock());
   if (v) v->draw(g);
   nav.drawOverlays(g);
   savePPM(g, name);
@@ -325,7 +325,7 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
         View* v = nav.top();
         Canvas& g = nav.canvas();
         g.fillScreen(theme.bg);
-        if (v && !v->isLock()) drawStatusBar(g, theme);
+        if (v && !v->isLock()) drawStatusBar(g, theme, !v->hasClock());
         if (v) v->draw(g);
         nav.drawOverlays(g);
         // RGB888 rows for LovyanGFX's own PNG encoder (lgfx_miniz.c); a BMP if it fails.
@@ -688,7 +688,7 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
         View* v = nav.top();
         Canvas& g = nav.canvas();
         g.fillScreen(theme.bg);
-        if (v && !v->isLock()) drawStatusBar(g, theme);
+        if (v && !v->isLock()) drawStatusBar(g, theme, !v->hasClock());
         if (v) v->draw(g);
         nav.drawOverlays(g);
         const int w = g.width(), h = g.height();

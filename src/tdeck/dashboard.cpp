@@ -116,6 +116,7 @@ void icon(lgfx::LovyanGFX& d, int which, int cx, int cy, uint16_t c) {
 class DashboardView : public View {
 public:
   bool isHome() override { return true; }
+  bool hasClock() override { return true; }     // the big clock below: the bar above shows the name
   bool headerBack() override { return false; }
 
   void draw(Canvas& g) override {

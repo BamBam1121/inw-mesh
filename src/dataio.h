@@ -63,4 +63,6 @@ void storeReport();              // record counts of every contact store, over U
 // partition layout change. Cheap when nothing changed.
 void keepEssentials();
 void keepEssentialsIfDue();   // after a save of the channels, mesh settings or key (call from the loop)
-void sdBackupTick();             // call from loop; runs sdBackupNow(false) once a day
+void sdBackupTick();             // call from loop; runs sdBackupNow(false) every sdBackupHours()
+uint8_t sdBackupHours();         // 1, 3, 6, 12 or 24 (the default)
+void setSdBackupHours(uint8_t h);

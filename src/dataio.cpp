@@ -1023,21 +1023,39 @@ const char* sdBackupNow(bool force) {
 // Once a day. Checked every few minutes so a clock that only becomes valid
 // later (wifi, gps) is still honoured; without one, every 24 h of uptime.
 bool inwCanSaveNow();
+// How often the automatic backup runs, in hours (Settings > Backups): once a day unless
+// changed. Its own NVS key, the settings blob untouched.
+static int16_t s_backupHours = -1;           // -1: not read yet
+uint8_t sdBackupHours() {
+  if (s_backupHours < 0) {
+    Preferences p;
+    s_backupHours = 24;
+    if (p.begin("inw-fx", true)) { s_backupHours = p.getUChar("bkhrs", 24); p.end(); }
+    if (s_backupHours < 1 || s_backupHours > 24) s_backupHours = 24;
+  }
+  return (uint8_t)s_backupHours;
+}
+void setSdBackupHours(uint8_t h) {
+  s_backupHours = h < 1 ? 1 : h > 24 ? 24 : h;
+  Preferences p;
+  if (p.begin("inw-fx", false)) { p.putUChar("bkhrs", (uint8_t)s_backupHours); p.end(); }
+}
+
 void sdBackupTick() {
-  static const uint32_t DAY = 24UL * 3600UL;
+  const uint32_t EVERY = sdBackupHours() * 3600UL;
   static uint32_t next = 5UL * 60UL * 1000UL, lastRun = 0;
   if ((int32_t)(millis() - next) < 0) return;
   next = millis() + 5UL * 60UL * 1000UL;
   if (!g_node || !inwCanSaveNow()) return;   // only with the screen off, never mid-use
   const uint32_t now = rtc_clock.getCurrentTime();
   const bool clockOk = now > 1700000000UL;
-  const bool due = clockOk ? (now - ui_settings.lastSdBackup >= DAY)
-                           : (!lastRun || millis() - lastRun >= DAY * 1000UL);
+  const bool due = clockOk ? (now - ui_settings.lastSdBackup >= EVERY)
+                           : (!lastRun || millis() - lastRun >= EVERY * 1000UL);
   if (!due) return;
   if (lastRun && millis() - lastRun < 3600000UL) return;   // failed recently (no card): hourly at most
   lastRun = millis();
   const char* r = sdBackupNow(false);
-  logs.add(LOG_INFO, "daily backup: %s", r);
+  logs.add(LOG_INFO, "auto backup: %s", r);
 }
 
 // ---- export ----------------------------------------------------------------------

@@ -972,7 +972,16 @@ static void backupsMenu() {
       app::rebootDiscard();   // importBeforeNode() pulls the mirror back in on boot
     });
   });
-  m->info("auto backup", []() -> String { return String("once a day to /inw on the sd"); });
+  // To /inw on the card, with the screen off. Once a day unless changed here.
+  m->adjust("auto backup every", []() -> String {
+    const uint8_t h = sdBackupHours();
+    return h >= 24 ? String("day") : h == 1 ? String("hour") : String(h) + " hours";
+  }, [](int d) {
+    static const uint8_t steps[] = {1, 3, 6, 12, 24};
+    int i = 0;
+    while (i < 4 && steps[i] < sdBackupHours()) i++;
+    setSdBackupHours(steps[constrain(i + d, 0, 4)]);
+  });
   nav.push(m);
 }
 
