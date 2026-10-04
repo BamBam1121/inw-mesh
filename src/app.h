@@ -74,6 +74,7 @@ namespace app {
   void openMap(double lat = 0, double lon = 0, const char* focusName = nullptr);
   void openTools();
   void openSettings();
+  void openQuickSettings();   // Wi-Fi, Bluetooth, GPS, sound, brightness: a tap on the status bar's right half
   void openThreadForContact(const uint8_t* pub);
   void openThreadForChannel(int idx);
   void openContactDetail(const uint8_t* pub);

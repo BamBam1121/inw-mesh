@@ -828,6 +828,12 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
   tap(20, 30);                         shot("touch_7_header_back");
   tap(160, 62 + 3 + 34 + 17);          shot("touch_8_tapped_second_row");
   clearTo(base);
+  // The status bar's right half: quick settings, a switch flipped in it, and a second
+  // tap on the bar that mustn't open it twice.
+  tap(250, 8);                         shot("touch_9_quick_settings");
+  tap(160, 62);                        shot("touch_10_quick_wifi_tapped");
+  tap(250, 8);                         shot("touch_11_quick_still_one");
+  clearTo(base);
 
   // Tools > hardware check, part way through being tried: touch and keys done,
   // the ball rolled every way but right, not clicked yet.

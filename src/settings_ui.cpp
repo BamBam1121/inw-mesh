@@ -753,7 +753,7 @@ static void displayMenu() {
             [](int d) { app::setLockSignalLeft(d < 0); });
   // With nothing heard for this long and the screen on, nearby repeaters are asked to
   // answer (zero hop: the question is never repeated across the mesh).
-  m->adjust("signal check every", []() -> String {
+  m->adjust("signal check if quiet for", []() -> String {
     return app::signalCheckMins() ? String(app::signalCheckMins()) + " min" : String("never");
   }, [](int d) {
     static const uint8_t steps[] = {0, 1, 2, 5, 10, 15, 30, 60};
@@ -1270,5 +1270,32 @@ private:
   bool _finger = BOARD_HAS_TOUCH;           // a touchscreen board opens with no highlight
   uint32_t _last = 0;
 };
+
+// The switches people reach for most, without the walk through Settings: a tap on the
+// right half of the status bar (the Wi-Fi, BT, GPS and battery end) opens this.
+static View* s_quickView = nullptr;
+void app::openQuickSettings() {
+  if (nav.top() == s_quickView) return;                  // it is open already
+  auto* m = new MenuView("Quick settings");
+  m->toggle("wi-fi", [] { return wifi::enabled(); }, [] {
+    if (saverBlocks()) return;
+    ui_settings.wifiOn = !wifi::enabled(); wifi::setEnabled(ui_settings.wifiOn); markUiDirty(); nav.statusChanged(); });
+  m->toggle("bluetooth", [] { return bleEnabled(); }, [] {
+    if (saverBlocks()) return;
+    ui_settings.ble = !bleEnabled();
+    bleSetEnabled(ui_settings.ble);
+    markUiDirty();
+    nav.statusChanged();
+  });
+  m->toggle("gps receiver", [] { return ui_settings.gpsOn && !power::saver(); },
+            [] { if (saverBlocks()) return; ui_settings.gpsOn = !ui_settings.gpsOn; gpsPower(ui_settings.gpsOn); markUiDirty(); nav.statusChanged(); });
+  m->toggle("sounds", [] { return ui_settings.sound; }, [] { ui_settings.sound = !ui_settings.sound; app::applySound(); markUiDirty(); });
+  m->adjust("brightness", []() -> String { return String(ui_settings.brightness) + " / 16"; },
+            [](int d) { ui_settings.brightness = constrain(ui_settings.brightness + d, 1, 16); app::applyDisplay(); markUiDirty(); });
+  m->toggle("battery saver", [] { return power::saver(); }, [] { power::setSaver(!power::saver()); });
+  m->action("all settings", [] { nav.pop(); app::openSettings(); });
+  s_quickView = m;
+  nav.push(m);
+}
 
 void app::openSettings() { nav.push(new SettingsGrid()); }

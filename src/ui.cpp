@@ -638,6 +638,12 @@ bool Nav::touch(const TouchEvent& e) {
     invalidate();
     return true;
   }
+  // The right half of the status bar (Wi-Fi, BT, GPS, signal, battery): a tap opens the
+  // quick settings. Not on the lock face, where a pocket taps too.
+  if (e.type == TouchEvent::Tap && e.y < L::HEAD_Y + 2 && e.x >= L::W / 2 && !v->isLock()) {
+    app::openQuickSettings();
+    return true;
+  }
   if (_depth > 1 && !v->isLock() && !v->isHome()) {
     const bool headerTap = e.type == TouchEvent::Tap && v->headerBack() && e.x < 64 &&
                            e.y >= L::HEAD_Y && e.y < L::HEAD_Y + L::HEAD_H;
