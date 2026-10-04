@@ -831,8 +831,18 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
   // The status bar's right half: quick settings, a switch flipped in it, and a second
   // tap on the bar that mustn't open it twice.
   tap(250, 8);                         shot("touch_9_quick_settings");
-  tap(160, 62);                        shot("touch_10_quick_wifi_tapped");
-  tap(250, 8);                         shot("touch_11_quick_still_one");
+  // The panel: brightness dragged down, volume tapped up, a tile switched off, sound
+  // switched off, then the trackball rolled onto a tile and clicked onto a slider.
+  drag(240, 72, 90, 72);               shot("touch_10_quick_brightness_dragged");
+  tap(280, 114);                       shot("touch_11_quick_volume_tapped");
+  tap(160, 158);                       shot("touch_11b_quick_bluetooth_off");
+  tap(56, 212);                        shot("touch_11c_quick_sound_off");
+  nav.rotate(1); nav.rotate(1); nav.rotate(1); nav.rotate(1); run(200);
+                                       shot("touch_11d_quick_trackball_on_tile");
+  nav.rotate(-1); nav.rotate(-1); nav.rotate(-1); nav.press(); run(200);
+                                       shot("touch_11e_quick_trackball_holds_slider");
+  tap(250, 8);                         shot("touch_11f_quick_still_one");
+  swipe(160, 200, 160, 90);            shot("touch_11g_quick_swiped_away");
   clearTo(base);
   // Pulled down from the top edge: a quick flick, then a slow drag, each from the home
   // screen. Then a pull that starts lower down, which must stay the list's own scroll.

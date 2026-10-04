@@ -1287,11 +1287,258 @@ private:
   uint32_t _last = 0;
 };
 
-// The switches people reach for most, without the walk through Settings: a swipe down
-// from the top of the screen, or a tap on the right half of the status bar, opens this.
+#if BOARD_HAS_TOUCH
+// ---- quick settings -----------------------------------------------------------------
+// Pulled down from the top of the screen (or a tap on the status bar's right half): the
+// things people change most, made for a finger. Two sliders that follow the finger and
+// six tiles to tap. The trackball walks them too: roll to move, click to switch a tile
+// or to take hold of a slider, roll to slide it, click to let go. A swipe up puts the
+// panel away.
+class QuickPanel : public View {
+public:
+  bool coasts() override { return false; }            // nothing here glides
+  void tick() override {
+    // A radio joining or dropping shows without a touch.
+    if (millis() - _last > 1000) { _last = millis(); dirty = true; }
+  }
+
+  void draw(Canvas& g) override {
+    const Theme& t = nav.theme();
+    drawHeader(g, "Quick settings");
+    g.setFont(&fonts::Font2);
+    char v[24];
+    const uint8_t bright = _drag == 0 ? _bright : app::brightnessNow();
+    snprintf(v, sizeof(v), "%s%u / 16", app::nightNow() ? "night  " : "", bright);
+    slider(g, t, 0, "brightness", v, (bright - 1) / 15.0f, true);
+    if (!ui_settings.sound) strlcpy(v, "off", sizeof(v));
+    else snprintf(v, sizeof(v), "%u%%", ui_settings.volume);
+    slider(g, t, 1, "volume", v, ui_settings.volume / 100.0f, ui_settings.sound);
+    for (int i = 0; i < 6; i++) tile(g, t, i);
+  }
+
+  bool touch(const TouchEvent& e) override {
+    switch (e.type) {
+      case TouchEvent::Down:
+        _drag = sliderAt(e.x, e.y);
+        _onSlider = _drag >= 0;
+        if (_drag >= 0) { _wheel = false; setFromX(_drag, e.x, false); }
+        return true;
+      case TouchEvent::Drag:
+        if (_drag >= 0) setFromX(_drag, e.x, false);
+        return true;
+      case TouchEvent::Up:
+        if (_drag >= 0) { const int i = _drag; _drag = -1; setFromX(i, e.x, true); }
+        return true;
+      case TouchEvent::Tap: {
+        const int s = _drag >= 0 ? _drag : sliderAt(e.x, e.y);
+        _drag = -1;
+        if (s >= 0) { setFromX(s, e.x, true); return true; }
+        const int i = tileAt(e.x, e.y);
+        if (i >= 0) { _wheel = false; activate(i); }
+        return true;
+      }
+      case TouchEvent::Swipe:
+        if (e.dir == 'U' && !_onSlider) nav.pop();     // pushed back up where it came from
+        return true;
+      default:
+        return true;
+    }
+  }
+
+  void rotate(int d) override {
+    if (!_wheel || _focus < 0) { _wheel = true; if (_focus < 0) _focus = 0; dirty = true; return; }
+    if (!d) return;
+    if (_hold && _focus == 0) {
+      app::setBrightnessNow((uint8_t)constrain((int)app::brightnessNow() + d, 1, 16));
+    } else if (_hold && _focus == 1) {
+      ui_settings.volume = constrain((int)ui_settings.volume + d * 5, 0, 100);
+      if (ui_settings.volume && !ui_settings.sound) ui_settings.sound = true;
+      app::applySound();
+      markUiDirty();
+    } else {
+      _focus = constrain(_focus + d, 0, 7);
+    }
+    dirty = true;
+  }
+  void press() override {
+    if (!_wheel || _focus < 0) { rotate(0); return; }  // a click with nothing shown: show it first
+    if (_focus < 2) { _hold = !_hold; dirty = true; return; }
+    activate(_focus - 2);
+  }
+  void key(char c) override { if (c == '\n') press(); }
+
+private:
+  // Sliders: an icon, the name and the value over a track the full width of the screen.
+  static constexpr int SL_X = 46, SL_W = L::W - SL_X - 18, SL_Y = L::BODY_Y + 4, SL_H = 42;
+  // Tiles: three across, two down, each big enough for a thumb.
+  static constexpr int T_W = 96, T_H = 48, T_Y = SL_Y + 2 * SL_H + 4;
+  enum { G_SUN, G_SOUND, G_WIFI, G_BT, G_GPS, G_SAVER, G_GEAR };
+
+  static void glyph(Canvas& d, int which, int cx, int cy, uint16_t c, bool on) {
+    switch (which) {
+      case G_SUN:
+        d.fillCircle(cx, cy, 4, c);
+        for (int k = 0; k < 8; k++) {
+          const float a = k * 0.7854f;
+          d.drawLine(cx + (int)lroundf(cosf(a) * 7), cy + (int)lroundf(sinf(a) * 7),
+                     cx + (int)lroundf(cosf(a) * 10), cy + (int)lroundf(sinf(a) * 10), c);
+        }
+        break;
+      case G_SOUND:
+        d.fillRect(cx - 9, cy - 3, 4, 7, c);
+        d.fillTriangle(cx - 5, cy - 3, cx, cy - 8, cx, cy + 8, c);
+        d.fillTriangle(cx - 5, cy - 3, cx - 5, cy + 3, cx, cy + 8, c);
+        if (on) {
+          d.drawLine(cx + 3, cy - 3, cx + 4, cy, c);  d.drawLine(cx + 4, cy, cx + 3, cy + 3, c);
+          d.drawLine(cx + 6, cy - 6, cx + 8, cy, c);  d.drawLine(cx + 8, cy, cx + 6, cy + 6, c);
+        } else {
+          d.drawLine(cx + 3, cy - 4, cx + 9, cy + 4, c);  d.drawLine(cx + 9, cy - 4, cx + 3, cy + 4, c);
+        }
+        break;
+      case G_WIFI:
+        d.fillCircle(cx, cy + 7, 2, c);
+        d.drawArc(cx, cy + 7, 6, 5, 225, 315, c);
+        d.drawArc(cx, cy + 7, 11, 10, 225, 315, c);
+        d.drawArc(cx, cy + 7, 16, 15, 225, 315, c);
+        break;
+      case G_BT:
+        d.drawLine(cx, cy - 9, cx, cy + 9, c);
+        d.drawLine(cx, cy - 9, cx + 5, cy - 4, c);  d.drawLine(cx + 5, cy - 4, cx - 5, cy + 4, c);
+        d.drawLine(cx, cy + 9, cx + 5, cy + 4, c);  d.drawLine(cx + 5, cy + 4, cx - 5, cy - 4, c);
+        break;
+      case G_GPS:
+        d.drawCircle(cx, cy, 6, c);
+        d.fillCircle(cx, cy, 2, c);
+        d.drawFastVLine(cx, cy - 10, 4, c);  d.drawFastVLine(cx, cy + 7, 4, c);
+        d.drawFastHLine(cx - 10, cy, 4, c);  d.drawFastHLine(cx + 7, cy, 4, c);
+        break;
+      case G_SAVER:                        // a battery, nearly empty while the saver is on
+        d.drawRoundRect(cx - 10, cy - 6, 19, 12, 2, c);
+        d.fillRect(cx + 9, cy - 2, 2, 5, c);
+        d.fillRect(cx - 8, cy - 4, on ? 5 : 15, 8, c);
+        break;
+      default:                             // a gear: all settings
+        d.drawCircle(cx, cy, 5, c);
+        d.drawCircle(cx, cy, 2, c);
+        for (int k = 0; k < 8; k++) {
+          const float a = k * 0.7854f;
+          d.fillCircle(cx + (int)lroundf(cosf(a) * 8), cy + (int)lroundf(sinf(a) * 8), 1, c);
+        }
+    }
+  }
+
+  void slider(Canvas& g, const Theme& t, int i, const char* label, const char* value, float frac, bool live) {
+    const int y = SL_Y + i * SL_H;
+    const bool focus = _wheel && _focus == i, held = _drag == i || (focus && _hold);
+    if (focus) g.drawRoundRect(4, y - 3, L::W - 8, SL_H - 1, 8, held ? t.green : t.greenDim);
+    glyph(g, i ? G_SOUND : G_SUN, 24, y + 20, live ? t.green : t.dim, live);
+    g.setTextColor(t.dim, t.bg);
+    g.drawString(label, SL_X, y);
+    g.setTextColor(live ? t.txt : t.dim, t.bg);
+    g.drawString(value, SL_X + SL_W - g.textWidth(value), y);
+    const int ty = y + 23, kx = SL_X + (int)lroundf(constrain(frac, 0.0f, 1.0f) * SL_W);
+    g.fillRoundRect(SL_X, ty, SL_W, 8, 4, t.line);
+    if (kx > SL_X + 4) g.fillRoundRect(SL_X, ty, kx - SL_X, 8, 4, live ? t.green : t.greenDim);
+    g.fillCircle(kx, ty + 4, held ? 11 : 9, live ? t.green : t.greenDim);   // the knob: a ring, bigger while held
+    g.fillCircle(kx, ty + 4, held ? 6 : 5, t.bg);
+  }
+
+  static void state(int i, bool& on, bool& linked) {
+    on = linked = false;
+    switch (i) {
+      case 0: on = wifi::enabled(); linked = wifi::connected(); break;
+      case 1: on = bleEnabled(); linked = bleConnected(); break;
+      case 2: on = ui_settings.gpsOn && !power::saver(); linked = gps.hasFix(); break;
+      case 3: on = ui_settings.sound; break;
+      case 4: on = power::saver(); break;
+      default: break;
+    }
+  }
+
+  void tile(Canvas& g, const Theme& t, int i) {
+    static const char* const LABEL[] = {"Wi-Fi", "Bluetooth", "GPS", "Sound", "Saver", "Settings"};
+    static const uint8_t GLYPH[] = {G_WIFI, G_BT, G_GPS, G_SOUND, G_SAVER, G_GEAR};
+    const int x = 8 + (i % 3) * (T_W + 8), y = T_Y + (i / 3) * (T_H + 6);
+    bool on, linked;
+    state(i, on, linked);
+    const bool focus = _wheel && _focus == i + 2, plain = i == 5;     // "Settings" is a door, not a switch
+    const uint16_t fill = on ? t.focus : t.panel;
+    g.fillRoundRect(x, y, T_W, T_H, 9, fill);
+    g.drawRoundRect(x, y, T_W, T_H, 9, focus ? t.green : on ? t.greenDim : t.line);
+    if (focus) g.drawRoundRect(x + 1, y + 1, T_W - 2, T_H - 2, 8, t.green);
+    glyph(g, GLYPH[i], x + T_W / 2, y + 16, plain ? t.txt : on ? t.green : t.dim, on);
+    g.setTextColor(plain || on ? t.txt : t.dim, fill);
+    g.drawString(LABEL[i], x + (T_W - g.textWidth(LABEL[i])) / 2, y + T_H - 19);
+    // A radio that is on: a dot once it has what it wants (a network, the phone, a fix),
+    // a ring while it is still looking.
+    if (on && i < 3) {
+      if (linked) g.fillCircle(x + T_W - 12, y + 11, 3, t.green);
+      else g.drawCircle(x + T_W - 12, y + 11, 3, t.greenDim);
+    }
+  }
+
+  static int sliderAt(int x, int y) {
+    for (int i = 0; i < 2; i++)
+      if (y >= SL_Y + i * SL_H - 2 && y < SL_Y + (i + 1) * SL_H - 2 && x >= SL_X - 16) return i;
+    return -1;
+  }
+  static int tileAt(int x, int y) {
+    for (int i = 0; i < 6; i++) {
+      const int tx = 8 + (i % 3) * (T_W + 8), ty = T_Y + (i / 3) * (T_H + 6);
+      if (x >= tx - 3 && x < tx + T_W + 3 && y >= ty - 2 && y < ty + T_H + 3) return i;
+    }
+    return -1;
+  }
+
+  // The slider follows the finger: shown and felt at once, saved when the finger lifts
+  // (commit), so a drag across the track is one write and not sixteen.
+  void setFromX(int i, int x, bool commit) {
+    const float f = constrain((x - SL_X) / (float)SL_W, 0.0f, 1.0f);
+    if (i == 0) {
+      _bright = (uint8_t)(1 + lroundf(f * 15));
+      if (commit) app::setBrightnessNow(_bright);
+      else dimmer.setFull(power::saver() ? min<uint8_t>(_bright, 4) : _bright);
+    } else {
+      ui_settings.volume = (uint8_t)(lroundf(f * 20) * 5);
+      if (ui_settings.volume && !ui_settings.sound) ui_settings.sound = true;   // slid up from "off": sound is on
+      app::applySound();
+      if (commit) {
+        markUiDirty();
+        if (ui_settings.sound && ui_settings.volume) previewSound(app::themeSpec().msg);   // hear the level picked
+      }
+    }
+    dirty = true;
+  }
+
+  void activate(int i) {
+    switch (i) {
+      case 0: if (saverBlocks()) return; ui_settings.wifiOn = !wifi::enabled(); wifi::setEnabled(ui_settings.wifiOn); markUiDirty(); break;
+      case 1: if (saverBlocks()) return; ui_settings.ble = !bleEnabled(); bleSetEnabled(ui_settings.ble); markUiDirty(); break;
+      case 2: if (saverBlocks()) return; ui_settings.gpsOn = !ui_settings.gpsOn; gpsPower(ui_settings.gpsOn); markUiDirty(); break;
+      case 3: ui_settings.sound = !ui_settings.sound; app::applySound(); markUiDirty(); break;
+      case 4: power::setSaver(!power::saver()); break;
+      default: nav.pop(); app::openSettings(); return;     // this panel is gone: touch nothing of it
+    }
+    nav.statusChanged();
+    dirty = true;
+  }
+
+  int _drag = -1, _focus = -1;
+  bool _wheel = false, _hold = false, _onSlider = false;
+  uint8_t _bright = 8;
+  uint32_t _last = 0;
+};
+#endif
+
+// Quick settings: a swipe down from the top of the screen, or a tap on the right half of
+// the status bar.
 static View* s_quickView = nullptr;
 void app::openQuickSettings() {
   if (nav.top() == s_quickView) return;                  // it is open already
+#if BOARD_HAS_TOUCH
+  s_quickView = new QuickPanel();
+  nav.push(s_quickView);
+#else
   auto* m = new MenuView("Quick settings");
   // The brightness in force: the night's while night brightness is on, else the day's.
   m->adjust("brightness", []() -> String { return String(app::brightnessNow()) + " / 16" + (app::nightNow() ? "  night" : ""); },
@@ -1313,6 +1560,7 @@ void app::openQuickSettings() {
   m->action("all settings", [] { nav.pop(); app::openSettings(); });
   s_quickView = m;
   nav.push(m);
+#endif
 }
 
 void app::openSettings() { nav.push(new SettingsGrid()); }

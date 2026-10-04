@@ -70,6 +70,10 @@ size_t Print::print(const String& s) { return write(s.c_str()); }
 LGFX display;
 Theme theme;
 IdleDimmer dimmer;
+// A backlight behind it, so a view that sets the brightness (the quick settings' slider)
+// has something to set; the times are long so nothing dims during a tour.
+static Backlight s_simBacklight;
+static struct SimDimmerInit { SimDimmerInit() { dimmer.begin(&s_simBacklight, 12, 3, 3600000UL, 7200000UL); } } s_simDimmerInit;
 static Backlight s_backlight;
 Keyboard keyboard;
 Haptic haptic;
