@@ -236,16 +236,68 @@ static void applyOrientation() {
 }
 #endif
 
+// Night brightness: between two hours of the local clock the screen uses its own, lower
+// level, and goes back by itself in the morning. Off unless a level is set. Kept in its
+// own NVS keys, the settings blob untouched.
+static int16_t s_nightLvl = -1, s_nightFromH = 21, s_nightToH = 7;      // -1: not read yet
+static void nightRead() {
+  if (s_nightLvl >= 0) return;
+  s_nightLvl = 0;
+  Preferences p;
+  if (!p.begin("inw-fx", true)) return;
+  s_nightLvl = min<int>(p.getUChar("nbri", 0), 16);
+  s_nightFromH = p.getUChar("nfrom", 21) % 24;
+  s_nightToH = p.getUChar("nto", 7) % 24;
+  p.end();
+}
+static void nightPut(const char* key, uint8_t v) {
+  Preferences p;
+  if (p.begin("inw-fx", false)) { p.putUChar(key, v); p.end(); }
+}
+uint8_t app::nightBrightness() { nightRead(); return (uint8_t)s_nightLvl; }
+uint8_t app::nightFrom()       { nightRead(); return (uint8_t)s_nightFromH; }
+uint8_t app::nightUntil()      { nightRead(); return (uint8_t)s_nightToH; }
+void app::setNightBrightness(uint8_t level) {
+  nightRead();
+  s_nightLvl = min<int>(level, 16);
+  nightPut("nbri", (uint8_t)s_nightLvl);
+  app::applyDisplay();
+}
+void app::setNightHours(uint8_t from, uint8_t until) {
+  nightRead();
+  s_nightFromH = from % 24; s_nightToH = until % 24;
+  nightPut("nfrom", (uint8_t)s_nightFromH); nightPut("nto", (uint8_t)s_nightToH);
+  app::applyDisplay();
+}
+bool app::nightNow() {
+  nightRead();
+  if (!s_nightLvl || !app::timeValid() || s_nightFromH == s_nightToH) return false;
+  const time_t t = (time_t)app::now() + regional::offsetMin(app::now()) * 60;
+  struct tm tm;
+  gmtime_r(&t, &tm);
+  const int h = tm.tm_hour, a = s_nightFromH, b = s_nightToH;
+  return a < b ? (h >= a && h < b) : (h >= a || h < b);
+}
+uint8_t app::brightnessNow() { return app::nightNow() ? (uint8_t)s_nightLvl : ui_settings.brightness; }
+void app::setBrightnessNow(uint8_t level) {
+  level = constrain((int)level, 1, 16);
+  if (app::nightNow()) { app::setNightBrightness(level); return; }
+  ui_settings.brightness = level;
+  markUiDirty();
+  app::applyDisplay();
+}
+
 void app::applyDisplay() {
 #if BOARD_HAS_TOUCH
   applyOrientation();
 #endif
+  const uint8_t bright = app::brightnessNow();
   if (power::saver()) {             // dimmer, and asleep sooner; the saved settings are untouched
-    dimmer.setFull(min<uint8_t>(ui_settings.brightness, 4));
+    dimmer.setFull(min<uint8_t>(bright, 4));
     dimmer.setTimes(min<uint16_t>(ui_settings.dimSecs, 10) * 1000UL, min<uint16_t>(ui_settings.sleepSecs, 30) * 1000UL);
     return;
   }
-  dimmer.setFull(ui_settings.brightness);
+  dimmer.setFull(bright);
   dimmer.setTimes(ui_settings.dimSecs * 1000UL, ui_settings.sleepSecs * 1000UL);
 }
 void app::applySound() { jingle.setVolume(ui_settings.sound ? ui_settings.volume : 0); }
@@ -2061,6 +2113,16 @@ void loop() {
   gps.wakeTick();                       // a woken GPS gets nudged until it talks again
 #endif
 
+  // Night brightness comes on and goes off with the clock: looked at every 10 s.
+  {
+    static uint32_t at = 0;
+    static int8_t was = -1;
+    if (!at || millis() - at > 10000) {
+      at = millis() | 1;
+      const int8_t n = app::nightNow();
+      if (n != was) { if (was >= 0 || n) app::applyDisplay(); was = n; }
+    }
+  }
   // Each dim goes in the log with how long nothing had been touched and where, so a
   // "dims while I'm using it" report shows what it took for idleness.
   {

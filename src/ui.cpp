@@ -624,6 +624,20 @@ bool Nav::touch(const TouchEvent& e) {
     }
     return true;
   }
+  // A touch that starts on the status bar is the bar's: pulled down (a flick or a slow
+  // drag) it opens the quick settings, and nothing under it scrolls meanwhile. A tap goes
+  // on to the checks below. Not on the lock face, which is swiped up to unlock.
+  if (e.type == TouchEvent::Down) { _barTouch = !v->isLock() && e.y < L::HEAD_Y + 6; _barEat = false; }
+  if (_barEat && e.type == TouchEvent::Swipe) { _barEat = false; return true; }
+  if (_barTouch && e.type != TouchEvent::Tap) {
+    if (e.type == TouchEvent::Up) {
+      _barTouch = false;
+      _barEat = true;                               // the Swipe that may follow this lift is spent
+      if (e.y - e.y0 >= 36 && abs(e.x - e.x0) < 80) app::openQuickSettings();
+    }
+    return true;
+  }
+  _barTouch = false;
   // The "N new" badge in the status bar: a tap goes to the new messages. The bar is
   // thin, so the tap may land a little around it. On the lock face it waits for the
   // swipe up, as a tapped banner does.

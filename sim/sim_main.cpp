@@ -834,6 +834,15 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
   tap(160, 62);                        shot("touch_10_quick_wifi_tapped");
   tap(250, 8);                         shot("touch_11_quick_still_one");
   clearTo(base);
+  // Pulled down from the top edge: a quick flick, then a slow drag, each from the home
+  // screen. Then a pull that starts lower down, which must stay the list's own scroll.
+  swipe(160, 6, 160, 120);             shot("touch_12_flick_down_quick");
+  clearTo(base);
+  drag(120, 8, 120, 110);              shot("touch_13_slow_pull_quick");
+  clearTo(base);
+  app::openChats(); run(300);
+  swipe(160, 80, 160, 190);            shot("touch_14_pull_in_list_not_quick");
+  clearTo(base);
 
   // Tools > hardware check, part way through being tried: touch and keys done,
   // the ball rolled every way but right, not clicked yet.

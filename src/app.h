@@ -52,6 +52,16 @@ namespace app {
   int      signalLevel();            // 0 nothing heard lately, 1-4 by the last packet's SNR
   uint8_t  signalMask();             // which of the four bars are lit right now (bit 0 = shortest): the level, or its animation
   bool     signalAnimating();        // a check is out, or the bars are filling
+  // Night brightness (Settings > Display): a second brightness for the hours the clock
+  // says are night. 0 = off.
+  uint8_t  nightBrightness();
+  void     setNightBrightness(uint8_t level);
+  uint8_t  nightFrom();              // the hour it starts, 0-23
+  uint8_t  nightUntil();             // the hour it ends
+  void     setNightHours(uint8_t from, uint8_t until);
+  bool     nightNow();               // it is on, the clock is set, and it is between those hours
+  uint8_t  brightnessNow();          // the one in force: the night's or the day's
+  void     setBrightnessNow(uint8_t level);   // changes whichever is in force
   uint8_t  signalCheckMins();        // ask nearby repeaters this often when nothing is heard; 0 = never
   void     setSignalCheckMins(uint8_t mins);
   void     applyTheme();          // colours, tick and vibration of ui_settings.themeId

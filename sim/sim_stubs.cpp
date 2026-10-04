@@ -179,6 +179,15 @@ void openContacts() {}
 void openContactDetail(const uint8_t*) {}
 #endif
 void openUnread() {}
+static uint8_t s_simNight = 0, s_simNFrom = 21, s_simNTo = 7;
+uint8_t nightBrightness() { return s_simNight; }
+void setNightBrightness(uint8_t l) { s_simNight = l; }
+uint8_t nightFrom() { return s_simNFrom; }
+uint8_t nightUntil() { return s_simNTo; }
+void setNightHours(uint8_t f, uint8_t u) { s_simNFrom = f; s_simNTo = u; }
+bool nightNow() { return false; }
+uint8_t brightnessNow() { return ui_settings.brightness; }
+void setBrightnessNow(uint8_t l) { ui_settings.brightness = l; }
 }  // namespace app
 #ifdef SIM_PAGER
 void openChannelRegionScope(const uint8_t*) {}   // settings_ui.cpp, which the pager sim doesn't build

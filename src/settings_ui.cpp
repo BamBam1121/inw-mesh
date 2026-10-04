@@ -720,6 +720,22 @@ static void displayMenu() {
   auto* m = new MenuView("Display");
   m->adjust("brightness", []() -> String { return String(ui_settings.brightness) + " / 16"; },
             [](int d) { ui_settings.brightness = constrain(ui_settings.brightness + d, 1, 16); app::applyDisplay(); markUiDirty(); });
+#if BOARD_HAS_TOUCH
+  // A second brightness for the night, by the clock: on between the two hours, and
+  // back to the one above in the morning. Off until a level is picked.
+  static auto hourText = [](uint8_t h) -> String {
+    if (ui_settings.clock24) return String(h) + ":00";
+    return String(h % 12 ? h % 12 : 12) + (h < 12 ? " am" : " pm");
+  };
+  m->adjust("night brightness", []() -> String {
+    if (!app::nightBrightness()) return String("off");
+    return String(app::nightBrightness()) + " / 16" + (app::nightNow() ? "  (now)" : "");
+  }, [](int d) { app::setNightBrightness((uint8_t)constrain((int)app::nightBrightness() + d, 0, 16)); });
+  m->adjust("night from", []() -> String { return hourText(app::nightFrom()); },
+            [](int d) { app::setNightHours((uint8_t)((app::nightFrom() + 24 + d) % 24), app::nightUntil()); });
+  m->adjust("night until", []() -> String { return hourText(app::nightUntil()); },
+            [](int d) { app::setNightHours(app::nightFrom(), (uint8_t)((app::nightUntil() + 24 + d) % 24)); });
+#endif
   m->adjust("dim after", []() -> String { return String(ui_settings.dimSecs) + " s"; },
             [](int d) { ui_settings.dimSecs = constrain((int)ui_settings.dimSecs + d * 5, 5, 600); app::applyDisplay(); markUiDirty(); });
   m->adjust("screen off after", []() -> String { return String(ui_settings.sleepSecs) + " s"; },
@@ -1271,12 +1287,15 @@ private:
   uint32_t _last = 0;
 };
 
-// The switches people reach for most, without the walk through Settings: a tap on the
-// right half of the status bar (the Wi-Fi, BT, GPS and battery end) opens this.
+// The switches people reach for most, without the walk through Settings: a swipe down
+// from the top of the screen, or a tap on the right half of the status bar, opens this.
 static View* s_quickView = nullptr;
 void app::openQuickSettings() {
   if (nav.top() == s_quickView) return;                  // it is open already
   auto* m = new MenuView("Quick settings");
+  // The brightness in force: the night's while night brightness is on, else the day's.
+  m->adjust("brightness", []() -> String { return String(app::brightnessNow()) + " / 16" + (app::nightNow() ? "  night" : ""); },
+            [](int d) { app::setBrightnessNow((uint8_t)constrain((int)app::brightnessNow() + d, 1, 16)); });
   m->toggle("wi-fi", [] { return wifi::enabled(); }, [] {
     if (saverBlocks()) return;
     ui_settings.wifiOn = !wifi::enabled(); wifi::setEnabled(ui_settings.wifiOn); markUiDirty(); nav.statusChanged(); });
@@ -1290,8 +1309,6 @@ void app::openQuickSettings() {
   m->toggle("gps receiver", [] { return ui_settings.gpsOn && !power::saver(); },
             [] { if (saverBlocks()) return; ui_settings.gpsOn = !ui_settings.gpsOn; gpsPower(ui_settings.gpsOn); markUiDirty(); nav.statusChanged(); });
   m->toggle("sounds", [] { return ui_settings.sound; }, [] { ui_settings.sound = !ui_settings.sound; app::applySound(); markUiDirty(); });
-  m->adjust("brightness", []() -> String { return String(ui_settings.brightness) + " / 16"; },
-            [](int d) { ui_settings.brightness = constrain(ui_settings.brightness + d, 1, 16); app::applyDisplay(); markUiDirty(); });
   m->toggle("battery saver", [] { return power::saver(); }, [] { power::setSaver(!power::saver()); });
   m->action("all settings", [] { nav.pop(); app::openSettings(); });
   s_quickView = m;

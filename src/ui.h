@@ -125,6 +125,7 @@ private:
   std::function<void()> _bannerTap, _afterUnlock;   // the banner's tap; one to run once unlocked
   uint32_t _afterUnlockAt = 0;
   bool _bannerTouch = false, _afterUnlockDue = false;
+  bool _barTouch = false, _barEat = false;       // a touch that began on the status bar; the Swipe after its Up
   bool onBanner(int x, int y) const;
   bool _statusDirty = true;
   uint32_t _lastStatus = 0;
