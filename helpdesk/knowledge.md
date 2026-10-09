@@ -310,10 +310,34 @@ Signal bars (pager 1.2.9 beta / T-Deck 1.2.4-beta7, both 2026-10-02)
 - Pager 1.2.9, 1.2.10 and 1.2.11 are betas: only pagers set to take beta updates get them. The pager release is
   still 1.2.8.
 
+T-Deck 1.2.4-beta11 (2026-10-08) - only for T-Decks with beta updates switched on
+- It is the newest test build: a T-Deck with Settings > System > "beta updates (every build)" switched on
+  gets it over Wi-Fi (Settings > System > check for updates). Everyone else stays on 1.2.4-beta9, and the
+  installer at squatchmesh.com/t-deck still installs beta9.
+- Wakes faster: a message lights the screen in about half a second, with its sound playing cleanly. It
+  used to take around three seconds, with the sound breaking up.
+- Lists follow the finger by the pixel instead of jumping a row at a time: Settings, conversations, the
+  chat list, contacts.
+- Fewer freezes: the update check and problem reports no longer hold the screen and the radio while they
+  talk to the internet, and the lock screen no longer stutters while the T-Deck saves.
+- Trackball: it counts every step of the ball, and up/down and left/right do different things on the home
+  screen, the Settings tiles, quick settings and the emoji picker. Rolling sideways on a value changes it.
+  Settings > Display > "trackball speed" sets slow, medium or fast (medium unless changed). If the
+  trackball feels too quick or too slow, that is the setting.
+- GPS: Tools > GPS and Tools > hardware check now say whether a GPS module is heard at all and how many
+  satellites it can hear, not only "searching". "not heard" means no data is arriving from a module (no
+  module, or its wiring); "hearing 0 satellites" means the module works and needs open sky; a count with
+  a signal number means it is receiving and a fix should follow within minutes outdoors. Someone stuck on
+  "searching" on beta9 or beta10 should take beta11 and read that line.
+- The update question shows all of its text (it was cut off after a few lines).
+- A crash left on the device by another firmware (a multi-boot launcher, or what was installed before) is
+  no longer sent in as a Squatch Mesh crash.
+- Screen-change animations are the same speed as before, and the same as the pager's.
+
 T-Deck 1.2.4-beta10 (2026-10-04) - only for T-Decks with beta updates switched on
 - The T-Deck now has two update channels, like the pager. Everyone gets 1.2.4-beta9, from the installer at
   squatchmesh.com/t-deck and over Wi-Fi. A T-Deck with Settings > System > "beta updates (every build)"
-  switched on gets the newest build, which is 1.2.4-beta10. To try it: switch that on, then
+  switched on gets the newest build (1.2.4-beta10 when this was written; 1.2.4-beta11 now). To try it: switch that on, then
   Settings > System > check for updates (or leave it charging on Wi-Fi). To stop getting test builds,
   switch it off; the device stays on what it has until the regular build catches up.
 - Quick settings: pull down from the top of the screen, or tap the right side of the top bar. A panel with
