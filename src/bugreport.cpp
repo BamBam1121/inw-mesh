@@ -3,6 +3,7 @@
 #include <SPIFFS.h>
 #include "tls_client.h"   // WiFiClientSecure without its stray close(0)
 #include <HTTPClient.h>
+#include <esp_ota_ops.h>
 #include <Preferences.h>
 #include <esp_system.h>
 #include <esp_core_dump.h>
@@ -223,13 +224,33 @@ void begin() {
   const int rr = (int)esp_reset_reason();
   const bool crashed = rr == ESP_RST_PANIC || rr == ESP_RST_INT_WDT || rr == ESP_RST_TASK_WDT ||
                        rr == ESP_RST_WDT || rr == ESP_RST_BROWNOUT;
-  const bool dump = esp_core_dump_image_check() == ESP_OK;
+  bool dump = esp_core_dump_image_check() == ESP_OK;
   if (!crashed && !dump) return;
   if (!enabled()) { if (dump) esp_core_dump_image_erase(); return; }
+  esp_core_dump_summary_t* s = dump ? (esp_core_dump_summary_t*)calloc(1, sizeof(esp_core_dump_summary_t)) : nullptr;
+  const bool read = s && esp_core_dump_get_summary(s) == ESP_OK;
+  // Whose crash is it? The dump sits in a partition every firmware on the device
+  // shares, so one left by another firmware (a multi-boot launcher, or whatever was on
+  // here before this was installed) was being reported as ours, under our version,
+  // with addresses that mean nothing in our build. It says which build wrote it:
+  // anything but this one is thrown away.
+  if (read) {
+    char own[17] = "";
+    esp_ota_get_app_elf_sha256(own, sizeof(own));
+    if (strncmp((const char*)s->app_elf_sha256, own, 16) != 0) {
+      free(s);
+      s = nullptr;
+      esp_core_dump_image_erase();
+      dump = false;
+      if (!crashed) return;
+    }
+  }
+  // A restart with nothing to show for it - no dump, and the last run's lines gone -
+  // is what the installer's own reset looks like. There is nothing in it to act on.
+  if (!dump && !s_prev.length()) { free(s); return; }
   String j = header("crash", resetName(rr));
   if (dump) {
-    esp_core_dump_summary_t* s = (esp_core_dump_summary_t*)calloc(1, sizeof(esp_core_dump_summary_t));
-    if (s && esp_core_dump_get_summary(s) == ESP_OK) {
+    if (read && s) {
       char b[96];
       String task;
       jsonEscape(task, String(s->exc_task));
@@ -247,9 +268,9 @@ void begin() {
       j += String((const char*)s->app_elf_sha256).substring(0, 16);
       j += "\"";
     }
-    free(s);
     esp_core_dump_image_erase();             // one report per crash
   }
+  free(s);
   j += ",\"log\":\"";
   jsonEscape(j, s_prev.length() ? s_prev : String("(the log didn't survive: the power was cut)"));
   j += "\"}";

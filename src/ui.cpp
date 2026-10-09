@@ -990,16 +990,22 @@ void PromptView::commit() {
 // ---- ConfirmView ---------------------------------------------------------------------------
 void ConfirmView::draw(Canvas& g) {
   const Theme& t = nav.theme();
-  const int x = 30, y = 36, w = L::W - 60, h = 150;
+  // As tall as the text needs, and wider on a narrow screen. It used to hold three
+  // lines and 160 characters whatever was asked: an update's notes ran off the end of
+  // it, on the T-Deck after about a hundred characters.
+  const int x = L::W < 400 ? 10 : 30, w = L::W - 2 * x;
+  uint16_t st[8]; uint8_t ln[8];
+  char buf[360];
+  strlcpy(buf, _detail.c_str(), sizeof(buf));
+  const int n = wrapText(g, buf, w - 30, st, ln, min(8, (L::H - 4 - 44 - 50) / 18));
+  const int h = max(150, 44 + n * 18 + 50);
+  const int y = max(2, min(36, (L::H - h) / 2));
+  _x = x; _w = w; _by = y + h - 40;
   g.fillRoundRect(x, y, w, h, 10, t.panel);
   g.drawRoundRect(x, y, w, h, 10, t.amber);
   g.setTextColor(t.amber, t.panel);
   g.drawString(_q, x + (w - g.textWidth(_q)) / 2, y + 16);
   g.setTextColor(t.txt, t.panel);
-  uint16_t st[4]; uint8_t ln[4];
-  char buf[160];
-  strlcpy(buf, _detail.c_str(), sizeof(buf));
-  const int n = wrapText(g, buf, w - 30, st, ln, 3);
   for (int i = 0; i < n; i++) {
     char line[120];
     snprintf(line, sizeof(line), "%.*s", ln[i], buf + st[i]);

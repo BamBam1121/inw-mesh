@@ -1316,6 +1316,52 @@ static void usbCommands() {
       continue;
     }
     // What is plugged into the top header, and what IO9 is doing.
+    // "who TEXT": this node, and how it sees every contact with TEXT in its name (its
+    // route, when it was last heard). "dm NAME|words": a direct message to the first
+    // contact with NAME in its name, sent the way the chat screen sends one; node.cpp
+    // prints each try and the delivery in this build.
+    if (!strncmp(line, "who", 3) || !strncmp(line, "dm ", 3)) {
+      if (!g_node) { Serial.println("[who] node not running"); continue; }
+      const bool dm = line[0] == 'd';
+      String want = dm ? String(line + 3) : String(line[3] ? line + 4 : "");
+      String words;
+      const int bar = want.indexOf('|');
+      if (dm && bar >= 0) { words = want.substring(bar + 1); want = want.substring(0, bar); }
+      want.toLowerCase();
+      if (!dm) {
+        char hex[10];
+        mesh::Utils::toHex(hex, g_node->self_id.pub_key, 4);
+        hex[8] = 0;
+        const NodePrefs& p = g_node->prefs();
+        Serial.printf("[who] me: %s  key %s  %.3f MHz sf%u bw%.1f cr%u tx%d  %d contacts, clock %lu\n", g_node->name(), hex,
+                      p.freq, p.sf, p.bw, p.cr, p.tx_power_dbm, g_node->getNumContacts(), (unsigned long)app::now());
+      }
+      int shown = 0;
+      for (int i = 0; i < g_node->getNumContacts(); i++) {
+        ContactInfo c;
+        if (!g_node->getContactByIdx(i, c)) continue;
+        String n = c.name;
+        n.toLowerCase();
+        if (want.length() && n.indexOf(want) < 0) continue;
+        if (!want.length() && !(c.flags & 0x01)) continue;        // no text: the favourites
+        if (dm) {
+          const ConvKey k = ConvKey::contact(c.id.pub_key);
+          const uint32_t id = history.add(k, HF_OUT, ST_SENDING, g_node->name(), words.c_str(), app::now());
+          Serial.printf("[dm] to %s: %s\n", c.name, g_node->sendDM(c.id.pub_key, words.c_str(), id) ? "queued" : "could not send");
+          shown++;
+          break;
+        }
+        if (++shown > 14) { Serial.println("[who] ...more"); break; }
+        char hex[10];
+        mesh::Utils::toHex(hex, c.id.pub_key, 4);
+        hex[8] = 0;
+        Serial.printf("[who] %-24s key %s type %u fav %u route %d  heard %ld s ago  advert %lu\n", c.name, hex, c.type, c.flags & 1,
+                      c.out_path_len == OUT_PATH_UNKNOWN ? -1 : (int)(c.out_path_len & 63),
+                      c.lastmod ? (long)(app::now() - c.lastmod) : -1L, (unsigned long)c.last_advert_timestamp);
+      }
+      if (!shown) Serial.println("[who] no contact with that in its name");
+      continue;
+    }
     if (!strcmp(line, "ext")) { ext::report(); continue; }
     // What the motion sensor sees: which way is down, how still, face down or not.
     if (!strcmp(line, "motion")) { motion::debugPrint(); continue; }

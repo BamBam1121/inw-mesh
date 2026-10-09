@@ -214,6 +214,7 @@ private:
   String _q, _detail;
   std::function<void()> _yes, _no;  // _no: told when the answer was no (most askers don't need to know)
   bool _sel = false;               // cursor starts on "no"
+  int _x = 30, _w = 0, _by = 146;  // where draw() put the box and its buttons
 };
 
 // ---- a scrollable page of text lines (logs, info, telemetry) -----------------------

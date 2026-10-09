@@ -341,8 +341,11 @@ void tick() {
     if (!canAsk()) return;
     asking = false;
     const Info info = found;
-    const String body = String("version ") + info.version + (info.notes[0] ? String(" - ") + info.notes : String("")) +
-                        ". takes about a minute; messages pause while it downloads.";
+    // The notes usually name the version themselves ("1.2.11 beta: ..."): once is enough.
+    const String what = !info.notes[0] ? String("version ") + info.version
+                        : strstr(info.notes, info.version) ? String(info.notes)
+                        : String(info.version) + ": " + info.notes;
+    const String body = what + ". takes about a minute; messages pause while it downloads.";
     confirm(String("Update to ") + info.version + "?", body,
             [info] { nav.toast(install(info), 5000); },
             [info] {
@@ -390,12 +393,12 @@ void tick() {
   if (!info.ok) { logs.add(LOG_INFO, "update check: %s", info.error); return; }
   if (!info.newer) { logs.add(LOG_INFO, "update check: up to date (%s)", FW_VERSION); return; }
   logs.add(LOG_INFO, "update available: %s", info.version);
-  if (!supported()) { nav.banner("Update available", "reinstall once over usb to enable wi-fi updates", 6000); return; }
+  if (!supported()) { nav.banner("Update available", "needs one USB reinstall first", 6000); return; }
   // A multi-boot setup: say so once and leave it to the owner (their launcher, or
   // Settings > System, which says what it replaces). Never by itself, and no prompt.
   if (replacesOther()) {
     static bool told = false;
-    if (!told) nav.banner("Update available", "use your launcher: updating here replaces another firmware", 8000);
+    if (!told) nav.banner("Update available", "install it from your launcher", 8000);
     told = true;
     return;
   }
