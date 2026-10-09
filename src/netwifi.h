@@ -12,7 +12,7 @@ namespace wifi {
 
   void begin();                 // at boot: start if enabled
   void tick();                  // from loop
-  void setEnabled(bool on);
+  void setEnabled(bool on, bool background = false);   // background: the radio starts in a task, not in the caller
   bool enabled();
   bool connected();
   const char* statusText();     // "home-net 192.168.1.40 -61 dBm" / "joining home-net..." / "home-net: wrong password?"

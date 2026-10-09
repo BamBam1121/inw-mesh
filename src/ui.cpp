@@ -88,6 +88,7 @@ void animateBatteryIcon(lgfx::LovyanGFX* panel, const Theme& t) {
   if (!s.getBuffer()) { s.setColorDepth(16); if (!s.createSprite(BATT_W + 5, BATT_H + 4)) return; }
   // The sprite's (0, 0) sits at the panel's (battX() - 1, BATT_Y - 2).
   drawBatteryIcon(s, t, 1, 2);
+  nav.waitPresented();
   s.pushSprite(panel, battX() - 1, BATT_Y - 2);
 }
 
@@ -120,6 +121,7 @@ void animateSignalIcon(lgfx::LovyanGFX* panel, const Theme& t) {
   if (!s.getBuffer()) { s.setColorDepth(16); if (!s.createSprite(20, 15)) return; }
   s.fillSprite(t.panel);
   smallSignal(s, t, 0, 15);
+  nav.waitPresented();
   s.pushSprite(panel, s_sigX, 1);
 }
 
@@ -548,7 +550,47 @@ void Nav::begin(LGFX* d, Theme* t) {
   _canvas.setPsram(true);
   _canvas.setColorDepth(16);
   _canvas.createSprite(L::W, L::H);
+#if BOARD_ASYNC_PUSH
+  _front.setPsram(true);
+  _front.setColorDepth(16);
+  if (_front.createSprite(L::W, L::H))
+    xTaskCreatePinnedToCore(pushTask, "frame", 4096, this, 2, (TaskHandle_t*)&_pusher, 0);
+#endif
 }
+
+#if BOARD_ASYNC_PUSH
+// A frame takes 19 ms to send, and nothing else used to happen meanwhile: the next one
+// wasn't started until the last had gone. Now the finished picture is copied aside
+// (4 ms) and a task on the other core sends the copy while the loop draws the next.
+// Whatever draws on the panel directly - a screen change, an icon's animation, the
+// panel's sleep command - goes through display() or waitPresented(), which hold it
+// until the copy has gone: the screen library is not made for two callers at once.
+// (The radio and the card are safe already: every user of the bus takes its lock.)
+void Nav::pushTask(void* self) {
+  Nav* n = (Nav*)self;
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    n->_front.pushSprite(n->_d, 0, 0);
+    n->_pushing = false;
+  }
+}
+
+void Nav::waitPresented() { while (_pushing) delay(1); }
+
+void Nav::present(int shakeX) {
+  waitPresented();
+  if (shakeX || !asyncPush || !_pusher || !_front.getBuffer()) {   // a shake, or no second picture: sent from here, as before
+    if (shakeX) _d->fillRect(shakeX > 0 ? 0 : L::W + shakeX, 0, abs(shakeX), L::H, _t->bg);
+    _canvas.pushSprite(_d, shakeX, 0);
+    nSync++;
+    return;
+  }
+  nAsync++;
+  memcpy(_front.getBuffer(), _canvas.getBuffer(), (size_t)L::W * L::H * 2);
+  _pushing = true;
+  xTaskNotifyGive((TaskHandle_t)_pusher);
+}
+#endif
 
 // Every change of screen is animated (fx::transition): save what's showing now, and
 // the next draw() animates from it to the new screen. Several changes in one frame
@@ -814,6 +856,8 @@ void Nav::draw() {
   if (_trans) {                            // a screen change: animate to it
     const uint8_t k = _trans;
     _trans = 0;
+    waitPresented();
+    nTrans++;
     Canvas* old = fx::scratch();
     // The screens without the toast or banner: a transition plays one still frame
     // of where it's going, and a toast raised on the way would sit in it half slid
@@ -829,6 +873,8 @@ void Nav::draw() {
   }
   if (!v->dirty && !_statusDirty) return;
   if (v->customRender()) {
+    waitPresented();
+    nCustom++;
     v->render(_statusDirty);
     v->dirty = false;
     _statusDirty = false;
@@ -840,8 +886,13 @@ void Nav::draw() {
   drawOverlays(_canvas);
   fx::draw(_canvas);
   const int sx = fx::shakeX();                        // a failed send shakes the screen
+#if BOARD_ASYNC_PUSH
+  present(sx);
+#else
   if (sx) _d->fillRect(sx > 0 ? 0 : L::W + sx, 0, abs(sx), L::H, _t->bg);
   _canvas.pushSprite(_d, sx, 0);
+  nSync++;
+#endif
   v->dirty = false;
   _statusDirty = false;
 }
@@ -903,6 +954,7 @@ void MenuView::moveFocus(int d) {
 
 void MenuView::rotate(int d) {
   if (_rows.empty()) return;
+  _dragAcc = 0;                            // back on whole rows
   if (!_wheel) {
     // Show the focus where the finger left the page: the first row in view.
     _wheel = true;
@@ -939,6 +991,18 @@ void MenuView::rotate(int d) {
     if (_focus == before) _scroll = constrain(_scroll + dir, 0, maxScroll);
   }
   dirty = true;
+}
+
+// A trackball: up and down move through the rows; sideways on a row with a value
+// to step (brightness, a timeout) changes it there and then, no click first.
+bool MenuView::roll(int dx, int dy) {
+  if (_rows.empty() || !_wheel || _editing || !dx || dy) return false;
+  if (_focus < 0 || _focus >= (int)_rows.size()) return false;
+  MenuRow& r = _rows[_focus];
+  if (r.kind != RowKind::Adjust || !r.onAdjust) return false;
+  r.onAdjust(dx);
+  dirty = true;
+  return true;
 }
 
 void MenuView::press() {
@@ -990,6 +1054,7 @@ void MenuView::draw(Canvas& g) {
   // Follow the focus only when it has moved. Past the last selectable row the wheel
   // scrolls the page on its own (rotate), and snapping back here would undo that.
   if (_focus != _drawnFocus) {
+    _dragAcc = 0;                        // the wheel moves whole rows
     if (_focus < _scroll) _scroll = _focus;
     if (_focus >= _scroll + visible) _scroll = _focus - visible + 1;
     // Pull headers and info rows above the focus into view: focus never lands on them,
@@ -998,9 +1063,16 @@ void MenuView::draw(Canvas& g) {
     _drawnFocus = _focus;
   }
   _scroll = constrain(_scroll, 0, max(0, (int)_rows.size() - visible));
-  for (int i = _scroll; i < (int)_rows.size() && i < _scroll + visible; i++) {
+  // Under a finger the page moves by the pixel: _dragAcc is how far it sits off a
+  // whole row, so the rows are drawn that much up or down, with the one coming in
+  // at the edge, and cut off at the header.
+  if (_scroll >= max(0, (int)_rows.size() - visible) && _dragAcc < 0) _dragAcc = 0;
+  if (_scroll <= 0 && _dragAcc > 0) _dragAcc = 0;
+  const int off = _dragAcc;
+  g.setClipRect(0, L::BODY_Y, L::W, L::H - L::BODY_Y);
+  for (int i = max(0, _scroll - (off > 0 ? 1 : 0)); i < (int)_rows.size() && i < _scroll + visible + (off < 0 ? 1 : 0); i++) {
     const MenuRow& r = _rows[i];
-    const int y = L::BODY_Y + (i - _scroll) * L::ROW_H;
+    const int y = L::BODY_Y + (i - _scroll) * L::ROW_H + off;
     const bool on = i == _focus && _wheel;
     const uint16_t bg = on ? t.focus : t.bg;
     if (r.kind == RowKind::Header) {
@@ -1058,6 +1130,7 @@ void MenuView::draw(Canvas& g) {
       default: break;
     }
   }
+  g.clearClipRect();
   drawScrollbar(g, _rows.size(), _scroll, visible, L::BODY_Y, L::H - L::BODY_Y);
 }
 
@@ -1069,23 +1142,25 @@ bool MenuView::touch(const TouchEvent& e) {
   const int visible = (L::H - L::BODY_Y) / L::ROW_H;
   const int maxScroll = max(0, (int)_rows.size() - visible);
   switch (e.type) {
-    case TouchEvent::Down: _dragAcc = 0; return false;
+    case TouchEvent::Down: return false;
     case TouchEvent::Drag: {
-      const int was = _scroll;
+      const int was = _scroll, wasAcc = _dragAcc;
       const bool shown = _wheel;
       _wheel = false;                    // a finger took over: the highlight goes
       _dragAcc += e.dy;
       while (_dragAcc <= -L::ROW_H && _scroll < maxScroll) { _scroll++; _dragAcc += L::ROW_H; }
       while (_dragAcc >= L::ROW_H && _scroll > 0) { _scroll--; _dragAcc -= L::ROW_H; }
+      if (_scroll >= maxScroll && _dragAcc < 0) _dragAcc = 0;   // at an end: nothing further to pull in
+      if (_scroll <= 0 && _dragAcc > 0) _dragAcc = 0;
       _drawnFocus = _focus;              // don't snap back to the focus on the next draw
-      // Redraw only for a whole row moved (or the highlight going): a full frame
-      // for every few pixels of finger is time the next frame could have had.
-      return _scroll != was || shown;
+      // The page follows the finger by the pixel (it used to jump a row at a time).
+      return _scroll != was || _dragAcc != wasAcc || shown;
     }
     case TouchEvent::Tap: {
       if (e.y < L::BODY_Y) return false;
-      const int i = _scroll + (e.y - L::BODY_Y) / L::ROW_H;
-      if (i >= (int)_rows.size() || !focusable(i)) return false;
+      const int rel = e.y - L::BODY_Y - _dragAcc;       // the page may sit part of a row off
+      const int i = _scroll + (rel >= 0 ? rel / L::ROW_H : -1);
+      if (i < 0 || i >= (int)_rows.size() || !focusable(i)) return false;
       _focus = _drawnFocus = i;
       _editing = false;
       _wheel = false;
@@ -1204,16 +1279,22 @@ void PromptView::commit() {
 // ---- ConfirmView ---------------------------------------------------------------------------
 void ConfirmView::draw(Canvas& g) {
   const Theme& t = nav.theme();
-  const int x = 30, y = 36, w = L::W - 60, h = 150;
+  // As tall as the text needs, and wider on a narrow screen. It used to hold three
+  // lines and 160 characters whatever was asked: an update's notes ran off the end of
+  // it, on the T-Deck after about a hundred characters.
+  const int x = L::W < 400 ? 10 : 30, w = L::W - 2 * x;
+  uint16_t st[8]; uint8_t ln[8];
+  char buf[360];
+  strlcpy(buf, _detail.c_str(), sizeof(buf));
+  const int n = wrapText(g, buf, w - 30, st, ln, min(8, (L::H - 4 - 44 - 50) / 18));
+  const int h = max(150, 44 + n * 18 + 50);
+  const int y = max(2, min(36, (L::H - h) / 2));
+  _x = x; _w = w; _by = y + h - 40;
   g.fillRoundRect(x, y, w, h, 10, t.panel);
   g.drawRoundRect(x, y, w, h, 10, t.amber);
   g.setTextColor(t.amber, t.panel);
   g.drawString(_q, x + (w - g.textWidth(_q)) / 2, y + 16);
   g.setTextColor(t.txt, t.panel);
-  uint16_t st[4]; uint8_t ln[4];
-  char buf[160];
-  strlcpy(buf, _detail.c_str(), sizeof(buf));
-  const int n = wrapText(g, buf, w - 30, st, ln, 3);
   for (int i = 0; i < n; i++) {
     char line[120];
     snprintf(line, sizeof(line), "%.*s", ln[i], buf + st[i]);
@@ -1228,7 +1309,7 @@ void ConfirmView::draw(Canvas& g) {
 // Touch: the No and Yes buttons, where draw() puts them.
 bool ConfirmView::touch(const TouchEvent& e) {
   if (e.type != TouchEvent::Tap) return false;
-  const int x = 30, y = 36, w = L::W - 60, h = 150, by = y + h - 40, bw = 110;
+  const int x = _x, w = _w ? _w : L::W - 60, by = _by, bw = 110;
   if (e.y < by - 8 || e.y > by + 26 + 8) return false;
   if (e.x >= x + w / 2 - bw - 10 && e.x < x + w / 2 - 10) { _sel = false; press(); return true; }
   if (e.x >= x + w / 2 + 10 && e.x < x + w / 2 + 10 + bw) { _sel = true; press(); return true; }
@@ -1284,19 +1365,22 @@ void TextPageView::tick() {
 
 void TextPageView::rotate(int d) {
   const int visible = (L::H - L::BODY_Y - 4) / 18;
+  _dragAcc = 0;
   _scroll = constrain(_scroll + d, 0, max(0, (int)_lines.size() - visible));
   dirty = true;
 }
 
 bool TextPageView::touch(const TouchEvent& e) {
   const int visible = (L::H - L::BODY_Y - 4) / 18;
-  if (e.type == TouchEvent::Down) { _dragAcc = 0; return false; }
+  if (e.type == TouchEvent::Down) return false;
   if (e.type == TouchEvent::Tap && onPress) { onPress(); return true; }
   if (e.type != TouchEvent::Drag) return false;
   _dragAcc += e.dy;
   const int maxScroll = max(0, (int)_lines.size() - visible);
   while (_dragAcc <= -18 && _scroll < maxScroll) { _scroll++; _dragAcc += 18; }
   while (_dragAcc >= 18 && _scroll > 0) { _scroll--; _dragAcc -= 18; }
+  if (_scroll >= maxScroll && _dragAcc < 0) _dragAcc = 0;
+  if (_scroll <= 0 && _dragAcc > 0) _dragAcc = 0;
   return true;
 }
 
@@ -1306,12 +1390,17 @@ void TextPageView::draw(Canvas& g) {
   const int visible = (L::H - L::BODY_Y - 4) / 18;
   g.setTextColor(t.txt, t.bg);
   if (_lines.empty()) { g.setTextColor(t.dim, t.bg); g.drawString("nothing yet", 12, L::BODY_Y + 8); }
-  for (int i = 0; i < visible && _scroll + i < (int)_lines.size(); i++) {
+  // By the pixel under a finger, like the menus: _dragAcc is the part of a line.
+  const int off = _dragAcc;
+  g.setClipRect(0, L::BODY_Y, L::W, L::H - L::BODY_Y);
+  for (int i = off > 0 ? -1 : 0; i < visible + (off < 0 ? 1 : 0) && _scroll + i < (int)_lines.size(); i++) {
+    if (_scroll + i < 0) continue;
     char safe[160];
     sanitize(_lines[_scroll + i].c_str(), safe, sizeof(safe));
     const bool dimLine = safe[0] == '#';
     g.setTextColor(dimLine ? t.greenDim : t.txt, t.bg);
-    drawRich(g, dimLine ? safe + 1 : safe, 12, L::BODY_Y + 4 + i * 18);
+    drawRich(g, dimLine ? safe + 1 : safe, 12, L::BODY_Y + 4 + i * 18 + off);
   }
+  g.clearClipRect();
   drawScrollbar(g, _lines.size(), _scroll, visible, L::BODY_Y, L::H - L::BODY_Y);
 }

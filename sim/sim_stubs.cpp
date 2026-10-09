@@ -184,6 +184,8 @@ void openContactDetail(const uint8_t*) {}
 #endif
 void openUnread() {}
 static uint8_t s_simNight = 0, s_simNFrom = 21, s_simNTo = 7;
+uint8_t trackballSpeed() { return 1; }
+void setTrackballSpeed(uint8_t) {}
 uint8_t nightBrightness() { return s_simNight; }
 void setNightBrightness(uint8_t l) { s_simNight = l; }
 uint8_t nightFrom() { return s_simNFrom; }

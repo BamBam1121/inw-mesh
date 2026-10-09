@@ -113,6 +113,11 @@ void icon(lgfx::LovyanGFX& d, int which, int cx, int cy, uint16_t c) {
   }
 }
 
+#if INW_DEV
+}  // namespace
+uint32_t g_dashUs[4];   // home: microseconds in refresh, clock, card, dock (the USB "prof" prints them)
+namespace {
+#endif
 class DashboardView : public View {
 public:
   bool isHome() override { return true; }
@@ -121,10 +126,22 @@ public:
 
   void draw(Canvas& g) override {
     const Theme& t = nav.theme();
+#if INW_DEV
+    const uint32_t t0 = micros();
+    refresh();
+    const uint32_t t1 = micros();
+    drawClock(g, t);
+    const uint32_t t2 = micros();
+    drawCard(g, t);
+    const uint32_t t3 = micros();
+    drawDock(g, t);
+    g_dashUs[0] = t1 - t0; g_dashUs[1] = t2 - t1; g_dashUs[2] = t3 - t2; g_dashUs[3] = micros() - t3;
+#else
     refresh();
     drawClock(g, t);
     drawCard(g, t);
     drawDock(g, t);
+#endif
   }
 
   void tick() override {
@@ -140,6 +157,21 @@ public:
     _showFocus = true;                 // the first roll just shows where it is
     _focusAt = millis();
     dirty = true;
+  }
+  // The ball: up and down through the messages, down from the last one onto the dock,
+  // sideways along the dock, up from it back to the messages.
+  bool roll(int dx, int dy) override {
+    if (!_showFocus) { rotate(0); return true; }
+    const int n = _n + DOCK_N;
+    if (_focus >= _n) {
+      if (dx) _focus = constrain(_focus + dx, _n, n - 1);
+      if (dy < 0 && _n) _focus = _n - 1;
+    } else {
+      _focus = constrain(_focus + (dy ? dy : dx), 0, _n);
+    }
+    _focusAt = millis();
+    dirty = true;
+    return true;
   }
   void press() override { if (_showFocus) activate(_focus); else { _showFocus = true; dirty = true; } }
   void key(char c) override {
@@ -165,13 +197,19 @@ public:
     return false;
   }
 
-  void resume() override { dirty = true; }
+  void resume() override { _listAt = 0; dirty = true; }
 
 private:
+  // The list of recent conversations is worked out again only when a message has come
+  // or gone, or every 5 s (a channel renamed, a mute changed): it is 20 ms of looking
+  // through the history, and done for every frame it was half of what drawing this
+  // screen cost.
   void refresh() {
+    _drawnAt = millis();
+    if (_listAt && history.gen == _gen && millis() - _listAt < 5000) return;
+    _listAt = millis() | 1;
     _n = recentChats(_chats, ROWS);
     _gen = history.gen;
-    _drawnAt = millis();
     if (_focus >= _n + DOCK_N) _focus = _n + DOCK_N - 1;
   }
 
@@ -266,6 +304,7 @@ private:
   bool _showFocus = false;              // the trackball's highlight: hidden for touch
   uint32_t _focusAt = 0;
   uint32_t _gen = 0, _drawnAt = 0;
+  uint32_t _listAt = 0;                  // when the list was last worked out
 };
 
 }  // namespace

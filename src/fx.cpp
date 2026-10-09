@@ -485,7 +485,18 @@ lgfx::LovyanGFX* s_target = nullptr;
 bool s_test = false, s_stopped = false;
 uint32_t s_vclock = 0, s_stopMs = 0, s_frames = 0;
 lgfx::LovyanGFX* P() { return s_target ? s_target : (lgfx::LovyanGFX*)nav.display(); }
-uint32_t tnow() { return s_test ? s_vclock : millis(); }
+// A board can ask for its screen changes to run faster (BOARD_FX_SPEED_PCT, the
+// T-Deck: 250): every one of them is timed on this clock, so they all shorten together
+// and keep their shape. With a finger a screen change follows every tap, and half a
+// second of it each time is the device feeling slow.
+uint32_t tnow() {
+  if (s_test) return s_vclock;
+#ifdef BOARD_FX_SPEED_PCT
+  return (uint32_t)((uint64_t)millis() * BOARD_FX_SPEED_PCT / 100);
+#else
+  return millis();
+#endif
+}
 bool testStop(uint32_t t0) {
   s_frames++;
   if (!s_test) { app::keysPump(); return false; }   // once a frame: keys typed during the animation are kept

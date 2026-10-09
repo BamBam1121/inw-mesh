@@ -21,6 +21,7 @@ namespace report {
   void capture();              // setup(), BEFORE the first log line: keep the last run's log
   void begin();                // setup(), once the flash store is mounted: file a crash report
   void tick();                 // loop(): sends what's waiting
+  bool posting();              // a report is out on the network right now (it runs in a task)
   bool enabled();
   void setEnabled(bool on);
   bool sendLog(const char* why);  // queue the log now (Tools > log); false if the store is full

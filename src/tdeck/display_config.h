@@ -23,7 +23,10 @@ public:
             auto c = _bus.config();
             c.spi_host    = SPI2_HOST;
             c.spi_mode    = 0;
-            c.freq_write  = 40000000;   // LilyGo's own T-Deck examples; the ST7789 can go faster
+            c.freq_write  = 40000000;   // LilyGo's own T-Deck examples. NOT 80 MHz: it halves the time a frame
+                                        // takes to send and read back clean in every test on USB, but it is past
+                                        // the ST7789's rating (62.5 MHz) and the owner's unit showed rainbow lines
+                                        // after a day carried on battery (2026-10-09)
             c.freq_read   = 16000000;
             c.dma_channel = SPI_DMA_CH_AUTO;
             c.pin_sclk    = PIN_SPI_SCK;
@@ -53,4 +56,7 @@ public:
         }
         setPanel(&_panel);
     }
+    // The speed pictures are sent at, changed on the spot (it takes effect with the next thing drawn).
+    void writeFreq(uint32_t hz) { auto c = _bus.config(); c.freq_write = hz; _bus.config(c); }
+    uint32_t writeFreq() const { return _bus.config().freq_write; }
 };

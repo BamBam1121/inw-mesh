@@ -64,6 +64,11 @@ static volatile uint8_t inw_done_n = 0;
 // only matter for sharing a contact) indefinitely.
 static volatile bool inw_user_busy = false;
 void inwSetUserBusy(bool busy) { inw_user_busy = busy; }
+// Whether the screen is lit at all. Advert blobs wait for it to be dark: on a board
+// where "busy" only means "touched in the last few seconds" they were being written
+// under a screen someone was reading, an open-by-name (a scan of the whole store) each.
+static volatile bool inw_screen_on = false;
+void inwSetScreenOn(bool on) { inw_screen_on = on; }
 static void inwWaitForLull(uint32_t deadline) {        // 0: no deadline
   while (inw_user_busy && (!deadline || (int32_t)(deadline - millis()) > 0)) vTaskDelay(pdMS_TO_TICKS(100));
 }
@@ -99,6 +104,9 @@ static void inwWriteJob(InwJob& j) {
     }
     File f = j.fs->open(tmp, "w", true);
     ok = (bool)f;
+    // 4096 bytes a piece. Smaller was tried (512, 2026-10-08) so that it could stop
+    // sooner when the device is picked up: each write call costs about 0.4 s on this
+    // store whatever its size, so a save took four times as long for half the wait.
     for (size_t off = 0; ok && off < j.len; off += 4096) {
       const size_t n = j.len - off < 4096 ? j.len - off : 4096;
       ok = f.write(j.buf + off, n) == n;
@@ -127,7 +135,7 @@ static void inwStoreTask(void*) {
     xSemaphoreTake(inw_mx, portMAX_DELAY);
     for (auto& q : inw_q) if (q.buf) { job = q; q = InwJob{}; break; }
     // Blobs only with the screen off (and after any message log records, below).
-    if (!job.buf && inw_blobs && !inw_user_busy && !inw_app_len)
+    if (!job.buf && inw_blobs && !inw_user_busy && !inw_screen_on && !inw_app_len)
       for (int i = 0; i < INW_BLOBS; i++) if (inw_blobs[i].used) { blob = inw_blobs[i]; haveBlob = true; break; }
     inw_busy = job.buf != nullptr || haveBlob;
     xSemaphoreGive(inw_mx);
@@ -309,9 +317,13 @@ bool inwStoreFlush(uint32_t ms) {
     xSemaphoreTake(inw_mx, portMAX_DELAY);
     bool idle = !inw_busy && !inw_app_len;
     for (auto& q : inw_q) if (q.buf) idle = false;
-    if (inw_blobs) for (int i = 0; i < INW_BLOBS; i++) if (inw_blobs[i].used) idle = false;
+    // Advert blobs still queued don't count: they only matter for sharing a contact, the
+    // older copy on flash does that as well, and a busy mesh queues them faster than this
+    // store writes them - waiting for them here, "save" could never answer ok. (One
+    // being written right now is inw_busy, above.)
     xSemaphoreGive(inw_mx);
     inw_user_busy = false;               // a flush means "now": don't wait for a lull
+    inw_screen_on = false;               // nor, for the advert blobs, for the screen to go dark
     if (idle) return true;
     if (millis() - t0 > ms) return false;
     delay(20);

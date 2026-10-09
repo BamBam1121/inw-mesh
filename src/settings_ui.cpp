@@ -635,7 +635,7 @@ static void wifiMenu() {
   m->rebuild = [](MenuView& v) {
     v.toggle("wi-fi", [] { return wifi::enabled(); }, [] {
       if (saverBlocks()) return;
-      ui_settings.wifiOn = !wifi::enabled(); wifi::setEnabled(ui_settings.wifiOn); markUiDirty(); nav.statusChanged(); });
+      ui_settings.wifiOn = !wifi::enabled(); wifi::setEnabled(ui_settings.wifiOn, true); markUiDirty(); nav.statusChanged(); });
     v.info("status", []() -> String { return String(wifi::statusText()); });
     v.action("scan + join a network", [] { nav.push(new WifiScanView()); });
     if (wifi::savedCount()) v.header("saved networks");
@@ -676,7 +676,13 @@ static void gpsMenu() {
             [] { ui_settings.gpsLivePosition = !ui_settings.gpsLivePosition; markUiDirty(); });
   m->toggle("set clock from gps", [] { return ui_settings.gpsSetsClock; },
             [] { ui_settings.gpsSetsClock = !ui_settings.gpsSetsClock; markUiDirty(); });
-  m->info("fix", []() -> String { return gps.hasFix() ? String(gps.fix().satellites) + " sats" : String("searching"); });
+  m->info("fix", []() -> String {
+    if (gps.hasFix()) return String(gps.fix().satellites) + " sats";
+    if (!ui_settings.gpsOn || power::saver()) return String("off");
+    if (!gps.bytesRead) return String("no gps heard");
+    if (!gps.goodSentences) return String("gps garbled");
+    return "searching, hears " + String(gps.heard());
+  });
   m->info("position", []() -> String { return gps.hasFix() ? String(gps.fix().lat, 5) + ", " + String(gps.fix().lon, 5) : String("-"); });
   nav.push(m);
 }
@@ -789,6 +795,11 @@ static void displayMenu() {
   flag("touch mirrored left-right", 2);
   flag("touch mirrored up-down", 4);
   flag("trackball reversed", 8);
+  m->adjust("trackball speed", []() -> String {
+              static const char* const N[] = {"slow", "medium", "fast"};
+              return N[min<int>(app::trackballSpeed(), 2)];
+            },
+            [](int d) { app::setTrackballSpeed((uint8_t)constrain((int)app::trackballSpeed() + d, 0, 2)); });
   flag("colours inverted", 16);
   m->toggle("double tap to wake", [] { return ui_settings.tapWake; },
             [] { ui_settings.tapWake = !ui_settings.tapWake; markUiDirty(); });
@@ -1199,6 +1210,16 @@ static constexpr int TILE_N = sizeof(TILES) / sizeof(TILES[0]);
 class SettingsGrid : public View {
 public:
   void rotate(int d) override { _f = ((_f + d) % TILE_N + TILE_N) % TILE_N; _finger = false; dirty = true; }
+  // The ball: sideways along a row, up and down by a row.
+  bool roll(int dx, int dy) override {
+    if (_finger) { _finger = false; dirty = true; return true; }   // the first roll shows where it is
+    int f = _f + dy * COLS;
+    if (f < 0 || f >= TILE_N) f = _f;
+    if (dx) { const int c = f % COLS + dx; if (c >= 0 && c < COLS && f - f % COLS + c < TILE_N) f = f - f % COLS + c; }
+    _f = f;
+    dirty = true;
+    return true;
+  }
   void press() override {
     // Without a running node only the device-side sections make sense.
     static const bool NEEDS_NODE[TILE_N] = {1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,0,0,0};
@@ -1217,22 +1238,26 @@ public:
   bool touch(const TouchEvent& e) override {
     const int maxTop = max(0, ROWS_ALL - ROWS);
     switch (e.type) {
-      case TouchEvent::Down: _dragAcc = 0; return false;
+      case TouchEvent::Down: return false;
       case TouchEvent::Drag: {
-        const int was = _top;
+        // By the pixel: _dragAcc is how far the tiles sit off a whole row.
+        const int was = _top, wasAcc = _dragAcc;
         const bool shown = !_finger;
         _finger = true;
         _dragAcc += e.dy;
         while (_dragAcc <= -STEP && _top < maxTop) { _top++; _dragAcc += STEP; }
         while (_dragAcc >= STEP && _top > 0) { _top--; _dragAcc -= STEP; }
-        return _top != was || shown;           // redraw only when something moved
+        if (_top >= maxTop && _dragAcc < 0) _dragAcc = 0;
+        if (_top <= 0 && _dragAcc > 0) _dragAcc = 0;
+        return _top != was || _dragAcc != wasAcc || shown;
       }
       case TouchEvent::Tap: {
         _finger = true;
-        if (e.y < L::BODY_Y + 4) return false;
-        const int r = _top + (e.y - L::BODY_Y - 4) / STEP, c = (e.x - 8) / (TW + GAP);
+        if (e.y < L::BODY_Y) return false;
+        const int rel = e.y - L::BODY_Y - 4 - _dragAcc;
+        const int r = _top + (rel >= 0 ? rel / STEP : -1), c = (e.x - 8) / (TW + GAP);
         const int i = r * COLS + c;
-        if (c < 0 || c >= COLS || r >= _top + ROWS || i >= TILE_N) return false;
+        if (c < 0 || c >= COLS || r < 0 || r > _top + ROWS || i >= TILE_N) return false;
         _f = i;
         press();
         return true;
@@ -1248,16 +1273,19 @@ public:
     drawHeader(g, "Settings", _finger ? nullptr : pos);
     const int row = _f / COLS;
     if (!_finger) {                               // keep the highlight in view
+      _dragAcc = 0;                               // the ball moves whole rows
       if (row < _top) _top = row;
       if (row >= _top + ROWS) _top = row - ROWS + 1;
     }
+    const int off = _dragAcc;
+    g.setClipRect(0, L::BODY_Y, L::W, L::H - L::BODY_Y);
     // Narrow screens (the T-Deck): the icon and text move in to fit the tile.
     const int ix = NARROW ? 21 : 26, ir = NARROW ? 13 : 15, tx = NARROW ? 40 : 50;
-    for (int r = _top; r < _top + ROWS; r++) {
+    for (int r = max(0, _top - (off > 0 ? 1 : 0)); r <= _top + ROWS; r++) {
       for (int c = 0; c < COLS; c++) {
         const int i = r * COLS + c;
         if (i >= TILE_N) break;
-        const int x = 8 + c * (TW + GAP), y = L::BODY_Y + 4 + (r - _top) * STEP;
+        const int x = 8 + c * (TW + GAP), y = L::BODY_Y + 4 + (r - _top) * STEP + off;
         const bool on = i == _f && !_finger;
         g.fillRoundRect(x, y, TW, TH, 8, on ? t.focus : t.panel);
         g.drawRoundRect(x, y, TW, TH, 8, on ? t.green : t.line);
@@ -1275,6 +1303,7 @@ public:
         }
       }
     }
+    g.clearClipRect();
     drawScrollbar(g, ROWS_ALL, _top, ROWS, L::BODY_Y, L::H - L::BODY_Y);
   }
 private:
@@ -1359,6 +1388,29 @@ public:
       _focus = constrain(_focus + d, 0, 7);
     }
     dirty = true;
+  }
+  // The ball: up and down between the two sliders and the rows of tiles, sideways to
+  // move a slider (no click needed first) or along the tiles.
+  bool roll(int dx, int dy) override {
+    if (!_wheel || _focus < 0) { rotate(0); return true; }
+    _hold = false;
+    if (_focus < 2) {
+      if (dx && _focus == 0) app::setBrightnessNow((uint8_t)constrain((int)app::brightnessNow() + dx, 1, 16));
+      if (dx && _focus == 1) {
+        ui_settings.volume = constrain((int)ui_settings.volume + dx * 5, 0, 100);
+        if (ui_settings.volume && !ui_settings.sound) ui_settings.sound = true;
+        app::applySound();
+        markUiDirty();
+      }
+      if (dy) _focus = constrain(_focus + dy, 0, 2);          // down from the volume: the first tile
+    } else {
+      const int i = _focus - 2;                                 // 0..5, three across
+      if (dx) { const int c = i % 3 + dx; if (c >= 0 && c < 3) _focus = 2 + i - i % 3 + c; }
+      if (dy < 0) _focus = i < 3 ? 1 : _focus - 3;             // up from the top row: the volume
+      if (dy > 0 && i < 3) _focus += 3;
+    }
+    dirty = true;
+    return true;
   }
   void press() override {
     if (!_wheel || _focus < 0) { rotate(0); return; }  // a click with nothing shown: show it first
@@ -1512,7 +1564,7 @@ private:
 
   void activate(int i) {
     switch (i) {
-      case 0: if (saverBlocks()) return; ui_settings.wifiOn = !wifi::enabled(); wifi::setEnabled(ui_settings.wifiOn); markUiDirty(); break;
+      case 0: if (saverBlocks()) return; ui_settings.wifiOn = !wifi::enabled(); wifi::setEnabled(ui_settings.wifiOn, true); markUiDirty(); break;
       case 1: if (saverBlocks()) return; ui_settings.ble = !bleEnabled(); bleSetEnabled(ui_settings.ble); markUiDirty(); break;
       case 2: if (saverBlocks()) return; ui_settings.gpsOn = !ui_settings.gpsOn; gpsPower(ui_settings.gpsOn); markUiDirty(); break;
       case 3: ui_settings.sound = !ui_settings.sound; app::applySound(); markUiDirty(); break;
@@ -1545,7 +1597,7 @@ void app::openQuickSettings() {
             [](int d) { app::setBrightnessNow((uint8_t)constrain((int)app::brightnessNow() + d, 1, 16)); });
   m->toggle("wi-fi", [] { return wifi::enabled(); }, [] {
     if (saverBlocks()) return;
-    ui_settings.wifiOn = !wifi::enabled(); wifi::setEnabled(ui_settings.wifiOn); markUiDirty(); nav.statusChanged(); });
+    ui_settings.wifiOn = !wifi::enabled(); wifi::setEnabled(ui_settings.wifiOn, true); markUiDirty(); nav.statusChanged(); });
   m->toggle("bluetooth", [] { return bleEnabled(); }, [] {
     if (saverBlocks()) return;
     ui_settings.ble = !bleEnabled();

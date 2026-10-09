@@ -228,6 +228,21 @@ static void gpsPage() {
     char b[64];
     const GpsFix& f = gps.fix();
     snprintf(b, sizeof(b), "receiver   %s", !ui_settings.gpsOn ? "off" : gps.started() ? "on" : "not found"); out.push_back(b);
+    // Whether a module is there at all, and what it can hear: "searching" used to be
+    // all this said, the same for a module with no sky and for no module.
+    if (ui_settings.gpsOn && gps.started()) {
+      if (!gps.bytesRead) out.push_back("module     not heard - check its wiring");
+      else if (!gps.goodSentences) out.push_back("module     sending, but garbled");
+      else {
+        const char* ant = gps.antenna();
+        snprintf(b, sizeof(b), "module     talking%s%s", *ant ? ", antenna " : "", ant); out.push_back(b);
+        const uint8_t n = gps.heard(), sig = gps.bestSignal();
+        if (n) snprintf(b, sizeof(b), "hearing    %u satellite%s, best %u %s", n, n == 1 ? "" : "s", sig, sig >= 35 ? "strong" : sig >= 25 ? "ok" : "weak");
+        else snprintf(b, sizeof(b), "hearing    0 satellites - needs open sky");
+        out.push_back(b);
+        snprintf(b, sizeof(b), "sat clock  %s", gps.timeKnown() ? "yes" : "not yet"); out.push_back(b);
+      }
+    }
     snprintf(b, sizeof(b), "fix        %s", gps.hasFix() ? "yes" : "searching"); out.push_back(b);
     snprintf(b, sizeof(b), "satellites %u", f.satellites); out.push_back(b);
     if (gps.hasFix()) {

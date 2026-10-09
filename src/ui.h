@@ -43,6 +43,9 @@ public:
   // Draw everything below the status bar. The canvas is cleared to bg first.
   virtual void draw(Canvas& g) = 0;
   virtual void rotate(int d) {}
+  // A trackball's roll, each way on its own (right and down positive). False: not a
+  // screen that tells them apart, and it gets rotate(dx + dy) as a wheel would give.
+  virtual bool roll(int dx, int dy) { return false; }
   virtual void press() {}
   // Backspace. Return true if handled (e.g. deleted a character); false pops.
   virtual bool backspace() { return false; }
@@ -93,6 +96,7 @@ public:
   void statusChanged() { _statusDirty = true; }
 
   void rotate(int d)  { if (top()) top()->rotate(d); }
+  void roll(int dx, int dy) { if (top() && !top()->roll(dx, dy)) top()->rotate(dx + dy); }
   void press()        { if (top()) top()->press(); }
   void key(char c)    { if (top()) top()->key(c); }
   // Touch: going back (the header's "<", or a swipe in from the left edge) is
@@ -106,7 +110,23 @@ public:
   void compose(bool overlays = true);
 
   Canvas& canvas() { return _canvas; }
+#if BOARD_ASYNC_PUSH
+  // The panel, to draw on directly (a screen change, an icon's animation): not before
+  // a frame that is on its way out has gone. See present() in ui.cpp.
+  LGFX* display() { waitPresented(); return _d; }
+  LGFX* displayNoWait() { return _d; }      // only to pass on to something that waits itself before drawing
+  void waitPresented();                      // returns once nothing is being sent to the panel
+  bool asyncPush = true;                     // false: every frame is sent from the loop, as it used to be
+  uint32_t nAsync = 0, nSync = 0, nTrans = 0, nCustom = 0;   // how pictures have reached the panel (the USB "peek" prints them)
+  Canvas& lastFrame() { return asyncPush && _pusher && _front.getBuffer() ? _front : _canvas; }   // what was last sent
+#else
   LGFX* display() { return _d; }
+  LGFX* displayNoWait() { return _d; }
+  void waitPresented() {}
+  bool asyncPush = false;
+  Canvas& lastFrame() { return _canvas; }
+  uint32_t nAsync = 0, nSync = 0, nTrans = 0, nCustom = 0;
+#endif
   Theme& theme() { return *_t; }
   // Overlays (toast, banner) painted on top of whatever the view drew.
   void drawOverlays(lgfx::LovyanGFX& g);
@@ -116,6 +136,13 @@ private:
   LGFX* _d = nullptr;
   Theme* _t = nullptr;
   Canvas _canvas;
+#if BOARD_ASYNC_PUSH
+  void present(int shakeX);
+  static void pushTask(void* self);
+  Canvas _front;                             // the frame being sent, while the next is drawn in _canvas
+  void* _pusher = nullptr;                   // its task
+  volatile bool _pushing = false;
+#endif
   View* _stack[12] = {nullptr};
   int _depth = 0;
   char _toast[64] = "";
@@ -194,6 +221,7 @@ public:
 
   void draw(Canvas& g) override;
   void rotate(int d) override;
+  bool roll(int dx, int dy) override;
   void press() override;
   bool backspace() override;
   void key(char c) override;
@@ -262,6 +290,7 @@ private:
   String _q, _detail;
   std::function<void()> _yes, _no;  // _no: told when the answer was no (most askers don't need to know)
   bool _sel = false;               // cursor starts on "no"
+  int _x = 30, _w = 0, _by = 146;  // where draw() put the box and its buttons
 };
 
 // ---- a scrollable page of text lines (logs, info, telemetry) -----------------------

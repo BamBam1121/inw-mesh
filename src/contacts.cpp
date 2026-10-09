@@ -59,16 +59,19 @@ public:
   bool touch(const TouchEvent& e) override {
     const int visible = (L::H - TOP) / ROW_H;
     switch (e.type) {
-      case TouchEvent::Down: _dragAcc = 0; return false;
+      case TouchEvent::Down: return false;
       case TouchEvent::Drag: {
-        const int was = _scroll;
+        // By the pixel: _dragAcc is how far the list sits off a whole row.
+        const int was = _scroll, wasAcc = _dragAcc;
         const bool shown = !_finger;
         _finger = true;
         const int maxScroll = max(0, _n - visible);
         _dragAcc += e.dy;
         while (_dragAcc <= -ROW_H && _scroll < maxScroll) { _scroll++; _dragAcc += ROW_H; }
         while (_dragAcc >= ROW_H && _scroll > 0) { _scroll--; _dragAcc -= ROW_H; }
-        return _scroll != was || shown;        // redraw only when something moved
+        if (_scroll >= maxScroll && _dragAcc < 0) _dragAcc = 0;
+        if (_scroll <= 0 && _dragAcc > 0) _dragAcc = 0;
+        return _scroll != was || _dragAcc != wasAcc || shown;
       }
       case TouchEvent::Tap:
         _finger = true;
@@ -79,8 +82,9 @@ public:
           return true;
         }
         if (e.y >= TOP) {
-          const int i = _scroll + (e.y - TOP) / ROW_H;
-          if (i >= _n) return false;
+          const int rel = e.y - TOP - _dragAcc;
+          const int i = _scroll + (rel >= 0 ? rel / ROW_H : -1);
+          if (i < 0 || i >= _n) return false;
           _focus = i + 2;
           press();
           return true;
@@ -126,6 +130,7 @@ public:
     const int visible = (L::H - top) / rowH;
     const int sel = _finger ? -1 : _focus - 2;
     if (!_finger) {
+      _dragAcc = 0;                        // the wheel moves whole rows
       if (sel >= 0) {
         if (sel < _scroll) _scroll = sel;
         if (sel >= _scroll + visible) _scroll = sel - visible + 1;
@@ -138,9 +143,13 @@ public:
       else if (NARROW) { g.drawString("no contacts yet", 14, top + 8); g.drawString("they appear as adverts arrive", 14, top + 26); }
       else g.drawString("no contacts yet - they appear as adverts arrive", 14, top + 8);
     }
-    for (int i = _scroll; i < _n && i < _scroll + visible; i++) {
+    if (_scroll >= max(0, _n - visible) && _dragAcc < 0) _dragAcc = 0;
+    if (_scroll <= 0 && _dragAcc > 0) _dragAcc = 0;
+    const int off = _dragAcc;
+    g.setClipRect(0, top, L::W, L::H - top);
+    for (int i = max(0, _scroll - (off > 0 ? 1 : 0)); i < _n && i < _scroll + visible + (off < 0 ? 1 : 0); i++) {
       const CRow& r = _rows[i];
-      const int y = top + (i - _scroll) * rowH;
+      const int y = top + (i - _scroll) * rowH + off;
       const bool on = i == sel;
       const uint16_t bg = on ? t.focus : t.bg;
       if (on) { g.fillRect(0, y, L::W, rowH, bg); g.fillRect(0, y, 3, rowH, t.green); }
@@ -184,6 +193,7 @@ public:
         g.drawString(dt, rx + 64 - g.textWidth(dt), y + 7);
       }
     }
+    g.clearClipRect();
     drawScrollbar(g, _n, _scroll, visible, top, L::H - top);
   }
 

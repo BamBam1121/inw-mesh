@@ -161,18 +161,42 @@ void begin() {
   if (ui_settings.wifiOn) setEnabled(true);
 }
 
-void setEnabled(bool on) {
+// Starting the Wi-Fi radio takes about a second, and done from the loop that is a second
+// with the screen frozen: on the T-Deck, whose Wi-Fi is parked while it is dark, that
+// second fell in the middle of every wake. In the background the start runs in a task
+// of its own and tick() waits for it; anything that needs the radio at once
+// (a scan, a join) waits for it too.
+static volatile bool s_starting = false;
+static void radioUp() {
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(true);                   // modem sleep: coexists with BLE, saves power
+  WiFi.setAutoReconnect(false);          // we pick the network ourselves
+}
+static void startTask(void*) {
+  radioUp();
+  if (!s_on) { WiFi.disconnect(true); WiFi.mode(WIFI_OFF); }   // switched off again meanwhile
+  s_nextTry = millis();
+  s_starting = false;
+  vTaskDelete(nullptr);
+}
+static void waitStarted() { while (s_starting) delay(10); }
+
+void setEnabled(bool on, bool background) {
   if (on == s_on) return;
   s_on = on;
   s_misses = 0;                          // a fresh start: try straight away again
   if (on) {
-    WiFi.persistent(false);
-    WiFi.mode(WIFI_STA);
-    WiFi.setSleep(true);                 // modem sleep: coexists with BLE, saves power
-    WiFi.setAutoReconnect(false);        // we pick the network ourselves
+    if (s_starting) { logs.add(LOG_INFO, "wifi on"); return; }   // the task under way finishes the job
+    s_starting = true;
+    if (!background || xTaskCreatePinnedToCore(startTask, "wifiup", 4096, nullptr, 1, nullptr, 0) != pdPASS) {
+      radioUp();
+      s_starting = false;
+    }
     s_nextTry = millis();
     logs.add(LOG_INFO, "wifi on");
   } else {
+    if (s_starting) { logs.add(LOG_INFO, "wifi off"); return; }  // the task sees s_on and turns it off
     s_joinSlot = -1;
     s_scanning = s_scanWanted = false;
     WiFi.disconnect(true);
@@ -183,7 +207,7 @@ void setEnabled(bool on) {
 }
 
 bool enabled() { return s_on; }
-bool connected() { return s_on && WiFi.status() == WL_CONNECTED; }
+bool connected() { return s_on && !s_starting && WiFi.status() == WL_CONNECTED; }
 const char* ssid() { static char b[33]; strlcpy(b, connected() ? WiFi.SSID().c_str() : "", sizeof(b)); return b; }
 
 const char* statusText() {
@@ -220,7 +244,7 @@ const char* savedState(uint8_t i) {
 }
 
 void tick() {
-  if (!s_on) return;
+  if (!s_on || s_starting) return;
   const bool c = WiFi.status() == WL_CONNECTED;
 
   // How the join under way ended. Wrong passwords are retried less often: every
@@ -294,6 +318,7 @@ void save(const char* ss, const char* pass) {
   strlcpy(s_saved[slot].pass, pass, sizeof(s_saved[slot].pass));
   store();
   if (!s_on) { ui_settings.wifiOn = true; ui_settings.save(); setEnabled(true); }
+  waitStarted();
   s_result[slot] = J_NONE;
   s_misses = 0;
   s_scanning = s_scanWanted = false;            // the join goes first
@@ -316,6 +341,7 @@ void forget(uint8_t i) {
 
 void startScan() {
   if (!s_on) setEnabled(true);
+  waitStarted();
   s_scanResults = -1;
   s_scanning = s_scanWanted = true;
   s_scanAt = millis();
@@ -329,6 +355,7 @@ void testJoin(const char* ss, const char* pass) {
   strlcpy(s_test.pass, pass, sizeof(s_test.pass));
   s_result[SAVED_MAX] = J_NONE;
   if (!s_on) setEnabled(true);
+  waitStarted();
   s_scanning = s_scanWanted = false;
   WiFi.disconnect();
   join(SAVED_MAX);

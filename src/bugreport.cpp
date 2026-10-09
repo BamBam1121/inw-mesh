@@ -3,6 +3,7 @@
 #include <SPIFFS.h>
 #include "tls_client.h"   // WiFiClientSecure without its stray close(0)
 #include <HTTPClient.h>
+#include <esp_ota_ops.h>
 #include <Preferences.h>
 #include <esp_system.h>
 #include <esp_core_dump.h>
@@ -10,6 +11,7 @@
 #include "logstore.h"
 #include "app.h"
 #include "netwifi.h"
+#include "ota.h"
 #include "backlight.h"     // dimmer.idleFor(): send in a gap, not mid-scroll
 #include "node.h"          // bleConnected()
 #include "board_pins.h"    // REPORT_BOARD
@@ -136,14 +138,9 @@ static String deviceId() {
 static int16_t s_waiting = -1;              // -1: not counted yet
 uint8_t waiting() {
   if (!s_mounted) return 0;
-  if (s_waiting < 0) {
-    int16_t n = 0;
-    File root = SPIFFS.open("/");
-    for (File f = root.openNextFile(); f; f = root.openNextFile())
-      if (!strncmp(f.path(), DIR, 4)) n++;
-    s_waiting = n;
-  }
-  return (uint8_t)min<int16_t>(s_waiting, 255);
+  // Not counted yet: the sending task counts them (tick). Counting here meant listing
+  // the whole store from the loop.
+  return s_waiting < 0 ? 0 : (uint8_t)min<int16_t>(s_waiting, 255);
 }
 
 static bool save(const String& json) {
@@ -155,7 +152,7 @@ static bool save(const String& json) {
   const bool ok = f.print(json) == json.length();
   f.close();
   if (!ok) SPIFFS.remove(path);
-  else s_waiting++;
+  else if (s_waiting >= 0) s_waiting++;
   return ok;
 }
 
@@ -223,13 +220,33 @@ void begin() {
   const int rr = (int)esp_reset_reason();
   const bool crashed = rr == ESP_RST_PANIC || rr == ESP_RST_INT_WDT || rr == ESP_RST_TASK_WDT ||
                        rr == ESP_RST_WDT || rr == ESP_RST_BROWNOUT;
-  const bool dump = esp_core_dump_image_check() == ESP_OK;
+  bool dump = esp_core_dump_image_check() == ESP_OK;
   if (!crashed && !dump) return;
   if (!enabled()) { if (dump) esp_core_dump_image_erase(); return; }
+  esp_core_dump_summary_t* s = dump ? (esp_core_dump_summary_t*)calloc(1, sizeof(esp_core_dump_summary_t)) : nullptr;
+  const bool read = s && esp_core_dump_get_summary(s) == ESP_OK;
+  // Whose crash is it? The dump sits in a partition every firmware on the device
+  // shares, so one left by another firmware (a multi-boot launcher, or whatever was on
+  // here before this was installed) was being reported as ours, under our version,
+  // with addresses that mean nothing in our build. It says which build wrote it:
+  // anything but this one is thrown away.
+  if (read) {
+    char own[17] = "";
+    esp_ota_get_app_elf_sha256(own, sizeof(own));
+    if (strncmp((const char*)s->app_elf_sha256, own, 16) != 0) {
+      free(s);
+      s = nullptr;
+      esp_core_dump_image_erase();
+      dump = false;
+      if (!crashed) return;
+    }
+  }
+  // A restart with nothing to show for it - no dump, and the last run's lines gone -
+  // is what the installer's own reset looks like. There is nothing in it to act on.
+  if (!dump && !s_prev.length()) { free(s); return; }
   String j = header("crash", resetName(rr));
   if (dump) {
-    esp_core_dump_summary_t* s = (esp_core_dump_summary_t*)calloc(1, sizeof(esp_core_dump_summary_t));
-    if (s && esp_core_dump_get_summary(s) == ESP_OK) {
+    if (read && s) {
       char b[96];
       String task;
       jsonEscape(task, String(s->exc_task));
@@ -247,9 +264,9 @@ void begin() {
       j += String((const char*)s->app_elf_sha256).substring(0, 16);
       j += "\"";
     }
-    free(s);
     esp_core_dump_image_erase();             // one report per crash
   }
+  free(s);
   j += ",\"log\":\"";
   jsonEscape(j, s_prev.length() ? s_prev : String("(the log didn't survive: the power was cut)"));
   j += "\"}";
@@ -272,6 +289,50 @@ static bool post(const String& body, const char* url = URL) {
   return code >= 200 && code < 500;
 }
 
+// A post is seconds of waiting on the network (the secure handshake alone is most of
+// ten at the speed the chip idles at with the screen dark), and from the loop that was
+// the screen and the radio frozen for it. It runs in a task of its own; tick() picks
+// the result up.
+static volatile uint8_t s_bg = 0;           // 0 idle, 1 posting, 2 landed, 3 didn't
+static String s_bgBody, s_bgPath;           // what is being posted; the stored report it is ("" for the check-in)
+static const char* s_bgUrl = URL;
+bool posting() { return s_bg == 1; }
+static void postTask(void*) {
+  s_bg = post(s_bgBody, s_bgUrl) ? 2 : 3;
+  vTaskDelete(nullptr);
+}
+// The next waiting report, start to finish: 2 sent (and removed), 3 not sent, 4 there
+// was none, 5 an empty one cleared away. s_bgCount: how many were waiting when it looked.
+static volatile int16_t s_bgCount = 0;
+static String withName(const String& body);
+static void sendNextTask(void*) {
+  String path;
+  int16_t n = 0;
+  File root = SPIFFS.open("/");
+  for (File f = root.openNextFile(); f; f = root.openNextFile())
+    if (!strncmp(f.path(), DIR, 4)) { if (!n) path = f.path(); n++; }
+  root.close();
+  s_bgCount = n;
+  s_bgPath = path.length() ? path : String("-");
+  uint8_t result = 4;
+  if (n) {
+    File f = SPIFFS.open(path, FILE_READ);
+    const String body = f ? f.readString() : String();
+    if (f) f.close();
+    if (!body.length()) { SPIFFS.remove(path); result = 5; }
+    else if (post(withName(body), URL)) { SPIFFS.remove(path); result = 2; }
+    else result = 3;
+  }
+  s_bg = result;
+  vTaskDelete(nullptr);
+}
+
+static void postInBackground(const String& body, const char* url, const String& path) {
+  s_bgBody = body; s_bgUrl = url; s_bgPath = path;
+  s_bg = 1;
+  if (xTaskCreatePinnedToCore(postTask, "report", 10240, nullptr, 1, nullptr, 0) != pdPASS) s_bg = post(body, url) ? 2 : 3;
+}
+
 // Once a day (by the clock, or once a boot until the clock is set): "a device on
 // this version is in use". Board, version, the random id - nothing else.
 static bool s_checkedThisBoot = false;
@@ -287,10 +348,7 @@ static bool checkInDue() {
 static void checkIn() {
   const String body = String("{\"event\":\"checkin\",\"board\":\"" REPORT_BOARD "\",\"version\":\"" FW_VERSION
                              "\",\"device\":\"") + deviceId() + "\"}";
-  post(body, COUNT_URL);                      // whatever it answers: one try a day is plenty
-  s_checkedThisBoot = true;
-  Preferences p;
-  if (app::timeValid() && p.begin("inw-rpt", false)) { p.putUInt("chk", app::now()); p.end(); }
+  postInBackground(body, COUNT_URL, String());   // tick() notes the day once it's back
 }
 
 // Whose report it is: the name the device goes by on the mesh, so the developer can
@@ -307,6 +365,23 @@ static String withName(const String& body) {
 
 void tick() {
   static uint32_t lastTry = 0, connectedAt = 0, lastLook = 0;
+  if (s_bg == 1) return;                                // a post is out
+  if (s_bg >= 2) {
+    const bool landed = s_bg == 2;
+    const uint8_t s_bgResult = s_bg;
+    s_bg = 0;
+    if (!s_bgPath.length()) {                           // the check-in: whatever it answered, one try a day is plenty
+      s_checkedThisBoot = true;
+      Preferences p;
+      if (app::timeValid() && p.begin("inw-rpt", false)) { p.putUInt("chk", app::now()); p.end(); }
+    } else {                                            // a stored report: the task has dealt with the file
+      const uint8_t r = landed ? 2 : s_bgResult;
+      if (r == 2) { s_sent++; Serial.printf("[report] sent %s\n", s_bgPath.c_str()); }
+      s_waiting = r == 3 ? s_bgCount : (int16_t)max(0, (int)s_bgCount - 1);
+    }
+    s_bgBody = String();
+    return;
+  }
   if (!s_mounted || !enabled()) { s_errWhy[0] = 0; return; }
   if (s_errWhy[0]) { sendLog(s_errWhy); s_errWhy[0] = 0; }
   if (!wifi::connected()) { connectedAt = 0; return; }
@@ -314,29 +389,23 @@ void tick() {
   if (millis() - connectedAt < 30000) return;           // after the update check has had its go
   if (lastTry && millis() - lastTry < 60000) return;
   if (dimmer.idleFor() < 4000 || bleConnected()) return;    // a blocking second: not mid-scroll
+  if (ota::checking()) return;                              // one job on the network at a time
   if (!lastLook || millis() - lastLook > 3600000UL) {   // looked at hourly, sent daily
     lastLook = millis();
     if (checkInDue()) { lastTry = millis(); checkIn(); return; }
   }
   if (s_sent >= MAX_PER_BOOT) return;
   lastTry = millis();
-  if (!waiting()) return;                               // nothing to send: no listing of the store
-  File root = SPIFFS.open("/");
-  String path;
-  for (File f = root.openNextFile(); f; f = root.openNextFile())
-    if (!strncmp(f.path(), DIR, 4)) { path = f.path(); break; }
-  root.close();
-  if (!path.length()) { s_waiting = 0; return; }
-  File f = SPIFFS.open(path, FILE_READ);
-  if (!f) return;
-  const String body = f.readString();
-  f.close();
-  if (!body.length() || post(withName(body))) {
-    SPIFFS.remove(path);
-    if (s_waiting > 0) s_waiting--;
-    s_sent++;
-    Serial.printf("[report] sent %s\n", path.c_str());
-  }
+  if (s_waiting == 0) return;                           // known: nothing to send
+  // Looking for a report means listing the whole store - two to six seconds with a
+  // thousand contacts' files in it - and that used to happen here, on the loop, half a
+  // minute after every start: the screen and the radio stood still for it. The task
+  // does the looking, the reading, the sending and the clearing away.
+  s_bg = 1;
+  if (xTaskCreatePinnedToCore(sendNextTask, "report", 10240, nullptr, 1, nullptr, 0) != pdPASS) s_bg = 0;
 }
 
 }  // namespace report
+
+// For ota.cpp: the two take turns on the network.
+bool reportPosting() { return report::posting(); }

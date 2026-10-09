@@ -92,6 +92,7 @@ public:
     if ((int)_compose.length() >= maxLen()) return;
     _compose += c;
     _sel = -1;
+    _tAnchor = -1; _px = 0;                // typing: back to the newest
     dirty = true;
   }
 
@@ -108,6 +109,7 @@ public:
 
   void rotate(int d) override {
     if (!_n) return;
+    _tAnchor = -1; _px = 0;                // the wheel goes message by message
     // Up (negative) walks back through history, down returns to composing.
     int s = _sel < 0 ? _n : _sel;
     s += d;
@@ -125,13 +127,34 @@ public:
   // quick replies, drag to go back through the conversation.
   bool touch(const TouchEvent& e) override {
     switch (e.type) {
-      case TouchEvent::Down: _dragAcc = 0; return false;
+      case TouchEvent::Down: return false;
       case TouchEvent::Drag: {
-        bool moved = false;                   // redraw only when a message moved
-        _dragAcc += e.dy;
-        while (_dragAcc >= 36) { rotate(-1); _dragAcc -= 36; moved = true; }   // finger down: older messages come in
-        while (_dragAcc <= -36) { rotate(1); _dragAcc += 36; moved = true; }
-        return moved;
+        // The conversation moves with the finger, by the pixel (it used to jump a
+        // message for every 36 px). _tAnchor is the message whose bottom edge sits
+        // _px below the bottom of the page; -1 is the normal view, on the newest.
+        if (!_n || !e.dy) return false;
+        if (_tAnchor < 0 || _tAnchor >= _n) { _tAnchor = _sel >= 0 ? _sel : _n - 1; _px = 0; }
+        _sel = -1;                            // a finger took over: the highlight goes
+        if (e.dy > 0) {                       // finger down: older messages come in
+          // Only as far as the oldest message reaching the top of the page: how much
+          // conversation there is above the bottom edge, counted up from the anchor
+          // until it is plainly more than a pageful.
+          const int viewH = (L::H - 28) - 2 - (L::BODY_Y + 2);
+          int above = -_px;
+          for (int k = _tAnchor; k >= 0 && above < viewH + e.dy; k--) above += heightOf(k);
+          const int dy = max(0, min((int)e.dy, above - viewH));
+          _px += dy;
+          for (int h = heightOf(_tAnchor); _tAnchor > 0 && h > 0 && _px >= h; h = heightOf(_tAnchor)) { _px -= h; _tAnchor--; }
+        } else {
+          _px += e.dy;
+          while (_px < 0) {
+            if (_tAnchor >= _n - 1) { _px = 0; break; }
+            _tAnchor++;
+            _px += heightOf(_tAnchor);
+          }
+        }
+        if (_tAnchor >= _n - 1 && _px <= 0) { _tAnchor = -1; _px = 0; }   // on the newest again: new arrivals show
+        return true;
       }
       case TouchEvent::Tap:
         if (e.y >= L::H - 28) { openEmojiPicker(this); return true; }
@@ -176,6 +199,7 @@ public:
     }
     _compose = "";
     _sel = -1;
+    _tAnchor = -1; _px = 0;
     fx::burst(L::W - 40, L::H - 14);                  // off it goes, in the theme's style
     refresh();
     dirty = true;
@@ -227,9 +251,11 @@ public:
       g.setTextColor(t.dim, t.bg);
       g.drawString(_key.type == CONV_CHANNEL ? "no messages yet - say something" : "no messages yet", 14, top + 10);
     }
-    // Bottom-up: the anchor is the selected message, or the newest.
-    const int anchor = _sel >= 0 ? _sel : _n - 1;
-    int y = bottom - 2;
+    // Bottom-up: the anchor is where a finger left the page, or the selected message,
+    // or the newest.
+    const bool fingered = _tAnchor >= 0 && _tAnchor < _n;
+    const int anchor = fingered ? _tAnchor : (_sel >= 0 ? _sel : _n - 1);
+    int y = bottom - 2 + (fingered ? _px : 0);
     _posN = 0;
     _hitN = 0;
     // If a selection is scrolled up, keep a little of the next message visible.
@@ -246,9 +272,10 @@ public:
       }
     }
     g.clearClipRect();
-    if (_sel >= 0 && _sel < _n - 1) {
+    const int behind = fingered ? _n - 1 - _tAnchor : (_sel >= 0 ? _n - 1 - _sel : 0);
+    if (behind > 0) {
       char more[24];
-      snprintf(more, sizeof(more), "%d newer", _n - 1 - _sel);
+      snprintf(more, sizeof(more), "%d newer", behind);
       drawPill(g, L::W - 90, bottom - 22, 80, 18, t.greenDim, t.white, more);
     }
     drawCompose(g, bottom);
@@ -275,8 +302,22 @@ private:
     return h;
   }
 
-  // Returns the height used; draws with its bottom edge at `bottomY`.
-  int drawBubble(Canvas& g, const HistMsg& m, int bottomY, bool selected) {
+  // A message's height with the gap under it (and the "NEW" line over it, if it has
+  // one), without drawing it: what a finger's scroll steps by.
+  int heightOf(int i) {
+    if (i < 0 || i >= _n) return 0;
+    HistMsg* m = history.find(_ids[i]);
+    if (!m) return 0;
+    Canvas& g = nav.canvas();
+    g.setFont(&fonts::Font2);
+    int h = (ui_settings.compactChat ? drawCompact(g, *m, 0, false, true) : drawBubble(g, *m, 0, false, true)) + 4;
+    if (_newAfter != NO_DIVIDER && _ids[i] > _newAfter && (i == 0 || _ids[i - 1] <= _newAfter)) h += 16;
+    return h;
+  }
+
+  // Returns the height used; draws with its bottom edge at `bottomY`. measureOnly:
+  // the height alone.
+  int drawBubble(Canvas& g, const HistMsg& m, int bottomY, bool selected, bool measureOnly = false) {
     const Theme& t = nav.theme();
     const bool out = m.flags & HF_OUT;
     const bool showName = !out && (_key.type == CONV_CHANNEL || (m.flags & HF_ROOM));
@@ -296,6 +337,7 @@ private:
     const int nameW = showName ? richWidth(g, name) : 0;
     const int w = min(maxW, max(max(textW, metaW), nameW) + 16);
     const int h = 8 + (showName ? 17 : 0) + nl * 17 + 16;
+    if (measureOnly) return h;
     const int x = out ? L::W - 8 - w : 8;
     const int y = bottomY - h;
     const bool mention = m.flags & HF_MENTION;
@@ -321,7 +363,7 @@ private:
     return h;
   }
 
-  int drawCompact(Canvas& g, const HistMsg& m, int bottomY, bool selected) {
+  int drawCompact(Canvas& g, const HistMsg& m, int bottomY, bool selected, bool measureOnly = false) {
     const Theme& t = nav.theme();
     const bool out = m.flags & HF_OUT;
     char text[220];
@@ -333,6 +375,7 @@ private:
     uint16_t st[12]; uint8_t ln[12];
     const int nl = wrapText(g, text, L::W - 90, st, ln, 12);
     const int h = nl * 17 + 2;
+    if (measureOnly) return h;
     const int y = bottomY - h;
     if (selected) g.fillRect(0, y, L::W, h, t.focus);
     for (int i = 0; i < nl; i++) {
@@ -495,6 +538,7 @@ private:
   int16_t _hitTop[HIT_MAX], _hitBot[HIT_MAX], _hitIdx[HIT_MAX];
   uint8_t _hitN = 0;
   int _dragAcc = 0;
+  int _tAnchor = -1, _px = 0;             // a finger's place in the conversation (touch)
 };
 
 
@@ -533,6 +577,16 @@ public:
   }
   bool wantsAllKeys() override { return true; }
   void rotate(int d) override { const int n = _order.size(); _f = ((_f + d) % n + n) % n; dirty = true; }
+  // The ball: sideways along a row, up and down by a row.
+  bool roll(int dx, int dy) override {
+    const int n = _order.size();
+    if (!n) return true;
+    int f = _f + dy * COLS;
+    if (f < 0 || f >= n) f = _f;
+    _f = constrain(f + dx, 0, n - 1);
+    dirty = true;
+    return true;
+  }
   void key(char c) override {
     if (c == '\n') { press(); return; }
     if (c == 'q') { nav.pop(); openQuickReplies(_tv); return; }
@@ -780,19 +834,24 @@ public:
   bool touch(const TouchEvent& e) override {
     const int rowH = 44, visible = 4, n = _count + 1;
     switch (e.type) {
-      case TouchEvent::Down: _dragAcc = 0; return false;
+      case TouchEvent::Down: return false;
       case TouchEvent::Drag: {
-        const int was = _scroll, wasFocus = _focus;
+        // By the pixel: _dragAcc is how far the list sits off a whole row.
+        const int was = _scroll, wasAcc = _dragAcc, wasFocus = _focus;
+        const int maxScroll = max(0, n - visible);
         _dragAcc += e.dy;
-        while (_dragAcc <= -rowH / 2 && _scroll < max(0, n - visible)) { _scroll++; _dragAcc += rowH / 2; }
-        while (_dragAcc >= rowH / 2 && _scroll > 0) { _scroll--; _dragAcc -= rowH / 2; }
+        while (_dragAcc <= -rowH && _scroll < maxScroll) { _scroll++; _dragAcc += rowH; }
+        while (_dragAcc >= rowH && _scroll > 0) { _scroll--; _dragAcc -= rowH; }
+        if (_scroll >= maxScroll && _dragAcc < 0) _dragAcc = 0;
+        if (_scroll <= 0 && _dragAcc > 0) _dragAcc = 0;
         _focus = constrain(_focus, _scroll, _scroll + visible - 1);   // or draw() scrolls back to it
-        return _scroll != was || _focus != wasFocus;                  // redraw only when something moved
+        return _scroll != was || _dragAcc != wasAcc || _focus != wasFocus;
       }
       case TouchEvent::Tap: {
         if (e.y < L::BODY_Y) return false;
-        const int i = _scroll + (e.y - L::BODY_Y) / rowH;
-        if (i >= n) return false;
+        const int rel = e.y - L::BODY_Y - _dragAcc;
+        const int i = _scroll + (rel >= 0 ? rel / rowH : -1);
+        if (i < 0 || i >= n) return false;
         _focus = i;
         press();
         return true;
@@ -816,10 +875,13 @@ public:
     drawHeader(g, "Messages", right);
     const int rowH = 44, visible = 4;
     const int n = _count + 1;
-    if (_focus < _scroll) _scroll = _focus;
-    if (_focus >= _scroll + visible) _scroll = _focus - visible + 1;
-    for (int i = _scroll; i < n && i < _scroll + visible; i++) {
-      const int y = L::BODY_Y + (i - _scroll) * rowH;
+    if (_focus < _scroll) { _scroll = _focus; _dragAcc = 0; }
+    if (_focus >= _scroll + visible) { _scroll = _focus - visible + 1; _dragAcc = 0; }
+    if (_scroll <= 0 && _dragAcc > 0) _dragAcc = 0;
+    const int off = _dragAcc;
+    g.setClipRect(0, L::BODY_Y, L::W, L::H - L::BODY_Y);
+    for (int i = max(0, _scroll - (off > 0 ? 1 : 0)); i < n && i <= _scroll + visible; i++) {
+      const int y = L::BODY_Y + (i - _scroll) * rowH + off;
       const bool on = i == _focus;
       const uint16_t bg = on ? t.focus : t.bg;
       if (on) { g.fillRect(0, y, L::W, rowH, bg); g.fillRect(0, y, 3, rowH, t.green); }
@@ -862,6 +924,7 @@ public:
       }
       g.drawFastHLine(52, y + rowH - 1, L::W - 60, t.line);
     }
+    g.clearClipRect();
     drawScrollbar(g, n, _scroll, visible, L::BODY_Y, L::H - L::BODY_Y);
   }
 

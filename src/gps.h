@@ -1,5 +1,6 @@
-// MIA-M10Q NMEA reader. Only RMC and GGA are parsed: fix, position, satellites
-// and UTC time are all the rest of the firmware needs. Power EXP_GPS_EN first.
+// MIA-M10Q NMEA reader. RMC and GGA give the fix, position, satellites and UTC time,
+// which is all the rest of the firmware needs. GSV and the antenna line are read
+// only to say what a module with no fix yet can hear. Power EXP_GPS_EN first.
 
 #pragma once
 #include <Arduino.h>
@@ -116,6 +117,27 @@ public:
 
     const GpsFix& fix() const { return _fix; }
     bool hasFix() const { return _fix.valid; }
+
+    // What the module can hear before it has a fix: the way to tell "needs open sky"
+    // from a dead antenna, and the first number to climb outdoors. Satellites with a
+    // signal right now across every system it reports, and the strongest of them in
+    // dB-Hz (about 20 is barely there, 40 is a clear sky).
+    uint8_t heard() const {
+        uint16_t n = 0;
+        for (const Sys& y : _sys) if (y.a && millis() - y.at < 5000) n += y.heard;
+        return n > 255 ? 255 : (uint8_t)n;
+    }
+    uint8_t bestSignal() const {
+        uint8_t m = 0;
+        for (const Sys& y : _sys) if (y.a && millis() - y.at < 5000 && y.best > m) m = y.best;
+        return m;
+    }
+    // It has the time, which it only gets by decoding a satellite (or from its own
+    // backup battery, if the board has one that is charged).
+    bool timeKnown() const { return _timeKnown; }
+    // The module's own antenna check, on boards that send one: "ok", "open", "short",
+    // or "" when it has said nothing.
+    const char* antenna() const { return _antenna == 1 ? "ok" : _antenna == 2 ? "open" : _antenna == 3 ? "short" : ""; }
     bool started() const { return _started; }
     uint32_t bytesRead = 0;
     uint32_t goodSentences = 0;   // with a valid checksum, of any kind
@@ -162,12 +184,46 @@ private:
         const char* type = _line + 3;                      // skip "$GP" / "$GN"
         if (!strncmp(type, "RMC", 3)) return parseRmc();
         if (!strncmp(type, "GGA", 3)) return parseGga();
+        if (!strncmp(type, "GSV", 3)) parseGsv();
+        else if (!strncmp(type, "TXT", 3)) parseTxt();
         return false;
     }
 
+    // $GPGSV,messages,this one,in view,{id,elevation,azimuth,signal} x up to 4. One set
+    // per system (GP, BD, GL, GA). "In view" also counts satellites it only expects to
+    // be up there, so the ones with a signal are counted instead.
+    void parseGsv() {
+        Sys* y = nullptr;
+        for (Sys& c : _sys) if (c.a == _line[1] && c.b == _line[2]) { y = &c; break; }
+        if (!y) for (Sys& c : _sys) if (!c.a) { y = &c; c.a = _line[1]; c.b = _line[2]; break; }
+        if (!y) return;
+        const char* total = field(_line, 1);
+        const char* num = field(_line, 2);
+        if (!total || !num) return;
+        if (atoi(num) <= 1) { y->pendHeard = 0; y->pendBest = 0; }
+        for (uint8_t i = 7; i <= 19; i += 4) {
+            const char* snr = field(_line, i);
+            if (!snr) break;
+            const int v = atoi(snr);
+            if (v <= 0 || v > 99) continue;
+            y->pendHeard++;
+            if (v > y->pendBest) y->pendBest = (uint8_t)v;
+        }
+        if (atoi(num) >= atoi(total)) { y->heard = y->pendHeard; y->best = y->pendBest; y->at = millis(); }
+    }
+
+    // $GPTXT,01,01,01,ANTENNA OK - the AT6558 modules (ATGM336H, L76K) say this every second.
+    void parseTxt() {
+        const char* a = strstr(_line, "ANTENNA ");
+        if (!a) return;
+        a += 8;
+        _antenna = !strncmp(a, "OK", 2) ? 1 : !strncmp(a, "OPEN", 4) ? 2 : !strncmp(a, "SHORT", 5) ? 3 : 0;
+    }
+
     bool parseRmc() {
-        char* f = field(_line, 1);                         // hhmmss.ss
-        if (f && strlen(f) >= 6) {
+        char* f = field(_line, 1);                         // hhmmss.ss, empty until it has the time
+        _timeKnown = f && isdigit((unsigned char)f[0]);
+        if (_timeKnown && strlen(f) >= 6) {
             _fix.hour   = (uint8_t)((f[0] - '0') * 10 + (f[1] - '0'));
             _fix.minute = (uint8_t)((f[2] - '0') * 10 + (f[3] - '0'));
             _fix.second = (uint8_t)((f[4] - '0') * 10 + (f[5] - '0'));
@@ -183,7 +239,7 @@ private:
         }
 
         char* date = field(_line, 9);                      // ddmmyy
-        if (date && strlen(date) >= 6) {
+        if (date && isdigit((unsigned char)date[0]) && strlen(date) >= 6) {
             _fix.day   = (uint8_t)((date[0] - '0') * 10 + (date[1] - '0'));
             _fix.month = (uint8_t)((date[2] - '0') * 10 + (date[3] - '0'));
             _fix.year  = (uint16_t)(2000 + (date[4] - '0') * 10 + (date[5] - '0'));
@@ -207,6 +263,10 @@ private:
     uint8_t  _len = 0;
     bool     _started = false;
     GpsFix   _fix;
+    struct Sys { char a = 0, b = 0; uint8_t heard = 0, best = 0, pendHeard = 0, pendBest = 0; uint32_t at = 0; };
+    Sys      _sys[4];
+    bool     _timeKnown = false;
+    uint8_t  _antenna = 0;
 #ifdef GPS_BAUD_ALT
     bool     _alt = false;
     uint32_t _probeFrom = 0;

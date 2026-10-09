@@ -22,6 +22,8 @@
 extern LogStore logs;
 void inwProgress(const char* what, uint32_t done, uint32_t total);   // main.cpp
 
+bool reportPosting();   // bugreport.cpp: a problem report is out on the network (the two take turns)
+
 namespace ota {
 
 // Each board has its own folder; the pager's is the original, top-level one.
@@ -110,9 +112,19 @@ static bool fromHex(const char* s, uint8_t* out, size_t n) {
   return true;
 }
 
-Info check() { return check(ui_settings.betaUpdates); }
+// The check is seconds of waiting on the network - the secure handshake alone is most
+// of ten at the speed the chip idles at with the screen dark - and from the loop that
+// was the screen and the radio frozen for it. The automatic check now runs fetch() in a
+// task of its own (tick); the log isn't safe from there, so what fetch() has to say
+// goes into s_warn and is logged by whoever takes the result.
+static char s_warn[160] = "";
+static void flushWarn() { if (s_warn[0]) { logs.add(LOG_WARN, "%s", s_warn); s_warn[0] = 0; } }
+static Info fetch(bool beta);
 
-Info check(bool beta) {
+Info check() { return check(ui_settings.betaUpdates); }
+Info check(bool beta) { const Info i = fetch(beta); flushWarn(); return i; }
+
+static Info fetch(bool beta) {
   Info info;
   if (!wifi::connected()) { strlcpy(info.error, "connect to wi-fi first", sizeof(info.error)); return info; }
   TlsClient tls;
@@ -127,7 +139,7 @@ Info check(bool beta) {
     // Below zero the site never answered: the connection couldn't be opened or dropped
     // (-1 is "refused", which is also what a TLS handshake short of memory looks like).
     // Note what there was to work with, and try once more.
-    logs.add(LOG_WARN, "update check: no connection (%d %s), internal RAM %u kB free, largest %u kB", code,
+    snprintf(s_warn, sizeof(s_warn), "update check: no connection (%d %s), internal RAM %u kB free, largest %u kB", code,
              HTTPClient::errorToString(code).c_str(),
              (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
              (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));
@@ -173,7 +185,7 @@ Info check(bool beta) {
   if (tl > 0 && tl < (int)sizeof(tail)) { memcpy(msg3 + m3, tail, tl); m3 += tl; }
   if (tl <= 0 || tl >= (int)sizeof(tail) || !ed25519_verify(sig3, msg3, m3, RELEASE_KEY)) {
     strlcpy(info.error, "update is not for this device", sizeof(info.error));
-    logs.add(LOG_WARN, "ota: %s is not signed for " OTA_BOARD ", ignored", info.version);
+    snprintf(s_warn, sizeof(s_warn), "ota: %s is not signed for " OTA_BOARD ", ignored", info.version);
     return info;
   }
 #else
@@ -199,7 +211,7 @@ Info check(bool beta) {
   if (tl <= 0 || tl >= (int)sizeof(tail) || !ed25519_verify(s_sig, s_sha, 32, RELEASE_KEY) ||
       !ed25519_verify(sig2, msg, ml, RELEASE_KEY)) {
     strlcpy(info.error, "update signature is not valid", sizeof(info.error));
-    logs.add(LOG_WARN, "ota: bad signature on %s, ignored", info.version);
+    snprintf(s_warn, sizeof(s_warn), "ota: bad signature on %s, ignored", info.version);
     return info;
   }
 #endif
@@ -332,6 +344,23 @@ static bool canAsk() {
 
 // A while after Wi-Fi comes up, so it doesn't compete with startup; once per boot, or
 // every 6 hours where updates install by themselves.
+// The automatic check, in its task: 0 not running, 1 under way, 2 answer ready.
+static volatile uint8_t s_bg = 0;
+static Info s_bgInfo;
+static bool s_bgAlsoRelease = false;
+static void checkTask(void*) {
+  Info info = fetch(ui_settings.betaUpdates);
+  if (s_bgAlsoRelease && info.beta) {            // see tick(): a newer release goes in by itself
+    const Info rel = fetch(false);
+    if (rel.ok && rel.newer) info = rel;
+  }
+  s_bgInfo = info;
+  s_bg = 2;
+  vTaskDelete(nullptr);
+}
+
+bool checking() { return s_bg == 1; }
+
 void tick() {
   static bool checked = false, pending = false, asking = false;
   static uint32_t connectedAt = 0, lastCheck = 0;
@@ -341,8 +370,11 @@ void tick() {
     if (!canAsk()) return;
     asking = false;
     const Info info = found;
-    const String body = String("version ") + info.version + (info.notes[0] ? String(" - ") + info.notes : String("")) +
-                        ". takes about a minute; messages pause while it downloads.";
+    // The notes usually name the version themselves ("1.2.11 beta: ..."): once is enough.
+    const String what = !info.notes[0] ? String("version ") + info.version
+                        : strstr(info.notes, info.version) ? String(info.notes)
+                        : String(info.version) + ": " + info.notes;
+    const String body = what + ". takes about a minute; messages pause while it downloads.";
     confirm(String("Update to ") + info.version + "?", body,
             [info] { nav.toast(install(info), 5000); },
             [info] {
@@ -368,34 +400,49 @@ void tick() {
     return;
   }
 
-  if (checked && !(autoOn && millis() - lastCheck > 6UL * 3600UL * 1000UL)) return;
-  // check() blocks for the best part of a second (TLS handshake, then the
-  // fetch). Doing that mid-scroll is felt as a stutter, so wait for a gap in
-  // what the person is doing - it can wait.
-  if (dimmer.idleFor() < 3000) return;
-  checked = true;
-  lastCheck = millis();
-  Info info = check();
+  if (s_bg == 1) return;                         // the check is out: nothing to do until it's back
+  if (!s_bg) {
+    // One job on the network at a time: each takes a stack and about 40 kB of internal
+    // RAM for its secure connection, and there are only about 85 kB to go round.
+    if (reportPosting()) return;
+    if (checked && !(autoOn && millis() - lastCheck > 6UL * 3600UL * 1000UL)) return;
+    if (dimmer.idleFor() < 3000) return;         // not while someone is in the middle of something
+    checked = true;
+    lastCheck = millis();
+#ifdef OTA_BOARD
+    s_bgAlsoRelease = false;
+#else
+    // The pager puts in only official releases by itself. On beta updates it looks
+    // at the release feed too: a newer release installs itself, a beta still asks.
+    s_bgAlsoRelease = autoOn;
+#endif
+    s_bg = 1;
+    if (xTaskCreatePinnedToCore(checkTask, "otacheck", 10240, nullptr, 1, nullptr, 0) != pdPASS) {
+      s_bg = 0;                                  // no room for a task: as it used to be, on the loop
+      Info i = fetch(ui_settings.betaUpdates);
+      if (s_bgAlsoRelease && i.beta) { const Info rel = fetch(false); if (rel.ok && rel.newer) i = rel; }
+      s_bgInfo = i;
+      s_bg = 2;
+    }
+    if (s_bg != 2) return;
+  }
+  s_bg = 0;
+  flushWarn();
+  Info info = s_bgInfo;
 #ifdef OTA_BOARD
   const bool autoThis = autoOn;                // every build of this board is a beta for now
 #else
-  // The pager puts in only official releases by itself. On beta updates it looks
-  // at the release feed too: a newer release installs itself, a beta still asks.
-  if (autoOn && info.beta) {
-    const Info rel = check(false);
-    if (rel.ok && rel.newer) info = rel;
-  }
   const bool autoThis = autoOn && !info.beta;
 #endif
   if (!info.ok) { logs.add(LOG_INFO, "update check: %s", info.error); return; }
   if (!info.newer) { logs.add(LOG_INFO, "update check: up to date (%s)", FW_VERSION); return; }
   logs.add(LOG_INFO, "update available: %s", info.version);
-  if (!supported()) { nav.banner("Update available", "reinstall once over usb to enable wi-fi updates", 6000); return; }
+  if (!supported()) { nav.banner("Update available", "needs one USB reinstall first", 6000); return; }
   // A multi-boot setup: say so once and leave it to the owner (their launcher, or
   // Settings > System, which says what it replaces). Never by itself, and no prompt.
   if (replacesOther()) {
     static bool told = false;
-    if (!told) nav.banner("Update available", "use your launcher: updating here replaces another firmware", 8000);
+    if (!told) nav.banner("Update available", "install it from your launcher", 8000);
     told = true;
     return;
   }

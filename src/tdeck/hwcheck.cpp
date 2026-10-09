@@ -73,7 +73,8 @@ public:
     else if (!gps.bytesRead) row(WAIT, "gps", "not heard (the Plus has one)");
     else if (!gps.goodSentences) { snprintf(b, sizeof(b), "data but garbled, trying %lu baud", (unsigned long)gps.baud()); row(WAIT, "gps", b); }
     else if (gps.hasFix()) { snprintf(b, sizeof(b), "fix, %u satellites", f.satellites); row(OK, "gps", b); }
-    else { snprintf(b, sizeof(b), "talking, %u sats - needs sky", f.satellites); row(WAIT, "gps", b); }
+    else if (gps.heard()) { snprintf(b, sizeof(b), "talking, hears %u sats, no fix yet", gps.heard()); row(WAIT, "gps", b); }
+    else row(WAIT, "gps", "talking, hears 0 sats - needs sky");
 
     const uint16_t mv = app::batteryMv();
     if (mv < 2800) { snprintf(b, sizeof(b), "none? (%u mV)", mv); row(BAD, "battery", b); }

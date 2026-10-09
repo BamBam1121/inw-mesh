@@ -30,22 +30,28 @@ public:
     void fadeTo(uint8_t target, uint16_t durationMs = 300) {
         if (target > MAX_LEVEL) target = MAX_LEVEL;
         if (target == _level) { _fading = false; return; }
-        const uint8_t steps = target > _level ? target - _level : _level - target;
+        _fadeFrom = _level;
         _fadeTo   = target;
-        _stepMs   = durationMs / steps;
-        _lastStep = millis();
+        _fadeMs   = durationMs ? durationMs : 1;
+        _fadeAt   = millis();
         _fading   = true;
     }
 
+    // By the clock: where the fade should be by now, however long it has been since the
+    // last call. It used to move one step a call, so a fade that should take 0.3 s took
+    // as long as twelve passes of the loop did - seconds, when a screen change or a slow
+    // picture held each pass up, which is the screen "slowly fading on" after an alert.
     void tick() {
         if (!_fading) return;
-        if (millis() - _lastStep < _stepMs) return;
-        _lastStep = millis();
-        setLevel(_level < _fadeTo ? _level + 1 : _level - 1);
-        if (_level == _fadeTo) _fading = false;
+        const uint32_t el = millis() - _fadeAt;
+        if (el >= _fadeMs) { setLevel(_fadeTo); _fading = false; return; }
+        setLevel((uint8_t)((int)_fadeFrom + ((int)_fadeTo - (int)_fadeFrom) * (int)el / (int)_fadeMs));
     }
 
     bool fading() const { return _fading; }
+    // The fade under way starts over from now: for a wake, whose fade was asked for
+    // before the panel had its picture.
+    void restartFade() { if (_fading) _fadeAt = millis(); }
     void setNow(uint8_t level) { _fading = false; setLevel(level); }
 
 private:
@@ -53,8 +59,8 @@ private:
     uint8_t  _pin = 0;
     uint8_t  _level = 0;
     bool     _fading = false;
-    uint8_t  _fadeTo = 0;
-    uint32_t _lastStep = 0, _stepMs = 1;
+    uint8_t  _fadeTo = 0, _fadeFrom = 0;
+    uint32_t _fadeAt = 0, _fadeMs = 1;
 };
 
 #include "dimmer.h"   // the idle dimmer (shared by every board) drives this

@@ -89,6 +89,11 @@ bool InwNode::transmitDM(PendingDM& p, const char* text) {
   if (!c) return false;
   uint32_t ack = 0, est = 0;
   const int r = sendMessage(*c, p.ts, p.attempt, text, ack, est);
+#if INW_DEV
+  Serial.printf("[dm] try %u to %s: %s, route %d, waits %lu ms\n", p.attempt + 1, c->name,
+                r == MSG_SEND_FAILED ? "NOT SENT" : r == MSG_SEND_SENT_FLOOD ? "flood" : "direct",
+                c->out_path_len == OUT_PATH_UNKNOWN ? -1 : (int)(c->out_path_len & 63), (unsigned long)est);
+#endif
   if (r == MSG_SEND_FAILED) return false;
   p.acks[p.attempt & 3] = ack;
   p.sentAt = millis();
@@ -135,6 +140,9 @@ void InwNode::tick() {
       }
       if (transmitDM(p, m->text)) { history.setStatus(p.histId, ST_SENDING, p.attempt + 1); continue; }
     }
+#if INW_DEV
+    Serial.printf("[dm] FAILED after %u tries\n", p.attempt + 1);
+#endif
     history.setStatus(p.histId, ST_FAILED, p.attempt + 1);
     p.used = false;
     emit(NodeEvent::Failed, &p.histId);
@@ -153,6 +161,9 @@ ContactInfo* InwNode::processAck(const uint8_t* data) {
     for (uint8_t a = 0; a < 4; a++) {
       if (!p.acks[a] || p.acks[a] != ack) continue;
       const uint32_t rtt = millis() - p.sentAt;
+#if INW_DEV
+      Serial.printf("[dm] DELIVERED on try %u (ack of try %u), %lu ms after it\n", p.attempt + 1, a + 1, (unsigned long)rtt);
+#endif
       history.setStatus(p.histId, ST_DELIVERED, p.attempt + 1, (uint16_t)min<uint32_t>(rtt / 10, 65535));
       p.used = false;
       emit(NodeEvent::Delivered, &p.histId);
@@ -272,6 +283,10 @@ void InwNode::onMessageRecv(const ContactInfo& from, mesh::Packet* pkt, uint32_t
       gotDM(from.id.pub_key, ts, hash, had);      // and its own retries after this one
     }
   }
+#if INW_DEV
+  Serial.printf("[dm] got one from %s: %u hops, snr %.1f%s\n", from.name, hopsOf(pkt), pkt->getSNR(),
+                had ? " - counted on the one already shown" : "");
+#endif
   if (had) { history.bumpRepeat(had); return; }
   MyMesh::onMessageRecv(from, pkt, ts, text);
   const bool room = from.type == ADV_TYPE_ROOM;

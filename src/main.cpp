@@ -228,12 +228,39 @@ void app::openUnread() {
 // and the trackball agreeing with it. Turning the screen over reverses both.
 static void applyOrientation() {
   const bool flip = ui_settings.orient & 1;
+  nav.waitPresented();
   display.setRotation(TFT_ROTATION ^ (flip ? 2 : 0));
   touchPanel.setMirror(flip != (bool)(ui_settings.orient & 2), flip != (bool)(ui_settings.orient & 4));
   rotary.setReversed(flip != (bool)(ui_settings.orient & 8));
+#if BOARD_HAS_TRACKBALL
+  rotary.setSpeed(app::trackballSpeed());
+#endif
   display.invertDisplay(ui_settings.orient & 16);   // relative to the panel's own setting
   nav.invalidate();
 }
+#endif
+
+#if BOARD_HAS_TRACKBALL
+// How far the ball has to roll for one step on the screen: 0 slow, 1 medium, 2 fast.
+// In its own NVS key, the settings blob untouched.
+static int8_t s_ballSpeed = -1;             // -1: not read yet
+uint8_t app::trackballSpeed() {
+  if (s_ballSpeed < 0) {
+    s_ballSpeed = 1;
+    Preferences p;
+    if (p.begin("inw-fx", true)) { s_ballSpeed = min<int>(p.getUChar("tbs", 1), 2); p.end(); }
+  }
+  return (uint8_t)s_ballSpeed;
+}
+void app::setTrackballSpeed(uint8_t s) {
+  s_ballSpeed = min<int>(s, 2);
+  Preferences p;
+  if (p.begin("inw-fx", false)) { p.putUChar("tbs", (uint8_t)s_ballSpeed); p.end(); }
+  rotary.setSpeed((uint8_t)s_ballSpeed);
+}
+#else
+uint8_t app::trackballSpeed() { return 1; }
+void app::setTrackballSpeed(uint8_t) {}
 #endif
 
 // Night brightness: between two hours of the local clock the screen uses its own, lower
@@ -319,6 +346,7 @@ void app::applyTheme() {
 bool inwStoreFlush(uint32_t ms);
 void inwStoreTick();
 void inwSetUserBusy(bool busy);
+void inwSetScreenOn(bool on);
 
 static uint32_t s_hizUntil = 0;   // "batt hiz" test running until then
 
@@ -470,10 +498,28 @@ static uint32_t s_panelAt = 0;   // millis of the last Sleep In or Sleep Out sen
 // only comes up after this returns. Lit while the panel was still asleep or just woken,
 // it showed rainbow static, mostly when a message woke the screen: the light came on
 // first and the panel was told to wake after.
+// The main chip idles at 80 MHz while the screen is dark (the end of loop()). Whatever
+// lights the screen or plays a sound puts it back to 240 first. It used to go back at
+// the end of the pass that woke it: the first picture was drawn, and the alert sound
+// worked out, at a third of the speed - a message's sound came out broken and the
+// screen followed seconds later.
+#if BOARD_SLOW_CPU_WHEN_DARK
+static bool s_cpuSlow = false;
+static void cpuFull() { if (s_cpuSlow) { setCpuFrequencyMhz(240); s_cpuSlow = false; } }
+#else
+static inline void cpuFull() {}
+#endif
+
 static void panelWake() {
+  cpuFull();
   if (!s_panelOff) return;
+  // The screen is coming on: background saves stop at their next pause from now, not
+  // from the end of this pass of the loop - which, with the wake animation in it, was
+  // most of a second of flash writing under the first pictures.
+  inwSetUserBusy(true);
   const uint32_t since = millis() - s_panelAt;
   if (since < 120) delay(120 - since);
+  nav.waitPresented();
   display.wakeup();
   delay(120);
   s_panelAt = millis();
@@ -482,11 +528,13 @@ static void panelWake() {
 }
 static void panelSleep() {
   if (s_panelOff || millis() - s_panelAt < 120) return;
+  nav.waitPresented();
   display.sleep();
   s_panelAt = millis();
   s_panelOff = true;
 }
 static bool s_uiReady = false;   // set once setup() is done: no animations while booting
+static uint32_t s_readyAt = 0;   // when that was
 // Screen-change animations can be turned off (Settings > Display): each one holds the
 // screen for about half a second, and keys typed during it are not seen. Kept in its
 // own NVS key, like the other late additions, so the settings blob's layout is untouched.
@@ -601,6 +649,7 @@ static void screenWakeAnimated() {
   nav.cancelTransition();                        // the wake animation is the transition
   nav.tick();                                    // let the top view catch up (the clock, say)
   nav.compose();
+  nav.waitPresented();
   display.fillScreen(TFT_BLACK);
   dimmer.wakeInstant();
   fx::screenOn(nav.canvas());
@@ -611,6 +660,7 @@ static bool quietHours();
 // Plugged in: the theme's charge chime and one tap, like a phone. Quiet hours
 // keep it silent; the screen still shows the charge mark.
 void app::pluggedInFeedback() {
+  cpuFull();
   nav.statusChanged();
   if (!dimmer.asleep()) fx::charge(app::batteryPct());   // the theme's charging splash
   if (quietHours()) return;
@@ -717,6 +767,7 @@ static void alert(const char* title, const char* text, AlertKind kind, bool sile
   const ThemeSpec& th = app::themeSpec();
   const Jingle* sound = kind == AlertKind::Dm ? th.dm : kind == AlertKind::Mention ? th.mention : th.msg;
   const VibePattern& vibe = kind == AlertKind::Dm ? th.vibeDm : kind == AlertKind::Mention ? th.vibeMention : th.vibeMsg;
+  cpuFull();
   if (ui_settings.wakeOnMessage && !silent) dimmer.wake();
   nav.banner(title, text, 4500, std::move(open));
   if (silent || quietHours()) return;
@@ -811,6 +862,7 @@ static void takeScreenshot() {
   f.write(hdr, 54);
   static uint8_t row[L::W * 3];
   lgfx::rgb888_t px[L::W];
+  nav.waitPresented();
   for (int y = H - 1; y >= 0; y--) {
     display.readRect(0, y, W, 1, px);
     for (int x = 0; x < W; x++) { row[x * 3] = px[x].b; row[x * 3 + 1] = px[x].g; row[x * 3 + 2] = px[x].r; }
@@ -919,9 +971,65 @@ static bool themeCommand(const char* line) {
   return false;
 }
 
+#if INW_DEV
+static uint32_t s_devNotifyAt = 0, s_devNotifyT0 = 0;   // "notify N": when it fires, and when it fired
+static uint32_t s_fcLeft = 0, s_fcFrames = 0, s_fcBadFrames = 0, s_fcWorst = 0;   // "framecheck N"
+static bool s_fcDrawn = false;
+#endif
+
 static void usbCommands() {
   static char line[themeline::LINE_LEN + 12];      // the longest thing sent: "theme-set " and a theme
   static uint8_t n = 0;
+#if INW_DEV && INW_TDECK
+  // "framecheck N": N frames through the real path, one every other pass of the loop
+  // (so the radio and everything else run while each is on its way), each read back
+  // off the panel afterwards and compared with what was sent.
+  if (s_fcLeft && !dimmer.asleep()) {
+    if (!s_fcDrawn) { nav.invalidate(); s_fcDrawn = true; }      // the next pass draws and sends it
+    else if (!nav.top() || !nav.top()->dirty) {                  // it has been drawn: look at what arrived
+      s_fcDrawn = false;
+      nav.waitPresented();
+      Canvas& f = nav.lastFrame();
+      static lgfx::rgb888_t px[L::W];
+      uint32_t bad = 0;
+      int firstRow = -1, rows = 0;
+      for (int y = 0; y < L::H; y++) {
+        display.readRect(0, y, L::W, 1, px);
+        bool rowBad = false;
+        for (int x = 0; x < L::W; x++) {
+          const auto want = f.readPixelRGB(x, y);
+          if (((px[x].r ^ want.r) | (px[x].g ^ want.g) | (px[x].b ^ want.b)) & 0xF0) { bad++; rowBad = true; }
+        }
+        if (rowBad) { rows++; if (firstRow < 0) firstRow = y; }
+      }
+      s_fcFrames++;
+      if (bad) {
+        s_fcBadFrames++;
+        if (bad > s_fcWorst) s_fcWorst = bad;
+        if (s_fcBadFrames <= 6) Serial.printf("[framecheck] frame %lu: %lu pixels wrong in %d rows from row %d\n", (unsigned long)s_fcFrames, (unsigned long)bad, rows, firstRow);
+      }
+      if (!--s_fcLeft) {
+        Serial.printf("[framecheck] '%s' %s, %lu MHz: %lu of %lu frames arrived wrong (worst %lu pixels)\n", g_screenTitle,
+                      nav.asyncPush ? "sent from the other core" : "sent from the loop", (unsigned long)(display.writeFreq() / 1000000UL),
+                      (unsigned long)s_fcBadFrames, (unsigned long)s_fcFrames, (unsigned long)s_fcWorst);
+        nav.invalidate();
+      }
+    }
+  }
+#endif
+#if INW_DEV
+  if (s_devNotifyAt && (int32_t)(millis() - s_devNotifyAt) >= 0) {
+    s_devNotifyAt = 0;
+    s_devNotifyT0 = millis() | 1;
+    Serial.printf("[notify] alert now (screen %s, cpu %lu MHz)\n", dimmer.asleep() ? "dark" : "on", (unsigned long)getCpuFrequencyMhz());
+    alert("Test", "wake timing test", AlertKind::Dm);
+  }
+  if (s_devNotifyT0 && !dimmer.asleep() && !backlight.fading()) {
+    Serial.printf("[notify] screen lit %lu ms after the alert (cpu %lu MHz, light %u of 16)\n", (unsigned long)(millis() - s_devNotifyT0),
+                  (unsigned long)getCpuFrequencyMhz(), backlight.level());
+    s_devNotifyT0 = 0;
+  }
+#endif
   while (Serial.available()) {
     const char c = Serial.read();
     if (c != '\n' && c != '\r') { if (n < sizeof(line) - 1) line[n++] = c; continue; }
@@ -1109,6 +1217,7 @@ static void usbCommands() {
       Serial.printf("[ext] io9 mode %u\n", ui_settings.io9Mode);
       continue;
     }
+#if BOARD_HAS_EXT_HEADER   // the pager's top socket: nothing to fake or draw on a board without one
     // "extfake": made-up sensor readings, and the telemetry they would send.
     if (!strcmp(line, "extfake")) {
       ext::fake();
@@ -1129,6 +1238,7 @@ static void usbCommands() {
       nav.invalidate();
       continue;
     }
+#endif
     if (!strncmp(line, "gbframe ", 8)) {
       Canvas& g = nav.canvas();
       goodbyeFrame(g, 1234, atoi(line + 8));
@@ -1183,7 +1293,7 @@ static void usbCommands() {
     }
     if (!strncmp(line, "fx play ", 8)) {
       const char* w = line + 8;
-      if (!strcmp(w, "on"))        { nav.compose(); display.fillScreen(TFT_BLACK); fx::screenOn(nav.canvas()); }
+      if (!strcmp(w, "on"))        { nav.compose(); nav.waitPresented(); display.fillScreen(TFT_BLACK); fx::screenOn(nav.canvas()); }
       else if (!strcmp(w, "off"))  { nav.compose(); fx::screenOff(nav.canvas()); delay(400); }
       else if (!strcmp(w, "down")) { nav.compose(); fx::powerDown(nav.canvas()); delay(400); }
       else if (!strcmp(w, "ping"))   { fx::ping(L::W / 2, L::H / 2); fx::ping(120, 120); }
@@ -1236,12 +1346,33 @@ static void usbCommands() {
         }
         delete lockView;
         if (trLive) {
+          nav.waitPresented();
           nav.canvas().pushSprite(&display, 0, 0);
           const uint32_t f0 = fx::framesDrawn(), t0 = millis();
           fx::transition(kind, nav.canvas(), to);
           const uint32_t el = millis() - t0, n = fx::framesDrawn() - f0;
           Serial.printf("[tr] %s theme %u: %lu frames in %lu ms, %.1f fps\n", kindName, ui_settings.themeId,
                         (unsigned long)n, (unsigned long)el, n * 1000.0f / (el ? el : 1));
+#if INW_TDECK
+          // What the screen change left on the panel, against the picture it was going to
+          // (it is drawn in strips, not as one frame: nothing else checks those).
+          if (kind != fx::Trans::Sleep) {
+            static lgfx::rgb888_t px[L::W];
+            uint32_t bad = 0;
+            int rows = 0, firstRow = -1;
+            for (int y = 0; y < L::H; y++) {
+              display.readRect(0, y, L::W, 1, px);
+              bool rowBad = false;
+              for (int x = 0; x < L::W; x++) {
+                const auto want = to.readPixelRGB(x, y);
+                if (((px[x].r ^ want.r) | (px[x].g ^ want.g) | (px[x].b ^ want.b)) & 0xF0) { bad++; rowBad = true; }
+              }
+              if (rowBad) { rows++; if (firstRow < 0) firstRow = y; }
+            }
+            Serial.printf("[trcheck] %s at %lu MHz: %lu pixels left wrong in %d rows (first row %d)\n", kindName,
+                          (unsigned long)(display.writeFreq() / 1000000UL), (unsigned long)bad, rows, firstRow);
+          }
+#endif
           delay(700);
         } else {
           fx::transitionFrame(kind, nav.canvas(), to, *out, ms);
@@ -1256,6 +1387,195 @@ static void usbCommands() {
     }
     // "drawtime tN": how long the current screen takes to draw into the canvas and
     // to send to the panel, averaged over 5, in theme N (the setting is put back).
+    // Speed work. "prof": where one frame of the current screen goes (clearing, the
+    // status bar, the screen itself, the overlays, sending it). "unlock" / "dark": off
+    // the lock face / screen off, without touching it. "notify N": a test message
+    // alert N seconds from now (so the screen can be dark first), timed until the
+    // screen is lit. "tb": pulses counted on each trackball line.
+    if (!strcmp(line, "prof")) {
+      View* v = nav.top();
+      Canvas& g = nav.canvas();
+      if (!v) continue;
+      nav.waitPresented();
+      auto timed = [](const std::function<void()>& f) { f(); const uint32_t t0 = micros(); for (int i = 0; i < 5; i++) f(); return (unsigned long)((micros() - t0) / 5); };
+      const unsigned long clr = timed([&] { g.fillScreen(theme.bg); });
+      const unsigned long bar = timed([&] { drawStatusBar(g, theme, !v->hasClock()); });
+      const unsigned long scr = timed([&] { v->draw(g); });
+      const unsigned long ovl = timed([&] { nav.drawOverlays(g); });
+      const unsigned long snd = timed([&] { g.pushSprite(&display, 0, 0); });
+      Serial.printf("[prof] '%s' lock=%d theme %u: clear %lu us, bar %lu, screen %lu, overlays %lu, send %lu = %lu us a frame (%.1f fps)\n",
+                    g_screenTitle, v->isLock() ? 1 : 0, ui_settings.themeId, clr, bar, scr, ovl, snd, clr + bar + scr + ovl + snd,
+                    1e6f / (float)(clr + bar + scr + ovl + snd));
+#if BOARD_HAS_TOUCH
+      {
+        extern uint32_t g_dashUs[4];
+        if (v->isHome())
+          Serial.printf("[prof] home: lists %lu us, clock %lu, messages card %lu, dock %lu\n", (unsigned long)g_dashUs[0],
+                        (unsigned long)g_dashUs[1], (unsigned long)g_dashUs[2], (unsigned long)g_dashUs[3]);
+      }
+      Serial.printf("[prof] internal RAM %u kB free, largest block %u kB\n", (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+                    (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));
+#endif
+      nav.invalidate();
+      continue;
+    }
+    // "fps N": N frames of the current screen through the real path (draw, then send),
+    // back to back. "scrcheck": send the current screen, read the panel back and count
+    // the pixels that came back different - a link too fast for the panel shows here.
+    if (!strncmp(line, "fps", 3)) {
+      const int n = max(5, atoi(line + 3));
+      nav.waitPresented();
+      const uint32_t t0 = micros();
+      for (int i = 0; i < n; i++) { nav.invalidate(); nav.draw(); }
+      nav.waitPresented();
+      const uint32_t us = micros() - t0;
+      Serial.printf("[fps] '%s': %d frames in %lu ms = %.1f fps\n", g_screenTitle, n, (unsigned long)(us / 1000), n * 1e6f / (float)us);
+      continue;
+    }
+#if INW_TDECK
+    // "framecheck N" (above). "async 0|1": frames sent from the loop / from the other
+    // core. "spi 40|80": the speed they are sent at, in MHz.
+    // "panel": what the panel itself says it is doing (awake, showing, inverted, colour
+    // mode) and the backlight's level - a picture can be right in its memory and still
+    // look wrong if the panel was left in the wrong mode. "wake": as a click of the
+    // trackball wakes it.
+    if (!strcmp(line, "panel")) {
+      nav.waitPresented();
+      auto* pn = display.getPanel();
+      const uint32_t st = pn->readCommand(0x09, 0, 4), pm = pn->readCommand(0x0A, 0, 1) & 0xFF, mad = pn->readCommand(0x0B, 0, 1) & 0xFF,
+                     col = pn->readCommand(0x0C, 0, 1) & 0xFF, im = pn->readCommand(0x0D, 0, 1) & 0xFF;
+      Serial.printf("[panel] status %08lx power %02lx (sleep-out %lu, display-on %lu, normal %lu, idle %lu, partial %lu) madctl %02lx colmod %02lx image %02lx (inverted %lu) | light %u of 16, dimmer %s, panelOff %d, cpu %lu MHz\n",
+                    (unsigned long)st, (unsigned long)pm, (unsigned long)((pm >> 4) & 1), (unsigned long)((pm >> 2) & 1), (unsigned long)((pm >> 3) & 1),
+                    (unsigned long)((pm >> 6) & 1), (unsigned long)((pm >> 5) & 1), (unsigned long)mad, (unsigned long)col, (unsigned long)im,
+                    (unsigned long)((im >> 5) & 1), backlight.level(), dimmer.asleep() ? "asleep" : dimmer.dimmed() ? "dim" : "full", s_panelOff ? 1 : 0,
+                    (unsigned long)getCpuFrequencyMhz());
+      continue;
+    }
+    // "wifibounce": Wi-Fi off, then on again in the background, as a wake on battery does it.
+    if (!strcmp(line, "wifibounce")) { wifi::setEnabled(false); delay(300); wifi::setEnabled(true, true); Serial.println("[wifi] bounced"); continue; }
+    // "wifiglitch": does a picture sent while the Wi-Fi radio starts arrive whole? Wi-Fi
+    // off, then started in the background, and at once 40 pictures are sent one after
+    // another, each followed by a look at every 8th row of what the panel took.
+    if (!strcmp(line, "wifiglitch")) {
+      nav.waitPresented();
+      nav.compose();
+      Canvas& g = nav.canvas();
+      static lgfx::rgb888_t px[L::W];
+      wifi::setEnabled(false);
+      delay(600);
+      const uint32_t t0 = millis();
+      wifi::setEnabled(true, true);
+      uint32_t badFrames = 0, worst = 0;
+      String when;
+      for (int i = 0; i < 40; i++) {
+        const uint32_t at = millis() - t0;
+        g.pushSprite(&display, 0, 0);
+        uint32_t bad = 0;
+        for (int y = 4; y < L::H; y += 8) {
+          display.readRect(0, y, L::W, 1, px);
+          for (int x = 0; x < L::W; x++) {
+            const auto want = g.readPixelRGB(x, y);
+            if (((px[x].r ^ want.r) | (px[x].g ^ want.g) | (px[x].b ^ want.b)) & 0xF0) bad++;
+          }
+        }
+        if (bad) { badFrames++; if (bad > worst) worst = bad; if (when.length() < 80) when += String(at) + "ms:" + String(bad) + " "; }
+      }
+      Serial.printf("[wifiglitch] %lu MHz: %lu of 40 pictures sent during a Wi-Fi start arrived wrong (worst %lu of 9600 pixels looked at) %s| took %lu ms\n",
+                    (unsigned long)(display.writeFreq() / 1000000UL), (unsigned long)badFrames, (unsigned long)worst, when.c_str(), (unsigned long)(millis() - t0));
+      nav.invalidate();
+      continue;
+    }
+    // "peek": what is on the panel right now against the last picture sent, nothing
+    // drawn or sent first. "pshot": the panel's own picture, read back and sent as
+    // "shot" sends the canvas - what the eye sees, not what was meant.
+    if (!strcmp(line, "peek") || !strcmp(line, "pshot")) {
+      nav.waitPresented();
+      Canvas& f = nav.lastFrame();
+      static lgfx::rgb888_t px[L::W];
+      static uint16_t out[L::W];
+      const bool send = line[1] == 's';
+      uint32_t bad = 0, badCanvas = 0;
+      Canvas& cv = nav.canvas();
+      int rows = 0, firstRow = -1, lastRow = -1;
+      if (send) { Serial.flush(); Serial.printf("SHOT565 %d %d\n", L::W, L::H); }
+      for (int y = 0; y < L::H; y++) {
+        display.readRect(0, y, L::W, 1, px);
+        bool rowBad = false;
+        for (int x = 0; x < L::W; x++) {
+          const auto want = f.readPixelRGB(x, y);
+          if (((px[x].r ^ want.r) | (px[x].g ^ want.g) | (px[x].b ^ want.b)) & 0xF0) { bad++; rowBad = true; }
+          const auto wc = cv.readPixelRGB(x, y);
+          if (((px[x].r ^ wc.r) | (px[x].g ^ wc.g) | (px[x].b ^ wc.b)) & 0xF0) badCanvas++;
+          const uint16_t c = ((px[x].r & 0xF8) << 8) | ((px[x].g & 0xFC) << 3) | (px[x].b >> 3);
+          out[x] = (uint16_t)((c << 8) | (c >> 8));
+        }
+        if (rowBad) { rows++; if (firstRow < 0) firstRow = y; lastRow = y; }
+        if (send) Serial.write((const uint8_t*)out, sizeof(out));
+      }
+      if (send) Serial.flush();
+      Serial.printf("\n[peek] '%s' lock=%d: %lu pixels on the panel differ from the last picture sent, in %d rows (%d to %d)\n", g_screenTitle,
+                    nav.top() && nav.top()->isLock() ? 1 : 0, (unsigned long)bad, rows, firstRow, lastRow);
+      Serial.printf("[peek2] against the drawing buffer: %lu differ | sent so far: %lu from the other core, %lu from the loop, %lu screen changes, %lu custom\n",
+                    (unsigned long)badCanvas, (unsigned long)nav.nAsync, (unsigned long)nav.nSync, (unsigned long)nav.nTrans, (unsigned long)nav.nCustom);
+      continue;
+    }
+    if (!strcmp(line, "wake")) { if (dimmer.asleep()) { if (ui_settings.lockOnSleep) app::lock(); screenWakeAnimated(); } continue; }
+    if (!strncmp(line, "framecheck", 10)) { s_fcLeft = max(1, atoi(line + 10)); s_fcFrames = s_fcBadFrames = s_fcWorst = 0; s_fcDrawn = false; dimmer.note(); continue; }
+    if (!strncmp(line, "async ", 6)) { nav.waitPresented(); nav.asyncPush = line[6] == '1'; Serial.printf("[async] %d\n", nav.asyncPush); continue; }
+    if (!strncmp(line, "spi ", 4)) { nav.waitPresented(); display.writeFreq((uint32_t)atoi(line + 4) * 1000000UL); Serial.printf("[spi] %lu MHz\n", (unsigned long)(display.writeFreq() / 1000000UL)); nav.invalidate(); continue; }
+#endif
+    if (!strcmp(line, "scrcheck")) {
+      nav.waitPresented();
+      nav.compose();
+      Canvas& g = nav.canvas();
+      g.pushSprite(&display, 0, 0);
+      static lgfx::rgb888_t px[L::W];
+      uint32_t bad = 0, black = 0, white = 0;
+      for (int y = 0; y < L::H; y++) {
+        display.readRect(0, y, L::W, 1, px);
+        for (int x = 0; x < L::W; x++) {
+          const auto want = g.readPixelRGB(x, y);
+          // The panel keeps 6 bits a colour of the 5-6-5 sent: the top four must match.
+          if (((px[x].r ^ want.r) | (px[x].g ^ want.g) | (px[x].b ^ want.b)) & 0xF0) bad++;
+          if (!px[x].r && !px[x].g && !px[x].b) black++;
+          if (px[x].r > 250 && px[x].g > 250 && px[x].b > 250) white++;
+        }
+      }
+      Serial.printf("[scrcheck] '%s': %lu of %d pixels read back different (read back: %lu black, %lu white)\n", g_screenTitle,
+                    (unsigned long)bad, L::W * L::H, (unsigned long)black, (unsigned long)white);
+      nav.invalidate();
+      continue;
+    }
+    if (!strcmp(line, "unlock")) { if (nav.top() && nav.top()->isLock()) nav.pop(); dimmer.note(); nav.invalidate(); Serial.println("[usb] unlocked"); continue; }
+    if (!strcmp(line, "dark")) { dimmer.sleepNow(); Serial.println("[usb] screen off"); continue; }
+    if (!strncmp(line, "notify", 6)) { s_devNotifyAt = (millis() + (uint32_t)atoi(line + 6) * 1000UL) | 1; Serial.println("[notify] armed"); continue; }
+    // "roll DX DY": the trackball rolled that far. "ask": the update question with a
+    // long set of notes, to see that all of it shows.
+    if (!strncmp(line, "roll ", 5)) { int dx = 0, dy = 0; sscanf(line + 5, "%d %d", &dx, &dy); nav.roll(dx, dy); nav.invalidate(); continue; }
+#if BOARD_HAS_TOUCH
+    // "drag DY": a finger in the middle of the screen moved DY pixels (down is positive).
+    // "tap X Y": a tap there.
+    if (!strncmp(line, "drag ", 5) || !strncmp(line, "tap ", 4)) {
+      TouchEvent te = {};
+      int a = 0, b = 0;
+      sscanf(line + (line[0] == 'd' ? 5 : 4), "%d %d", &a, &b);
+      if (line[0] == 'd') { te.type = TouchEvent::Drag; te.x = te.x0 = L::W / 2; te.y0 = L::H / 2; te.y = L::H / 2 + a; te.dy = a; }
+      else { te.type = TouchEvent::Tap; te.x = te.x0 = a; te.y = te.y0 = b; }
+      nav.touch(te);
+      nav.invalidate();
+      continue;
+    }
+#endif
+    if (!strcmp(line, "ask")) {
+      confirm("Update to 1.2.12?", "1.2.12 beta: the automatic backup's interval can be set, and a failed update check says so in words. takes about a minute; messages pause while it downloads.", [] {});
+      continue;
+    }
+    if (!strcmp(line, "tb")) {
+      uint32_t n[4];
+      tdeck_tb::counts(n);
+      Serial.printf("[tb] up %lu down %lu left %lu right %lu\n", (unsigned long)n[0], (unsigned long)n[1], (unsigned long)n[2], (unsigned long)n[3]);
+      continue;
+    }
     if (!strncmp(line, "drawtime", 8)) {
       const char* tp = strstr(line, " t");
       const uint8_t saved = ui_settings.themeId;
@@ -1265,6 +1585,7 @@ static void usbCommands() {
       for (int i = 0; i < 5; i++) nav.compose();
       const uint32_t c = (millis() - t0) / 5;
       t0 = millis();
+      nav.waitPresented();
       for (int i = 0; i < 5; i++) nav.canvas().pushSprite(&display, 0, 0);
       const uint32_t p = (millis() - t0) / 5;
       Serial.printf("[draw] theme %u, top '%s' lock=%d: draw %lums, send %lums\n", ui_settings.themeId,
@@ -1360,6 +1681,106 @@ static void usbCommands() {
       continue;
     }
     // What is plugged into the top header, and what IO9 is doing.
+    // "gps": what the receiver has sent so far, then three seconds of it as it comes.
+    // "gpsprobe": listens on each of the two GPS pins at each speed in turn and counts
+    // what arrives, for a receiver wired in by hand - it says which pin it is talking on.
+    if (!strcmp(line, "gps")) {
+      const GpsFix& f = gps.fix();
+      Serial.printf("[gps] setting %s, listening on pin %d at %lu baud: %lu bytes, %lu good sentences, fix %s, %u sats\n",
+                    ui_settings.gpsOn ? "on" : "OFF", PIN_GPS_RX, (unsigned long)gps.baud(),
+                    (unsigned long)gps.bytesRead, (unsigned long)gps.goodSentences, gps.hasFix() ? "yes" : "no", f.satellites);
+      Serial.printf("[gps] hears %u satellites, strongest %u, sat clock %s, antenna '%s'\n",
+                    gps.heard(), gps.bestSignal(), gps.timeKnown() ? "yes" : "no", gps.antenna());
+      Serial.print("[gps] raw: ");
+      const uint32_t until = millis() + 3000;
+      uint32_t n = 0;
+      while ((int32_t)(millis() - until) < 0) {
+        while (Serial1.available()) { const int c = Serial1.read(); n++; Serial.write(c == '\n' || (c >= 32 && c < 127) ? c : '.'); }
+        delay(5);
+      }
+      Serial.printf("\n[gps] %lu bytes in 3 s\n", (unsigned long)n);
+      continue;
+    }
+    if (!strcmp(line, "gpsprobe")) {
+      static const int PINS[] = {PIN_GPS_RX, PIN_GPS_TX};
+      static const uint32_t BAUDS[] = {9600, 38400, 115200};
+      for (int pin : PINS) {
+        pinMode(pin, INPUT);
+        delay(5);
+        Serial.printf("[gpsprobe] pin %d idles %s\n", pin, digitalRead(pin) ? "high (something is driving or pulling it up)" : "low");
+        for (uint32_t b : BAUDS) {
+          Serial1.end();
+          Serial1.setRxBufferSize(2048);
+          Serial1.begin(b, SERIAL_8N1, pin, -1);
+          const uint32_t until = millis() + 1500;
+          uint32_t n = 0, dollars = 0, printable = 0;
+          char first[48]; size_t fl = 0;
+          while ((int32_t)(millis() - until) < 0) {
+            while (Serial1.available()) {
+              const int c = Serial1.read();
+              n++;
+              if (c == '$') dollars++;
+              if (c == '\n' || c == '\r' || (c >= 32 && c < 127)) printable++;
+              if (fl < sizeof(first) - 1 && c >= 32 && c < 127) first[fl++] = (char)c;
+            }
+            delay(5);
+          }
+          first[fl] = 0;
+          Serial.printf("[gpsprobe] pin %d at %6lu: %4lu bytes, %lu '$', %lu%% readable  %s\n", pin, (unsigned long)b,
+                        (unsigned long)n, (unsigned long)dollars, (unsigned long)(n ? printable * 100 / n : 0), first);
+        }
+      }
+      Serial1.end();
+      if (ui_settings.gpsOn) gps.begin();
+      Serial.println("[gpsprobe] done, back to normal");
+      continue;
+    }
+    // "who TEXT": this node, and how it sees every contact with TEXT in its name (its
+    // route, when it was last heard). "dm NAME|words": a direct message to the first
+    // contact with NAME in its name, sent the way the chat screen sends one; node.cpp
+    // prints each try and the delivery in this build.
+    if (!strncmp(line, "who", 3) || !strncmp(line, "dm ", 3)) {
+      if (!g_node) { Serial.println("[who] node not running"); continue; }
+      const bool dm = line[0] == 'd';
+      String want = dm ? String(line + 3) : String(line[3] ? line + 4 : "");
+      String words;
+      const int bar = want.indexOf('|');
+      if (dm && bar >= 0) { words = want.substring(bar + 1); want = want.substring(0, bar); }
+      want.toLowerCase();
+      if (!dm) {
+        char hex[10];
+        mesh::Utils::toHex(hex, g_node->self_id.pub_key, 4);
+        hex[8] = 0;
+        const NodePrefs& p = g_node->prefs();
+        Serial.printf("[who] me: %s  key %s  %.3f MHz sf%u bw%.1f cr%u tx%d  %d contacts, clock %lu\n", g_node->name(), hex,
+                      p.freq, p.sf, p.bw, p.cr, p.tx_power_dbm, g_node->getNumContacts(), (unsigned long)app::now());
+      }
+      int shown = 0;
+      for (int i = 0; i < g_node->getNumContacts(); i++) {
+        ContactInfo c;
+        if (!g_node->getContactByIdx(i, c)) continue;
+        String n = c.name;
+        n.toLowerCase();
+        if (want.length() && n.indexOf(want) < 0) continue;
+        if (!want.length() && !(c.flags & 0x01)) continue;        // no text: the favourites
+        if (dm) {
+          const ConvKey k = ConvKey::contact(c.id.pub_key);
+          const uint32_t id = history.add(k, HF_OUT, ST_SENDING, g_node->name(), words.c_str(), app::now());
+          Serial.printf("[dm] to %s: %s\n", c.name, g_node->sendDM(c.id.pub_key, words.c_str(), id) ? "queued" : "could not send");
+          shown++;
+          break;
+        }
+        if (++shown > 14) { Serial.println("[who] ...more"); break; }
+        char hex[10];
+        mesh::Utils::toHex(hex, c.id.pub_key, 4);
+        hex[8] = 0;
+        Serial.printf("[who] %-24s key %s type %u fav %u route %d  heard %ld s ago  advert %lu\n", c.name, hex, c.type, c.flags & 1,
+                      c.out_path_len == OUT_PATH_UNKNOWN ? -1 : (int)(c.out_path_len & 63),
+                      c.lastmod ? (long)(app::now() - c.lastmod) : -1L, (unsigned long)c.last_advert_timestamp);
+      }
+      if (!shown) Serial.println("[who] no contact with that in its name");
+      continue;
+    }
     if (!strcmp(line, "ext")) { ext::report(); continue; }
     dimmer.note();
     if (!strcmp(line, "stores")) {
@@ -1816,6 +2237,7 @@ void setup() {
   }
   nav.invalidate();
   s_uiReady = true;                               // from here on, screen changes animate
+  s_readyAt = millis();
 }
 
 // ---- loop -------------------------------------------------------------------------------------------
@@ -1872,7 +2294,13 @@ void loop() {
   uint32_t lapAt = tLoop;
   uint16_t laps[8] = {};
   auto lap = [&](uint8_t i) { const uint32_t now = millis(); laps[i] = now - lapAt; lapAt = now; };
+#if BOARD_HAS_TRACKBALL
+  int8_t ballX = 0, ballY = 0;
+  rotary.takeXY(ballX, ballY);
+  const int8_t detents = ballX + ballY ? ballX + ballY : (ballX ? ballX : 0);   // opposite ways at once still count as a roll
+#else
   const int8_t detents = rotary.takeDetents();
+#endif
   bool press = rotary.takePress();
   bool backspace = false, anyKey = false;
   char chars[16];
@@ -1987,7 +2415,11 @@ void loop() {
       strlcpy(before, g_screenTitle, sizeof(before));
       const uint32_t tIn = millis();
       const char* what = detents ? "wheel" : press ? "press" : backspace ? "backspace" : "key";
+#if BOARD_HAS_TRACKBALL
+      if (detents) nav.roll(ballX, ballY);
+#else
       if (detents) nav.rotate(detents);
+#endif
       if (press) nav.press();
       for (uint8_t i = 0; i < nchars; i++) {
         View* v = nav.top();
@@ -2064,10 +2496,25 @@ void loop() {
   // on or lit.
   if (!dimmer.asleep()) panelWake();
   if (!dimmer.asleep() || nav.overlayActive()) nav.draw();
-  if (!dimmer.asleep() && nav.top() && !nav.top()->isLock()) animateBatteryIcon(nav.display(), theme);
-  if (!dimmer.asleep() && nav.top() && !nav.top()->isLock() && !nav.overlayActive()) animateSignalIcon(nav.display(), theme);
+  // (They wait for a frame on its way out themselves, and only when they have something to draw.)
+  if (!dimmer.asleep() && nav.top() && !nav.top()->isLock()) animateBatteryIcon(nav.displayNoWait(), theme);
+  if (!dimmer.asleep() && nav.top() && !nav.top()->isLock() && !nav.overlayActive()) animateSignalIcon(nav.displayNoWait(), theme);
   lap(5);
   if (!dimmer.asleep()) panelWake();       // before the light can come up
+#if BOARD_FADE_BY_CLOCK
+  // And the picture is on the panel before it does: the frame just drawn may still be
+  // on its way (it is sent from the other core), and the light coming up first would
+  // show a flash of whatever the panel held when it went dark. The fade counts from here.
+  // Once a wake: starting it over on every pass would hold the light at nothing.
+  {
+    static bool waking = false;
+    if (dimmer.asleep()) waking = true;
+    else if (waking) {
+      waking = false;
+      if (backlight.fading()) { nav.waitPresented(); backlight.restartFade(); }
+    }
+  }
+#endif
   dimmer.tick();
   jingle.tick();
   if (const uint8_t f = jingle.takeFailure())
@@ -2100,7 +2547,7 @@ void loop() {
     const bool park = ui_settings.wifiOn && darkAt && (int32_t)(millis() - darkAt) > 60000 && !app::pluggedIn();
     if (park != parked && !power::saver()) {   // battery saver switches Wi-Fi itself meanwhile
       parked = park;
-      wifi::setEnabled(!park && ui_settings.wifiOn);
+      wifi::setEnabled(!park && ui_settings.wifiOn, true);   // back in the background: the wake isn't held for it
       logs.add(LOG_INFO, park ? "wifi parked: screen dark on battery" : "wifi back");
     }
   }
@@ -2184,9 +2631,16 @@ void loop() {
   // And while a message is being typed (a screen that takes text is on top), for up
   // to 20 s after the last key: a write starting between two words froze the typing.
   // Each kind of save still has its own deadline, so nothing waits past that.
-  inwSetUserBusy(!dimmer.asleep() && (dimmer.idleFor() < 3000 ||
+  // And for the first 20 s after it starts: what is saved then is what was just loaded,
+  // written again, and it was stalling the first screens someone looks at.
+  // And while the lock face is up: it is the one screen that moves by itself, so a save
+  // under it shows (its animation dropped to three frames a second, measured), and it
+  // is only ever up for the ten seconds before it sleeps again - then the save goes.
+  inwSetUserBusy(!dimmer.asleep() && (dimmer.idleFor() < 3000 || millis() - s_readyAt < 20000 ||
+                 (nav.top() && nav.top()->isLock()) ||
                  (nav.top() && nav.top()->wantsAllKeys() && dimmer.idleFor() < 20000)));
 #endif
+  inwSetScreenOn(!dimmer.asleep());
   lap(7);
   const uint32_t total = millis() - tLoop;
   if (total > 150) {
@@ -2204,10 +2658,7 @@ void loop() {
   // And run the main chip at 80 MHz meanwhile: a third of the speed for ~15 mA less,
   // and still enough for Wi-Fi, the radio and flash writes (the peripherals' own
   // 80 MHz clock doesn't change). Back to 240 the moment the screen wakes.
-  {
-    static bool slow = false;
-    if (idleDark != slow) { setCpuFrequencyMhz(idleDark ? 80 : 240); slow = idleDark; }
-  }
+  if (idleDark != s_cpuSlow) { setCpuFrequencyMhz(idleDark ? 80 : 240); s_cpuSlow = idleDark; }
 #endif
   delay(idleDark ? 30 : 2);
 }

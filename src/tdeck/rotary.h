@@ -14,7 +14,7 @@
 // is busy (a settings save) must not reach for code in flash.
 namespace tdeck_tb {
 void attach();
-int32_t take();
+void take(int32_t& dx, int32_t& dy);   // steps since the last call: right and down are positive
 void counts(uint32_t out[4]);   // pulses seen per line: up, down, left, right
 }
 
@@ -28,9 +28,29 @@ public:
 
   // Steps since the last call; down/right is positive.
   int8_t takeDetents() {
-    const int32_t s = tdeck_tb::take();
-    return (int8_t)constrain(_rev ? -s : s, -100, 100);
+    int8_t dx, dy;
+    takeXY(dx, dy);
+    return (int8_t)constrain(dx + dy, -100, 100);
   }
+  // The same, each way on its own: a screen laid out in rows and columns moves its
+  // highlight the way the ball was rolled (View::roll).
+  void takeXY(int8_t& dx, int8_t& dy) {
+    int32_t x, y;
+    tdeck_tb::take(x, y);
+    // The ball's lines flip once for each small step of it. How many of those make one
+    // step on the screen is the speed: every one (fast), two in three (medium) or every
+    // other one (slow, what it did before both edges were counted). What is left over
+    // is kept for the next roll, so a slow roll still gets there.
+    _accX += (_rev ? -x : x) * _per6;
+    _accY += (_rev ? -y : y) * _per6;
+    const int32_t ox = _accX / 6, oy = _accY / 6;
+    _accX -= ox * 6;
+    _accY -= oy * 6;
+    dx = (int8_t)constrain(ox, -50, 50);
+    dy = (int8_t)constrain(oy, -50, 50);
+  }
+  // 0 slow, 1 medium, 2 fast (Settings > Display).
+  void setSpeed(uint8_t s) { _per6 = s == 0 ? 3 : s == 2 ? 6 : 4; _accX = _accY = 0; }
 
   // A unit whose ball turns out backwards (or a screen turned upside down).
   void setReversed(bool r) { _rev = r; }
@@ -71,5 +91,7 @@ private:
   }
 
   bool     _pressed = false, _heldLong = false, _click = false, _long = false, _rev = false;
+  int32_t  _accX = 0, _accY = 0;          // steps not yet handed out, in sixths
+  uint8_t  _per6 = 4;                     // sixths of a screen step for each step of the ball
   uint32_t _pressChange = 0;
 };

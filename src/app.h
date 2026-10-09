@@ -54,6 +54,8 @@ namespace app {
   bool     signalAnimating();        // a check is out, or the bars are filling
   // Night brightness (Settings > Display): a second brightness for the hours the clock
   // says are night. 0 = off.
+  uint8_t  trackballSpeed();           // 0 slow, 1 medium, 2 fast (boards with a trackball)
+  void     setTrackballSpeed(uint8_t s);
   uint8_t  nightBrightness();
   void     setNightBrightness(uint8_t level);
   uint8_t  nightFrom();              // the hour it starts, 0-23
