@@ -77,7 +77,9 @@ public:
     else row(WAIT, "gps", "talking, hears 0 sats - needs sky");
 
     const uint16_t mv = app::batteryMv();
-    if (mv < 2800) { snprintf(b, sizeof(b), "none? (%u mV)", mv); row(BAD, "battery", b); }
+    // With USB in, the pin shows the supply whether or not a cell is there: nothing to check.
+    if (app::pluggedIn()) { snprintf(b, sizeof(b), "on usb power: unplug to check  %u%%", app::batteryPct()); row(WAIT, "battery", b); }
+    else if (mv < 2800) { snprintf(b, sizeof(b), "none? (%u mV)", mv); row(BAD, "battery", b); }
     else { snprintf(b, sizeof(b), "%u mV  %u%%%s", mv, app::batteryPct(), app::charging() ? "  charging" : ""); row(OK, "battery", b); }
 
     if (sdMounted()) { snprintf(b, sizeof(b), "%llu MB free", (unsigned long long)(sdFreeBytes() / 1048576ULL)); row(OK, "sd card", b); }

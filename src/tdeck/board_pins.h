@@ -50,6 +50,9 @@
 // stays asleep (no half-hourly fix windows) and Wi-Fi is switched off a minute in.
 // Plugged in, Wi-Fi stays on so updates still install while it charges.
 #define BOARD_RADIO_ONLY_WHEN_DARK 1
+// The battery pin shows the USB supply, not the cell, whenever USB is in (battery_est.h):
+// the percentage is reckoned then, and there is no cell voltage to show.
+#define BOARD_BATT_UNSEEN_ON_USB 1
 // No fuel gauge or charger chip to ask: the battery figure and "plugged in" are worked
 // out from the cell's voltage (battery_est.h), which this board's own draw also moves.
 // main.cpp tells the estimate when that draw changes.

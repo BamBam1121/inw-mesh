@@ -741,7 +741,45 @@ static void gpsSchedule() {
   if (fieldHad) { fieldHad = false; if (!ui_settings.gpsOn || power::saver()) gpsPower(false); }
   if (!ui_settings.gpsOn || power::saver()) return;   // those paths switch it themselves
 #if BOARD_RADIO_ONLY_WHEN_DARK
-  const bool window = false;            // dark means dark: the fix comes back with the screen
+  // Dark means dark, with one exception. A GPS with no fix yet has to listen for a minute
+  // or more without a break, and the screen is rarely on that long (the lock face goes
+  // dark in ten seconds): put to sleep at every dark, it said "searching" all day. So a
+  // module that is heard but has had no fix in the last two hours is left running in the
+  // dark until it has one, for three minutes in all. If those run out without a fix
+  // (indoors), it rests half an hour before the next three, then one hour, two, four:
+  // a T-Deck kept indoors pays next to nothing for this.
+  static uint32_t tickAt = 0, restUntil = 0, settleUntil = 0;
+  static int32_t allowance = 180000;    // ms of running in the dark still to be had
+  static uint8_t misses = 0;
+  static bool window = false;
+  const uint32_t now = millis();
+  if (now - tickAt >= 1000) {
+    const uint32_t dt = tickAt ? now - tickAt : 0;
+    tickAt = now;
+    const bool recent = gps.fix().updatedAt && now - gps.fix().updatedAt < 2UL * 3600UL * 1000UL;
+    if (gps.fresh()) { misses = 0; restUntil = 0; allowance = 180000; }
+    if (restUntil && (int32_t)(now - restUntil) >= 0) { restUntil = 0; allowance = 180000; }
+    bool want = false;
+    if (dimmer.asleep() && gps.goodSentences) {
+      if (!recent) want = !restUntil && allowance > 0;
+      else if (window) {                // just found: fifteen seconds more, for a steadier position
+        if (!settleUntil) settleUntil = (now + 15000UL) | 1;
+        want = (int32_t)(now - settleUntil) < 0;
+      }
+    }
+    if (!want) settleUntil = 0;
+    if (want && !window) logs.add(LOG_INFO, "gps: no fix yet, left on in the dark");
+    if (!want && window && dimmer.asleep())
+      logs.add(LOG_INFO, recent ? "gps: fix found in the dark, asleep" : "gps: no fix in the dark, resting");
+    window = want;
+    if (window && !recent) {
+      allowance -= (int32_t)dt;
+      if (allowance <= 0) {             // used up without a fix: rest, longer each time
+        restUntil = (now + (1800000UL << misses)) | 1;
+        if (misses < 3) misses++;
+      }
+    }
+  }
 #else
   const bool window = millis() % 1800000UL < 120000UL;
 #endif
@@ -1638,6 +1676,12 @@ static void usbCommands() {
       nav.invalidate();
       continue;
     }
+#if BOARD_BATT_UNSEEN_ON_USB
+    // Set a T-Deck right by hand before it has learned from a charge of its own: how fast
+    // its cell fills on USB (percent an hour), and what it holds now.
+    if (!strncmp(line, "batt rate ", 10)) { battery.setRate(atof(line + 10)); battery.report(); continue; }
+    if (!strncmp(line, "batt pct ", 9)) { battery.setPercent((uint8_t)constrain(atoi(line + 9), 0, 100)); battery.report(); continue; }
+#endif
     // Run from the battery with the cable still in, to check the figure on
     // battery. Turns itself back off after the given minutes (at most 30).
     if (!strncmp(line, "batt hiz ", 9)) {
@@ -1699,6 +1743,39 @@ static void usbCommands() {
         delay(5);
       }
       Serial.printf("\n[gps] %lu bytes in 3 s\n", (unsigned long)n);
+      continue;
+    }
+    // "gpscmd BODY [seconds]": sends $BODY*checksum to the GPS and counts what comes back
+    // each second, to find out what a module does with a command (does it go quiet, and
+    // for how long). "gpscmd !" sends four 0xFF bytes instead: does a byte wake it.
+    if (!strncmp(line, "gpscmd ", 7)) {
+      char body[80];
+      int secs = 12;
+      const char* sp = strrchr(line + 7, ' ');
+      if (sp && isdigit((unsigned char)sp[1])) { secs = constrain(atoi(sp + 1), 1, 120); snprintf(body, sizeof(body), "%.*s", (int)(sp - (line + 7)), line + 7); }
+      else snprintf(body, sizeof(body), "%s", line + 7);
+      if (!strcmp(body, "!")) {
+        static const uint8_t nudge[] = {0xFF, 0xFF, 0xFF, 0xFF};
+        Serial1.write(nudge, sizeof(nudge));
+        Serial.println("[gpscmd] sent four 0xFF bytes");
+      } else {
+        uint8_t sum = 0;
+        for (const char* p = body; *p; p++) sum ^= (uint8_t)*p;
+        Serial1.printf("$%s*%02X\r\n", body, sum);
+        Serial.printf("[gpscmd] sent $%s*%02X\n", body, sum);
+      }
+      Serial1.flush();
+      for (int s = 1; s <= secs; s++) {
+        const uint32_t until = millis() + 1000;
+        uint32_t n = 0;
+        char first[40]; uint8_t k = 0;
+        while ((int32_t)(millis() - until) < 0) {
+          while (Serial1.available()) { const int c = Serial1.read(); n++; if (k < sizeof(first) - 1 && c >= 32 && c < 127) first[k++] = (char)c; }
+          delay(5);
+        }
+        first[k] = 0;
+        Serial.printf("[gpscmd] second %2d: %4lu bytes  %s\n", s, (unsigned long)n, first);
+      }
       continue;
     }
     if (!strcmp(line, "gpsprobe")) {

@@ -83,6 +83,22 @@ static void planCharge() {
 static void chargeTick() {
   const bool plugged = battery.pluggedIn();
   static bool first = true;               // already on the charger at boot: no chime
+#if BOARD_BATT_UNSEEN_ON_USB
+  // This board can't see its cell on USB (battery_est.h): the log keeps what it went by,
+  // so a figure that looks wrong can be traced afterwards.
+  {
+    static float rate = 0;
+    if (plugged != s_plugged)
+      logs.add(LOG_INFO, plugged ? "usb power in: cell was %u mV, %u%%, fills %u.%u%%/h" : "usb power out: reckoned %u%%",
+               plugged ? battery.cellMillivolts() : battery.percent(), battery.percent(),
+               (unsigned)battery.rate(), (unsigned)(battery.rate() * 10) % 10);
+    if (rate != battery.rate()) {
+      if (rate) logs.add(LOG_INFO, "battery: this cell fills %u.%u%% an hour on usb (learned from the last charge)",
+                         (unsigned)battery.rate(), (unsigned)(battery.rate() * 10) % 10);
+      rate = battery.rate();
+    }
+  }
+#endif
   if (plugged && !s_plugged) {
     s_plugged = true; s_plugAt = millis(); planCharge();
     if (!first) app::pluggedInFeedback();

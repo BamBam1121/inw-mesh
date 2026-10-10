@@ -275,7 +275,12 @@ void deviceInfoPage() {
     snprintf(b, sizeof(b), "flash store  %u / %u kB", (unsigned)(SPIFFS.usedBytes() / 1024), (unsigned)(SPIFFS.totalBytes() / 1024)); out.push_back(b);
     if (sdMounted()) { snprintf(b, sizeof(b), "sd card      %llu MB free", (unsigned long long)(sdFreeBytes() / 1048576ULL)); out.push_back(b); }
     else out.push_back(sdState() == SD_UNREADABLE ? "sd card      can't be read: Settings > Backups" : "sd card      none");
-    snprintf(b, sizeof(b), "battery      %s  %u mV", app::batteryText(), app::batteryMv()); out.push_back(b);
+#if BOARD_BATT_UNSEEN_ON_USB
+    if (app::pluggedIn()) snprintf(b, sizeof(b), "battery      %s  on usb power", app::batteryText());
+    else
+#endif
+    snprintf(b, sizeof(b), "battery      %s  %u mV", app::batteryText(), app::batteryMv());
+    out.push_back(b);
     snprintf(b, sizeof(b), "uptime       %lu min", (unsigned long)(millis() / 60000)); out.push_back(b);
     if (ui_settings.lastSdBackup) { snprintf(b, sizeof(b), "sd backup    %s ago", timeAgo(ui_settings.lastSdBackup)); out.push_back(b); }
   }, 2000));

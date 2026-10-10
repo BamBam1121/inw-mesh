@@ -1018,6 +1018,29 @@ extern Battery battery;
 static void batteryMenu() {
   auto* m = new MenuView("Battery");
   m->info("charge", []() -> String {
+#if BOARD_BATT_UNSEEN_ON_USB
+    // On USB this board cannot see its cell: the figure is reckoned, and there is no voltage
+    // to give. What it can give is how long until full, at the rate this cell fills.
+    {
+      // Days above two (in halves), hours above ten, hours and tens of minutes, minutes.
+      auto span = [](uint16_t m) -> String {
+        if (m >= 48 * 60) { const uint16_t h = (m + 360) / 720; return String(h / 2) + (h % 2 ? ".5 days" : " days"); }
+        if (m >= 600) return String((m + 30) / 60) + " h";
+        if (m >= 60) { const uint16_t r = (m + 5) / 10 * 10; return String(r / 60) + " h" + (r % 60 ? " " + String(r % 60) + " min" : String()); }
+        return String(max<int>(5, (m + 2) / 5 * 5)) + " min";
+      };
+      if (battery.pluggedIn()) {
+        const uint16_t m = battery.minutesToFull();
+        if (!m) return String(app::batteryPct()) + "%  on usb power, full";
+        // "?": it started on USB and has not seen the cell yet, so the figure is from memory.
+        return String(app::batteryPct()) + (battery.guessing() ? "%?  about " + span(m) + " to full" : "%  full in about " + span(m));
+      }
+      // On battery: how long it lasts at the rate it has been running down. "roughly"
+      // until this unit has been seen to run down; then it is its own rate.
+      if (const uint16_t m = battery.minutesLeft())
+        return String(app::batteryPct()) + (battery.leftKnown() ? "%  about " : "%  roughly ") + span(m) + " left";
+    }
+#endif
     String s = String(app::batteryPct()) + "%  " + String(app::batteryMv()) + " mV";
     if (power::holding()) s += "  held";
     else if (app::charging()) s += "  charging";
