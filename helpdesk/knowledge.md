@@ -358,6 +358,36 @@ A pager or T-Deck that runs warm or drains fast (added 2026-10-09)
 - If it is too hot to hold, or the battery looks swollen: stop using it and stop charging it. Hand
   off as urgent.
 
+T-Deck battery percentage: what is known (added 2026-10-10; read before answering a T-Deck battery question)
+- A T-Deck has no fuel gauge. It reads one voltage, and with USB plugged in that voltage is the USB
+  supply, not the battery: while it is plugged in, a T-Deck cannot see its battery at all. This is how
+  the hardware is wired, on every T-Deck and T-Deck Plus.
+- On 1.2.4 and every older build the firmware did not know this. What people see there: the percentage
+  jumps to 100% (or climbs to it within the hour) when plugged in, whatever the real charge; and after a
+  long charge or two the percentage on battery reads too low, sometimes by tens of points, and the
+  T-Deck may say the battery is empty and refuse to start while it still has charge. None of this harms
+  the battery or the T-Deck.
+- It is fixed in the test builds from 1.2.5-beta1 (below) and will be in the next release. Someone
+  bothered by it now can switch on Settings > System > "beta updates" and check for updates.
+- On a fixed build: unplugged, the percentage comes from the battery. Plugged in, it is worked out from
+  what the battery last showed and how fast that battery fills, which the T-Deck learns from each charge
+  (so a bigger battery someone fitted is right after its first charge and unplug). When unplugged it
+  moves to the real figure over a minute or two: seeing it rise or fall then is the correction, not a
+  fault. "100%" while plugged in means the sum reached full, not that anything was measured.
+- Settings > Battery on a fixed build also says "full in about 3 h" while charging and "about 14 h left"
+  on battery. "roughly" instead of "about" means it has not watched this battery run down yet. A "?"
+  after the percentage means the T-Deck was switched on while plugged in and has not seen the battery.
+- The T-Deck's charger gives about half an amp whatever it is plugged into: the usual 2,000 mAh battery
+  takes about four hours from empty, and a faster wall charger does not shorten that.
+
+T-Deck 1.2.5-beta1 (2026-10-10) - only for T-Decks with beta updates switched on
+- The battery percentage fix, the time to full and the time left: see the battery section just above.
+- GPS: a GPS with no fix yet now stays on after the screen goes dark until it has one (three minutes at
+  most, then it waits half an hour, an hour, two, four before trying again). Before this a T-Deck Plus
+  that was only glanced at could say "searching" all day, because the GPS was put to sleep every time
+  the screen went dark. On this build, leaving it outdoors for a few minutes is enough.
+- Everything in 1.2.4 is in it. Everyone without beta updates stays on 1.2.4.
+
 T-Deck 1.2.4 (released 2026-10-10): the T-Deck is no longer a beta
 - Squatch Mesh for the T-Deck is a normal release now, not a beta. 1.2.4 is the build everyone gets: the
   installer at squatchmesh.com/t-deck installs it, and every T-Deck on an older build (they were all
