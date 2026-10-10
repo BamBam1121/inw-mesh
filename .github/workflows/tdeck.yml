@@ -1,9 +1,10 @@
 name: t-deck
 
 # The T-Deck's own firmware, separate from the pager's.
-#   A "tdeck-v*" tag (e.g. tdeck-v1.2.2-beta2) on a commit builds the T-Deck
-#   firmware there and attaches it to a GitHub PRE-release, so it never counts as
-#   the pager's latest release. Then build.yml runs on main to publish the site,
+#   A "tdeck-v*" tag (e.g. tdeck-v1.2.4, or tdeck-v1.2.5-beta1 for a test build) on a
+#   commit builds the T-Deck firmware there and attaches it to a GitHub PRE-release:
+#   that flag is how it never counts as the pager's latest release, so it stays on
+#   even for a T-Deck build that is not a beta. Then build.yml runs on main to publish the site,
 #   and signs the newest tdeck-v* build into firmware/t-deck/ - the only folder a
 #   T-Deck checks for Wi-Fi updates, with a signature that names the board, so
 #   pagers can't install it and T-Decks can't install the pager's.
@@ -64,8 +65,8 @@ jobs:
         run: |
           V="${GITHUB_REF_NAME#tdeck-v}"
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --prerelease \
-            --title "T-Deck $V (beta)" \
-            --notes "Squatch Mesh for the LilyGo T-Deck and T-Deck Plus. Beta. Install from https://squatchmesh.com/t-deck, or write squatch-mesh-tdeck-$V-full.bin at 0x0. Not for the T-Lora Pager." \
+            --title "T-Deck $V" \
+            --notes "Squatch Mesh for the LilyGo T-Deck and T-Deck Plus. Install from https://squatchmesh.com/t-deck, or write squatch-mesh-tdeck-$V-full.bin at 0x0. Not for the T-Lora Pager." \
             release/*
 
       # Pages only deploys from main: have a main run pick this build up.
