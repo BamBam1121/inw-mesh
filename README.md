@@ -1,7 +1,7 @@
 # Squatch Mesh
 
-Free, open-source MeshCore firmware for the LilyGo T-Lora Pager, and the T-Deck in
-beta. Made in the Inland Northwest, usable on any MeshCore network.
+Free, open-source MeshCore firmware for the LilyGo T-Lora Pager and the T-Deck.
+Made in the Inland Northwest, usable on any MeshCore network.
 
 The pager runs a full MeshCore companion node: it works on its own (keyboard, wheel,
 screen) and still pairs with the MeshCore phone app over Bluetooth like stock
@@ -9,7 +9,7 @@ firmware.
 
 **Website:** https://squatchmesh.com &middot;
 **Install from your browser:** https://squatchmesh.com/install &middot;
-**T-Deck beta:** https://squatchmesh.com/t-deck &middot;
+**T-Deck:** https://squatchmesh.com/t-deck &middot;
 **Help:** https://squatchmesh.com/help
 
 ![Aurora lock screen, animated](web/assets/img/anim-aurora-v4.webp)
@@ -92,7 +92,7 @@ changes too: slime, bats, creaking doors, a jack-o'-lantern and lightning.
 - **Settings:** radio presets, client repeat, auto-add rules, notifications with
   quiet hours, vibration strength, Bluetooth PIN, backups.
 
-## T-Deck (beta)
+## T-Deck
 
 The same firmware for the LilyGo T-Deck and T-Deck Plus, made for the touchscreen:
 a dashboard home, swipe up to unlock, notifications you can tap to open, and a

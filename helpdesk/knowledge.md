@@ -277,7 +277,7 @@ New in 1.2.3 (the release after the 1.2.2 beta; 1.2.2 was only ever a beta, 1.2.
 - Wi-Fi left on away from saved networks now tries less and less often (up to every 15 minutes with the
   screen off) instead of every 20 seconds - it used to cost a lot of battery.
 
-T-Deck beta (1.2.2-beta6 and later)
+T-Deck (every build since 1.2.2-beta6)
 - Screen dark on battery: only the LoRa radio runs. The GPS sleeps until the screen wakes, and Wi-Fi turns
   off a minute into the dark and comes back when the screen wakes. Plugged in, Wi-Fi stays on, so on a
   T-Deck updates install themselves while it charges on Wi-Fi.
@@ -314,22 +314,23 @@ T-Deck GPS that stays on "searching" (added 2026-10-09; read this before handing
 - Ask first: is it a T-Deck or a T-Deck Plus? The plain LilyGo T-Deck has NO GPS in it. Only the T-Deck Plus
   has one built in (or a plain T-Deck its owner wired a module into). On 1.2.4-beta9 and beta10 a T-Deck
   with no GPS still says "searching": those builds cannot tell a missing module from one with no fix yet.
-  1.2.4-beta11 can (see below).
+  1.2.4 can (see below).
 - On a T-Deck Plus the GPS only runs while the screen is on. With the screen dark it is put to sleep to
   save the battery, so leaving the T-Deck outside with its screen off gets nothing, however long.
 - A GPS that has no fix yet has to listen to open sky for about a minute without a break, sometimes two
   or three. The lock screen goes dark after 10 seconds and the other screens after the screen timeout
   (60 seconds unless changed), and each time the GPS has to start again. Someone who only glances at it
   can see "searching" all day. This is the usual cause, and it is a weakness of the firmware, not of
-  their T-Deck: say so, and that the developer is changing it so a first fix finishes with the screen dark.
+  their T-Deck: say so, and that it is being changed so a first fix finishes with the screen dark (the
+  change is in the test builds first: see the newest beta below).
 - What to tell them to do for the first fix: go outdoors with open sky, open Tools > GPS (or the map), and
   keep the screen on for three minutes by touching it now and then. Settings > Display > "screen off
   after" can be made longer for this. Once it has a fix, later fixes take seconds for the next few hours.
 - Also check: Settings > GPS is on, and battery saver is off (saver turns the GPS off).
-- 1.2.4-beta11 shows what the module is doing (Settings > System > "beta updates" on, then check for
-  updates): Tools > GPS says "module not heard" (no data from a module: a plain T-Deck, or a fault), or
-  "hearing N satellites" with how strong the best one is.
-- Hand off only if: a T-Deck Plus on beta11 says "not heard"; or it hears 5 or more satellites with the
+- 1.2.4 shows what the module is doing (it arrives by itself over Wi-Fi; Settings > System > check for
+  updates looks right away): Tools > GPS says "module not heard" (no data from a module: a plain T-Deck,
+  or a fault), or "hearing N satellites" with how strong the best one is.
+- Hand off only if: a T-Deck Plus on 1.2.4 or later says "not heard"; or it hears 5 or more satellites with the
   screen kept on outdoors for five minutes and still has no fix. Ask for an email address so the
   developer can reply.
 
@@ -357,10 +358,21 @@ A pager or T-Deck that runs warm or drains fast (added 2026-10-09)
 - If it is too hot to hold, or the battery looks swollen: stop using it and stop charging it. Hand
   off as urgent.
 
-T-Deck 1.2.4-beta11 (2026-10-08) - only for T-Decks with beta updates switched on
-- It is the newest test build: a T-Deck with Settings > System > "beta updates (every build)" switched on
-  gets it over Wi-Fi (Settings > System > check for updates). Everyone else stays on 1.2.4-beta9, and the
-  installer at squatchmesh.com/t-deck still installs beta9.
+T-Deck 1.2.4 (released 2026-10-10): the T-Deck is no longer a beta
+- Squatch Mesh for the T-Deck is a normal release now, not a beta. 1.2.4 is the build everyone gets: the
+  installer at squatchmesh.com/t-deck installs it, and every T-Deck on an older build (they were all
+  called 1.2.4-beta-something, or 1.2.2-beta-something) takes it over Wi-Fi by itself while charging, or
+  from Settings > System > check for updates. Contacts, channels, messages and settings are kept.
+- 1.2.4 is the same firmware as 1.2.4-beta11 under its release name; everything listed for beta11 just
+  below is in it. Someone on 1.2.4-beta11 is offered 1.2.4 too: nothing changes for them but the name.
+- Test builds still exist, for people who want them: Settings > System > "beta updates (every build)".
+  They are named for the release they lead to, with -beta and a number (the first is 1.2.5-beta1).
+  With that switch off, a T-Deck only ever gets releases.
+- If someone asks whether the T-Deck version is finished or safe to rely on: it is the supported release
+  for the T-Deck and T-Deck Plus, with the same help and the same update path as the pager's.
+
+T-Deck 1.2.4-beta11 (2026-10-08; released to everyone as 1.2.4 on 2026-10-10)
+- What it brought, all of it now in 1.2.4:
 - Wakes faster: a message lights the screen in about half a second, with its sound playing cleanly. It
   used to take around three seconds, with the sound breaking up.
 - Lists follow the finger by the pixel instead of jumping a row at a time: Settings, conversations, the

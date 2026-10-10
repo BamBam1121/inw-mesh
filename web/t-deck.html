@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>T-Deck &middot; Squatch Mesh</title>
-<meta name="description" content="Squatch Mesh for the LilyGo T-Deck and T-Deck Plus: MeshCore firmware made for the touchscreen. Beta. Flash it from your browser.">
+<meta name="description" content="Squatch Mesh for the LilyGo T-Deck and T-Deck Plus: MeshCore firmware made for the touchscreen. Flash it from your browser.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
@@ -15,7 +15,7 @@
 <meta name="theme-color" content="#070b0a">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Squatch Mesh">
-<meta property="og:title" content="Squatch Mesh for the T-Deck (beta)">
+<meta property="og:title" content="Squatch Mesh for the T-Deck">
 <meta property="og:description" content="MeshCore firmware for the LilyGo T-Deck and T-Deck Plus, made for the touchscreen. Flash it from your browser.">
 <meta property="og:url" content="https://squatchmesh.com/t-deck">
 <meta property="og:image" content="https://squatchmesh.com/assets/og.png?v=2">
@@ -40,17 +40,15 @@
 </header>
 
 <main id="main" class="wrap">
-  <div class="tag" style="margin-top:46px;color:var(--amber);border-color:var(--amber)">beta</div>
-  <h1>Squatch Mesh for the T-Deck</h1>
+  <h1 style="margin-top:46px">Squatch Mesh for the T-Deck</h1>
   <p class="sub">For the LilyGo <b>T-Deck</b> and <b>T-Deck Plus</b>. Made for the touchscreen: a home
   screen of your newest chats and big buttons, swipe up to unlock, tap to answer. The keyboard and
-  trackball work everywhere too. Version <b>1.2.4-beta9</b>.</p>
+  trackball work everywhere too. Version <b>1.2.4</b>.</p>
 
   <div class="panel warn" style="margin-top:18px">
-    <p class="sub" style="font-size:14px;margin:0"><b>Beta.</b> It runs on real hardware (a T-Deck Plus
-    since September 2026), but only a few T-Decks have had it so far. If something is wrong it will not harm
-    the T-Deck: you can always flash Meshtastic or MeshCore back (<a href="#going-back">how</a>).
-    <b>Not for the T-Lora Pager</b> &mdash; that is <a href="/install">the normal installer</a>.</p>
+    <p class="sub" style="font-size:14px;margin:0"><b>Not for the T-Lora Pager</b> &mdash; that is
+    <a href="/install">the pager's installer</a>. Installing does not harm the T-Deck: you can always flash
+    Meshtastic or MeshCore back (<a href="#going-back">how</a>).</p>
   </div>
 
   <h2 style="margin-top:34px">Before you flash</h2>
@@ -151,10 +149,10 @@
   <h2 id="files" style="margin-top:34px">Other ways to flash</h2>
   <div class="panel">
     <p class="sub" style="font-size:14px;margin:0">One file with everything, written at address
-    <b>0x0</b>: <a href="/tdeck/squatch-mesh-tdeck-1.2.4-beta9-full.bin" download>squatch-mesh-tdeck-1.2.4-beta9-full.bin</a>.
+    <b>0x0</b>: <a href="/tdeck/squatch-mesh-tdeck-1.2.4-full.bin" download>squatch-mesh-tdeck-1.2.4-full.bin</a>.
     Use it with <a href="https://espressif.github.io/esptool-js/" rel="noopener">Espressif's web flasher</a>
     (address 0x0, don't erase first), or esptool:</p>
-    <pre style="margin:12px 0 0;white-space:pre-wrap;font-family:var(--mono);font-size:13px">esptool.py --chip esp32s3 write_flash 0x0 squatch-mesh-tdeck-1.2.4-beta9-full.bin</pre>
+    <pre style="margin:12px 0 0;white-space:pre-wrap;font-family:var(--mono);font-size:13px">esptool.py --chip esp32s3 write_flash 0x0 squatch-mesh-tdeck-1.2.4-full.bin</pre>
   </div>
 
   <h2 style="margin-top:34px">Tell us how it went</h2>
@@ -169,7 +167,7 @@
   <div class="wrap footer-grid">
     <div class="footer-brand">
       <a class="logo" href="/"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
-      <p>Free, open-source MeshCore firmware for the LilyGo T-Lora Pager, and the T-Deck in beta. Made in the Inland Northwest.</p>
+      <p>Free, open-source MeshCore firmware for the LilyGo T-Lora Pager and the T-Deck. Made in the Inland Northwest.</p>
     </div>
     <nav class="footer-col" aria-label="Product"><h4>Product</h4>
       <a href="/features">Features</a><a href="/themes">Themes</a><a href="/install">Install</a><a href="/downloads">Downloads</a><a href="/releases">Releases</a></nav>
