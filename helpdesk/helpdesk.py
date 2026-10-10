@@ -472,13 +472,17 @@ class Handler(BaseHTTPRequestHandler):
         if why:
             log_line({"event": "report_dropped", "why": why, "device": rep["device"], "kind": rep["kind"]})
             return self.reply(429, {"error": why})
-        log_line(dict(rep, event="report", who=ip_key(ip)))
-        # A flat battery sagging until the chip resets is not a fault: keep it in the log
-        # (tally shows them), but no mail.
-        if rep["reset"] == "brownout" or rep["why"] == "brownout":
-            return self.reply(200, {"ok": True})
-        if allow_report_mail():
-            threading.Thread(target=mail_report, args=(rep,), daemon=True).start()
+        who = ip_key(ip)
+
+        def after():
+            # Some reports are no fault of the firmware, or carry nothing to work from: kept
+            # in the log (with why, so a tally still shows them), but no mail. Deciding can
+            # mean looking up a new build, so the device has its answer first.
+            quiet = report_noise(rep)
+            log_line(dict(rep, event="report", who=who, **({"quiet": quiet} if quiet else {})))
+            if not quiet and allow_report_mail():
+                mail_report(rep)
+        threading.Thread(target=after, daemon=True).start()
         self.reply(200, {"ok": True})
 
     def chat(self, body):
@@ -491,6 +495,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(503, {"error": "offline"})
         if why:
             return self.reply(429, {"error": why})
+        # The install page's own report of a cable, port or wrong-device stop: nobody reads
+        # the answer and there is nothing for the developer to do, so it is logged and
+        # that is all (no question to the model, no mail).
+        quiet = installer_noise(messages[0]["content"]) if len(messages) == 1 else ""
+        if quiet:
+            log_line({"event": "chat", "who": ip_key(ip), "question": messages[-1]["content"],
+                      "answer": "", "handoff": None, "handoff_emailed": None, "turns": 1, "quiet": quiet})
+            return self.reply(200, {"reply": "", "handoff": None})
         try:
             text, handoff = ask_claude(messages)
         except Unavailable:
@@ -571,6 +583,127 @@ def clean_report(b):
     if b.get("cause") is not None:
         rep["cause"] = i("cause")
     return rep
+
+
+def known_builds():
+    """The ELF hashes (first 16 hex digits) of our own builds, from builds.txt beside this
+    script: one a line, the rest of the line a note. Read each time; learn_builds() adds
+    to it, and tools/known_builds.py lists older ones. Empty when the file is missing."""
+    out = set()
+    try:
+        with open(os.path.join(HERE, "builds.txt"), encoding="utf-8") as f:
+            for line in f:
+                m = re.match(r"\s*([0-9a-f]{16})\b", line.lower())
+                if m:
+                    out.add(m.group(1))
+    except OSError:
+        pass
+    return out
+
+
+FEEDS = "https://bambam1121.github.io/inw-mesh/firmware/"
+FEED_FILES = ("firmware.bin", "firmware-beta.bin", "t-deck/firmware.bin", "t-deck/firmware-beta.bin")
+_learn_lock = threading.Lock()
+_learned_at = 0.0
+
+
+def image_hash(head, base=0):
+    """The ELF hash an app image carries (0xB0 in, after the description's magic word),
+    or None when the bytes are not the start of one."""
+    if len(head) < base + 0xB8 or head[base] != 0xE9 or head[base + 0x20:base + 0x24] != b"\x32\x54\xcd\xab":
+        return None
+    return head[base + 0xB0:base + 0xB8].hex()
+
+
+def learn_builds(min_gap=0):
+    """Adds to builds.txt the hash of every build on offer right now: the four update
+    feeds, and the installer's files on this machine. Runs at start, every six hours, and
+    when a report names a hash not seen before, so a release needs no step for this."""
+    global _learned_at
+    with _learn_lock:
+        if time.time() - _learned_at < min_gap:
+            return
+        _learned_at = time.time()
+        have, new = known_builds(), []
+
+        def take(sha, where):
+            if sha and sha not in have:
+                have.add(sha)
+                new.append("%s  %s, seen %s" % (sha, where, time.strftime("%Y-%m-%d")))
+        for name in FEED_FILES:
+            try:
+                req = urllib.request.Request(FEEDS + name, headers={"Range": "bytes=0-255", "User-Agent": "squatch-helpdesk"})
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    take(image_hash(r.read(256)), "update feed " + name)
+            except Exception:
+                pass
+        try:
+            for root, _, names in os.walk(CFG["www"]):
+                for n in names:
+                    if not n.lower().endswith(".bin"):
+                        continue
+                    with open(os.path.join(root, n), "rb") as f:
+                        sha = image_hash(f.read(256))
+                        if sha is None:                  # a full flash image: the app starts at 0x10000
+                            f.seek(0x10000)
+                            sha = image_hash(f.read(256))
+                    take(sha, "site " + os.path.relpath(os.path.join(root, n), CFG["www"]))
+        except OSError:
+            pass
+        if new:
+            with open(os.path.join(HERE, "builds.txt"), "a", encoding="utf-8") as f:
+                f.write("\n".join(new) + "\n")
+            log_line({"event": "builds", "added": len(new)})
+
+
+def report_noise(rep):
+    """Why a device's report is kept in the log but not mailed, or "" when it should be.
+
+    - A flat battery sagging until the chip resets is not a fault.
+    - A T-Deck's crash dump written by a build that is not ours: left in the shared dump
+      partition by other firmware (a launcher, or what was on it before). Firmware from
+      2026-10-08 on drops these itself; this covers the T-Decks still on older builds.
+    - A "crash" with no dump and no log from before it: the reset an install ends with,
+      or a power cut. There is nothing in it to work from.
+    """
+    if rep["reset"] == "brownout" or rep["why"] == "brownout":
+        return "brownout"
+    if rep["kind"] != "crash":
+        return ""
+    if rep.get("pc"):
+        sha = (rep.get("elf_sha") or "").lower()
+        if rep["board"] == "t-deck" and sha and sha not in known_builds():
+            learn_builds(min_gap=600)                    # a release from the last few hours?
+            ours = known_builds()
+            if ours and sha not in ours:
+                return "other firmware's dump"
+        return ""
+    said = [l for l in rep["log"].splitlines() if l.strip()]
+    if len(said) <= 1:
+        return "nothing to go on"
+    return ""
+
+
+_INSTALLER = re.compile(r"INSTALLER REPORT \(([a-z-]+)\)")
+
+
+def installer_noise(text):
+    """Why an automatic report from the install page needs neither an answer nor a mail,
+    or "". These are stops before anything was written, about the cable, the port or the
+    device that was plugged in; the page has already told the person what to do."""
+    m = _INSTALLER.match(text)
+    if not m:
+        return ""
+    what = m.group(1)
+    if what in ("wrong-hardware", "port-would-not-open", "failed-before-write"):
+        return "installer: " + what
+    # "failed" covers a write that broke off half way (worth knowing) and never reaching
+    # the chip at all (not): then every attempt in the log failed to connect or to open.
+    if what == "failed":
+        tries = re.findall(r"attempt at \d+ failed: ([^\\\"]*)", text)
+        if tries and all("Failed to connect with the device" in t or "open serial port" in t.lower() for t in tries):
+            return "installer: never connected"
+    return ""
 
 
 def allow_report(ip, dev):
@@ -695,6 +828,7 @@ def main():
 
     def daily():
         while True:
+            learn_builds()
             time.sleep(6 * 3600)
             prune_logs()
     threading.Thread(target=daily, daemon=True).start()

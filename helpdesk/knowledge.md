@@ -310,6 +310,53 @@ Signal bars (pager 1.2.9 beta / T-Deck 1.2.4-beta7, both 2026-10-02)
 - Pager 1.2.9, 1.2.10 and 1.2.11 are betas: only pagers set to take beta updates get them. The pager release is
   still 1.2.8.
 
+T-Deck GPS that stays on "searching" (added 2026-10-09; read this before handing a GPS complaint off)
+- Ask first: is it a T-Deck or a T-Deck Plus? The plain LilyGo T-Deck has NO GPS in it. Only the T-Deck Plus
+  has one built in (or a plain T-Deck its owner wired a module into). On 1.2.4-beta9 and beta10 a T-Deck
+  with no GPS still says "searching": those builds cannot tell a missing module from one with no fix yet.
+  1.2.4-beta11 can (see below).
+- On a T-Deck Plus the GPS only runs while the screen is on. With the screen dark it is put to sleep to
+  save the battery, so leaving the T-Deck outside with its screen off gets nothing, however long.
+- A GPS that has no fix yet has to listen to open sky for about a minute without a break, sometimes two
+  or three. The lock screen goes dark after 10 seconds and the other screens after the screen timeout
+  (60 seconds unless changed), and each time the GPS has to start again. Someone who only glances at it
+  can see "searching" all day. This is the usual cause, and it is a weakness of the firmware, not of
+  their T-Deck: say so, and that the developer is changing it so a first fix finishes with the screen dark.
+- What to tell them to do for the first fix: go outdoors with open sky, open Tools > GPS (or the map), and
+  keep the screen on for three minutes by touching it now and then. Settings > Display > "screen off
+  after" can be made longer for this. Once it has a fix, later fixes take seconds for the next few hours.
+- Also check: Settings > GPS is on, and battery saver is off (saver turns the GPS off).
+- 1.2.4-beta11 shows what the module is doing (Settings > System > "beta updates" on, then check for
+  updates): Tools > GPS says "module not heard" (no data from a module: a plain T-Deck, or a fault), or
+  "hearing N satellites" with how strong the best one is.
+- Hand off only if: a T-Deck Plus on beta11 says "not heard"; or it hears 5 or more satellites with the
+  screen kept on outdoors for five minutes and still has no fix. Ask for an email address so the
+  developer can reply.
+
+The installer, on Linux and with the wrong thing picked (added 2026-10-09)
+- "Couldn't open the USB port" on Linux is nearly always permissions: the user is not allowed to use
+  serial ports. Fix: `sudo usermod -aG dialout $USER` (on Arch the group is `uucp`), then log out and
+  back in. Chrome or Chromium installed as a snap or flatpak often cannot reach serial ports at all:
+  use the ordinary .deb or .rpm Chrome. If it still fails, ModemManager or brltty may be holding the
+  port; unplug, plug in again and try once more.
+- In the browser's list of devices the pager and the T-Deck are called "USB JTAG/serial debug unit".
+  Entries like ttyS0, a Bluetooth port, or "USB-Serial Controller" (an adapter cable) are something
+  else, and picking one ends in "failed to connect".
+- "That looks like a T-Deck, not a pager" (or the other way round): they are on the other device's
+  page. Nothing was written. The T-Deck's installer is squatchmesh.com/t-deck, the pager's is
+  squatchmesh.com/install.
+
+A pager or T-Deck that runs warm or drains fast (added 2026-10-09)
+- Warm while charging, until it reaches 100%, is normal. Warm while idle off the charger is not.
+- Before handing off, ask: is it on the charger; which firmware; are Wi-Fi, GPS and Bluetooth on
+  (Wi-Fi away from a saved network and the GPS are the two big ones); is SOS, the trail or a range
+  test running (they keep the GPS and radio busy); is anything plugged into the top socket; about how
+  many percent an hour it loses with the screen off; and Settings > Battery > battery health.
+- Ask them to press Tools > "send log to the developer" while it is warm, and to leave an email
+  address. Without an address the developer cannot ask anything further.
+- If it is too hot to hold, or the battery looks swollen: stop using it and stop charging it. Hand
+  off as urgent.
+
 T-Deck 1.2.4-beta11 (2026-10-08) - only for T-Decks with beta updates switched on
 - It is the newest test build: a T-Deck with Settings > System > "beta updates (every build)" switched on
   gets it over Wi-Fi (Settings > System > check for updates). Everyone else stays on 1.2.4-beta9, and the

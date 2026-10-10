@@ -90,6 +90,7 @@ if (panel) {
     navigator.serial.addEventListener("disconnect", (e) => { usb.gone = e.target; });
   }
   let lastKind = "auto";
+  let reached = false;            // this run: the chip has answered at least once
 
   /* ---- starting fresh -------------------------------------------------------------
      Two tick boxes under START: "start fresh" (contacts, channels and messages go;
@@ -160,6 +161,7 @@ if (panel) {
   }
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const isFirefox = /Firefox\//.test(navigator.userAgent);
+  const isLinux = /Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent);
   const infoOf = (p) => { try { return p.getInfo() || {}; } catch (e) { return {}; } };
   const sameDevice = (p, info) => {
     const i = infoOf(p);
@@ -465,6 +467,7 @@ if (panel) {
     const loader = new ESPLoader({ transport, baudrate: baud, romBaudrate: 115200, terminal, debugLogging: false });
     try {
       const chip = await loader.main();
+      reached = true;
       log("[flasher] " + chip + " @ " + baud + (compress ? " compressed" : " uncompressed"));
       /* What the chip itself is, whatever firmware it has (or none): its
          eFuses. A page can require built-in PSRAM (the T-Deck's chip has 8 MB;
@@ -531,6 +534,7 @@ if (panel) {
     logPre.textContent = "";
     pct(0);
     let writing = false;            // until then, a failure has changed nothing on the device
+    reached = false;
 
     try {
       if (!port) {
@@ -654,7 +658,7 @@ if (panel) {
         logBox.open = true;
         again.hidden = false;
         offerAnyway();
-        report("wrong-hardware", { kind: lastKind, features: e.wrongHardware, log: logPre.textContent.split("\n").slice(-20).join("\n") });
+        count(lastKind, "", "wrong-hardware");   // the page doing its job: counted, nothing for the developer to read
       } else if (e && e.wrongHardware) {
         show("This doesn't look like a " + DEVICE, "bad");
         say("Nothing was written, and it's back on the firmware it had. Every " + DEVICE + " has " + NEED_PSRAM +
@@ -663,7 +667,7 @@ if (panel) {
         logBox.open = true;
         again.hidden = false;
         offerAnyway();
-        report("wrong-hardware", { kind: lastKind, features: e.wrongHardware, log: logPre.textContent.split("\n").slice(-20).join("\n") });
+        count(lastKind, "", "wrong-hardware");   // the page doing its job: counted, nothing for the developer to read
       } else if (/No port selected|cancelled|The port is already open/i.test(msg) && !port) {
         show("Nothing was written", "bad");
         say("No pager was picked, so nothing happened. Press start when you're ready.");
@@ -672,6 +676,10 @@ if (panel) {
         show("Couldn't open the pager's USB port", "bad");
         say("Nothing was written, so the pager is just as it was. Unplug it, plug it back in, then press " +
             "try again and pick the pager when your browser asks. " +
+            (isLinux
+              ? "On Linux this is usually a permission: run  sudo usermod -aG dialout $USER  (the group is uucp on Arch), " +
+                "log out and back in, and use a Chrome or Chromium that isn't a snap or flatpak. "
+              : "") +
             (isFirefox
               ? "Firefox's USB support is new and doesn't work on every computer yet: if it still won't open, use Chrome or Edge."
               : "If it still won't open, close anything else that could be using it: Arduino IDE, a serial monitor, " +
@@ -679,7 +687,26 @@ if (panel) {
         logBox.open = true;
         again.hidden = false;
         port = null;                     // a fresh pick hands us a port object that works
-        report("port-would-not-open", { kind: lastKind, error: msg, log: logPre.textContent.split("\n").slice(-30).join("\n") });
+        count(lastKind, "", "port-not-open");
+      } else if (writing && !reached) {
+        // Not one attempt got an answer from the chip, so nothing was written. Either
+        // the wrong thing was picked, or the device isn't listening for a write.
+        log("[flasher] failed: " + msg);
+        const pi = infoOf(port);
+        const stranger = !pi.usbVendorId ? "isn't a USB device"
+          : pi.usbVendorId !== 0x303a ? "looks like some other USB device (an adapter cable, perhaps)" : "";
+        show("Couldn't reach the pager", "bad");
+        say("Nothing was written, so the pager is just as it was. " +
+            (stranger
+              ? "What you picked " + stranger + ". Press try again and choose the entry called " +
+                "\"USB JTAG/serial debug unit\". If there is no such entry: " + LOADER_HOW + ", and look again."
+              : "It didn't answer. " + LOADER_HOW.charAt(0).toUpperCase() + LOADER_HOW.slice(1) +
+                ", then press try again and pick it when your browser asks. A cable that only charges " +
+                "does the same, so try another cable if that doesn't help."));
+        logBox.open = true;
+        again.hidden = false;
+        port = null;                     // the next try asks which device again
+        count(lastKind, "", "never-reached");
       } else if (!writing) {
         log("[flasher] failed: " + msg);
         show("Nothing was written", "bad");

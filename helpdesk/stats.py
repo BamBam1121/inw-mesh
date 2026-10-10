@@ -38,12 +38,18 @@ def main():
     for board in ("t-lora-pager", "t-deck"):
         ins = [r for r in rows if r["event"] == "install" and r["board"] == board]
         good = [r for r in ins if r.get("result") in OK]
+        # Stopped before anything was written (the page's own results since 2026-10-09):
+        # the other device's page, a port that would not open, a device that never answered.
+        early = [r for r in ins if r.get("result") in ("wrong-hardware", "port-not-open", "never-reached")]
         by_ver = collections.Counter(r["version"] for r in good)
         print("\n%s" % board)
         print("  web installs done: %d by %d people, %d failed" %
-              (len(good), len({r["who"] for r in good}), len(ins) - len(good)))
+              (len(good), len({r["who"] for r in good}), len(ins) - len(good) - len(early)))
         for v, n in sorted(by_ver.items()):
             print("    %-16s %d" % (v, n))
+        if early:
+            print("  stopped before writing: " + ", ".join("%d %s" % (n, k) for k, n in
+                                                         sorted(collections.Counter(r["result"] for r in early).items())))
         chk = [r for r in rows if r["event"] == "checkin" and r["board"] == board]
         if chk:
             now = datetime.datetime.now()
