@@ -17,8 +17,11 @@
 // away (battery.h).
 //
 // So:
-//   On battery   the percentage is read off the cell's voltage, with the T-Deck's own
-//                draw put back, and moves a percent at a time.
+//   On battery   the percentage is counted down by what the T-Deck is drawing (roughly
+//                known, against the cell's size as its charging showed it) and steered
+//                by the cell's voltage: gently while the screen or a radio is on, when
+//                the voltage swings by several points, and firmly while it is dark and
+//                quiet. So the figure holds still, and still ends up where the cell is.
 //   On USB       anything over 4.32 V cannot be a cell: it is the USB supply. (A computer
 //                on the port says so outright.) The cell is out of sight, so the figure is
 //                reckoned: it starts from what the cell last showed and climbs at the
@@ -55,7 +58,12 @@ struct BatteryEstimate {
   static constexpr float TAPER = 2.67f;             // near the top: percent an hour for each percent still to go (rateAt)
   static constexpr uint32_t LEARN_MIN_MS = 20UL * 60 * 1000;  // a charge shorter than this teaches nothing
   static constexpr uint32_t LEARN_WAIT_MS = 3UL * 60 * 1000;  // after unplugging the cell reads high for a while
-  static constexpr uint32_t CATCH_MS = 10UL * 60 * 1000;      // unplugged: the figure may move fast for this long
+  static constexpr uint32_t CATCH_MS = 10UL * 60 * 1000;      // unplugged: the figure closes on the cell fast for this long
+  static constexpr float BASE_MA = 60.0f;           // what it draws dark with the radio listening
+  static constexpr float CHARGE_MA = 500.0f;        // what the charger gives: `rate` percent an hour is this much
+  static constexpr uint32_t TAU_FAST_MS = 90000;                // how firmly the voltage steers the figure: just unplugged or started,
+  static constexpr uint32_t TAU_CLEAN_MS = 8UL * 60 * 1000;     // dark and quiet,
+  static constexpr uint32_t TAU_BUSY_MS = 60UL * 60 * 1000;     // and with the screen or a radio on
   static constexpr uint16_t LOAD_MV = 20;           // what the T-Deck's least draw takes off the cell's voltage
   static constexpr uint32_t DOWN_MS = 20000, SETTLE_MS = 5UL * 60 * 1000;
   static constexpr uint32_t QUIET_MS = 16000;       // the step a change in its own draw makes is over in this
@@ -96,7 +104,6 @@ struct BatteryEstimate {
     learning = !external;
     quiet = true;
     quietFrom = now;
-    if (mA < draw && !external) { settling = true; settleFrom = now; }   // the figure may come back up a little
     draw = mA;
   }
 
@@ -111,7 +118,7 @@ struct BatteryEstimate {
     if (!have) {
       have = true;
       hostWas = host;
-      lastAt = stepAt = now;
+      lastAt = now;
       mv = raw;
       if (host || raw >= USB_MV) {
         // Started on USB: the cell hasn't been seen. From memory, or the middle.
@@ -120,6 +127,7 @@ struct BatteryEstimate {
       } else {
         cellMv = raw;
         percent = curve(rested());
+        pctF = percent;
         settling = starting = true;                   // it may have just been under load, and starting up is one
         settleFrom = startFrom = batFrom = now;
       }
@@ -158,7 +166,7 @@ struct BatteryEstimate {
           // from this one. Nothing has been on the screen long enough to jump.
           mv = med;
           percent = curve(rested());
-          stepAt = now;
+          pctF = percent;
         } else if (quiet) {
           mv = med;                                   // its own draw just changed: follow it to the new level
         } else if (raw < USB_MV) {
@@ -168,31 +176,47 @@ struct BatteryEstimate {
         const uint8_t target = curve(rested());
         if (settling && now - settleFrom >= SETTLE_MS) settling = false;
         if (catching && now - catchFrom >= CATCH_MS) catching = false;
-        // Just unplugged: the reckoned figure may be far from what the cell now shows.
-        // Go there a percent a reading; otherwise a percent every twenty seconds.
-        const int gap = (int)target - (int)percent;
-        const uint32_t pace = catching && (gap > 3 || gap < -3) ? PERIOD_MS : DOWN_MS;
-        if (gap < 0 && now - stepAt >= pace) {
-          percent--;
-          stepAt = now;
-          // How fast it runs down is timed from a moment the figure has just come down a
-          // point: then it is level with what the cell shows. (The first minutes on battery
-          // are not: until a change in its own draw has shown how far that pulls this cell
-          // down, the figure can sit a point or two low, and a count begun there would come
-          // out too slow.) With no such change, half an hour in is soon enough.
-          if (!runOn && !catching && !starting && (ohmKnown || now - batFrom >= 30UL * 60 * 1000)) {
-            runOn = true; runPct = percent; runAt = now;
-          } else if (runOn && (int)runPct - (int)percent >= 10) {
-            // Ten points timed: that is this unit's rate. Kept (half way from what was
-            // known, so one odd afternoon can't throw it), and the count starts again.
-            const float seen = runRate(now);
-            if (seen > 0) { drain = drain > 0 ? drain + (seen - drain) * 0.5f : seen; drainChanged = true; }
-            runPct = percent; runAt = now;
-          }
-        } else if ((settling || catching) && gap > 2 && now - stepAt >= pace) {
-          percent++;
-          stepAt = now;
-          if (runOn && percent > runPct) { runPct = percent; runAt = now; }   // above where the count began: begin again here
+        // What the pin shows swings by several points with the screen and the radios,
+        // however well the T-Deck's own draw is put back: in the middle of its range a
+        // cell's voltage moves 5 mV for a percent, and the screen alone moves it 30.
+        // Followed as it came, the figure jumped about (a T-Deck on a 10,000 mAh cell
+        // showed 41% and 49% at the same voltage). So the figure is first of all counted
+        // down: the T-Deck knows roughly what it is drawing, and the rate this cell fills
+        // at on the charger's half amp says how big it is.
+        pctF -= (BASE_MA + draw) / CHARGE_MA * rate * (float)dt / 3600000.0f;
+        // The voltage then steers it, as firmly as it can be trusted. Dark and quiet for
+        // a minute and a half, the cell carries only the least load and has stopped
+        // recovering: the figure closes on what it shows in minutes. With the screen or
+        // a radio on it closes over an hour, enough to hold a count that runs a little
+        // fast or slow. Just unplugged or started, or ten points out for five minutes on
+        // end (a cell of another size than was counted on), it closes at once. And near
+        // empty a low voltage is believed quickly: that is the side to err on.
+        const float gap = (float)target - pctF;
+        const bool clean = draw <= 15 && !quiet && now - quietFrom >= 90000UL;
+        if (gap >= 10.0f || gap <= -10.0f) { if (!lowOn) { lowOn = true; lowFrom = now; } } else lowOn = false;
+        uint32_t tau = clean ? TAU_CLEAN_MS : TAU_BUSY_MS;
+        if (catching || settling || (lowOn && now - lowFrom >= 300000UL)) tau = TAU_FAST_MS;
+        else if (gap < 0 && target <= 15 && tau > 300000UL) tau = 300000UL;
+        if (!quiet) pctF += gap * (dt >= tau ? 1.0f : (float)dt / (float)tau);
+        if (pctF < 0) pctF = 0; else if (pctF > 100.0f) pctF = 100.0f;
+        // Shown a point at a time, and a point up takes more than a point down: it
+        // does not flicker between two figures.
+        if (percent > 0 && pctF <= (float)percent - 0.6f) percent--;
+        else if (percent < 100 && pctF >= (float)percent + 1.0f) percent++;
+        // How fast it runs down is timed from a moment the figure can be taken at its
+        // word: level with a quiet reading. (With the screen never off, half an hour in.)
+        if (!runOn) {
+          const bool level = clean && gap < 1.0f && gap > -1.0f;
+          if (!catching && !settling && !starting && (level || now - batFrom >= 30UL * 60 * 1000)) { runOn = true; runPct = pctF; runAt = now; }
+        } else if (pctF > runPct) {
+          runPct = pctF; runAt = now;                 // above where the count began: begin again here
+        } else if (runPct - pctF >= 10.0f) {
+          // Ten points timed: that is this unit's rate. Kept (half way from what was
+          // known, so one odd afternoon can't throw it), and the count starts again.
+          const float hours = (float)(now - runAt) / 3600000.0f;
+          const float seen = hours >= 0.5f ? (runPct - pctF) / hours : 0;
+          if (seen > 0) { drain = drain > 0 ? drain + (seen - drain) * 0.5f : seen; drainChanged = true; }
+          runPct = pctF; runAt = now;
         }
         if (!catching && !starting) known = true;
         // What the charge just ended really added, once the cell has stopped reading high.
@@ -216,8 +240,8 @@ struct BatteryEstimate {
         owedFrom = now;
         mv = cellMv = med;                            // not raw: that can be a burst's dip
         over = under = 0;
-        settling = catching = true;
-        settleFrom = catchFrom = stepAt = batFrom = now;
+        catching = true;
+        catchFrom = batFrom = now;
       } else {
         // Out of sight, the cell fills at the rate learned for it, less near the top.
         pctF += rateAt(pctF) * (float)dt / 3600000.0f;
@@ -251,7 +275,7 @@ struct BatteryEstimate {
   }
 
   // Minutes it will last on battery at the rate it has been running down; 0 on USB.
-  // The rate is this stretch's own once it has lost three points over half an hour
+  // The rate is this stretch's own once it has lost three points over two hours
   // (mixed evenly with what earlier stretches showed), else what earlier stretches
   // showed. With neither, it is a guess from the cell's size: the charger's half amp
   // fills this cell at `rate`, and a T-Deck in ordinary use draws about a fifth of
@@ -287,10 +311,10 @@ private:
   // Percent an hour lost over this stretch on battery; 0 until there is enough to go on.
   float runRate(uint32_t now) const {
     if (!runOn || external) return 0;
-    const int lost = (int)runPct - (int)percent;
+    const float lost = runPct - pctF;
     const uint32_t ms = now - runAt;
-    if (lost < 3 || ms < 30UL * 60 * 1000) return 0;
-    return (float)lost / ((float)ms / 3600000.0f);
+    if (lost < 3.0f || ms < 2UL * 3600 * 1000) return 0;
+    return lost / ((float)ms / 3600000.0f);
   }
 
   void plug(uint32_t now, int from, bool sure) {
@@ -327,23 +351,24 @@ private:
   uint16_t prev1 = 0, prev2 = 0;    // the last two readings, for the median
   uint8_t over = 0, under = 0;      // readings in a row at USB level, and back below it
   int remembered = -1;              // the figure stored when it last ran
-  float pctF = 0;                   // on USB: the reckoned figure, with its fraction
+  float pctF = 0;                   // the figure with its fraction: reckoned on USB, counted down on battery
   uint16_t extMin = 5000;           // on USB: the lowest the supply has shown
   uint32_t lastAt = 0;
-  uint32_t stepAt = 0;              // the shown percent last moved
   uint32_t sessFrom = 0, sessMs = 0;   // the charge under way, or just ended
   int sessP0 = -1;                  // what the cell showed as it began; -1: it wasn't seen
   uint32_t batFrom = 0;             // when this stretch on battery began
   bool runOn = false;               // on battery: a stretch is being timed, from this figure at this time
-  uint8_t runPct = 0;
+  float runPct = 0;
   uint32_t runAt = 0;
   float reckoned = 0;               // the figure as the cable came out
   bool owed = false;                // a charge has ended and hasn't been learned from yet
   uint32_t owedFrom = 0;
-  bool settling = false;            // just unplugged, started or let off a load: may still correct upward
+  bool settling = false;            // just started: the first readings are not yet to be trusted
   uint32_t settleFrom = 0;
   bool catching = false;            // just unplugged: closing on what the cell shows
   uint32_t catchFrom = 0;
+  bool lowOn = false;               // on battery: the cell is showing far from the figure, since when
+  uint32_t lowFrom = 0;
   bool quiet = false, starting = false;      // see drawChanged() and the first readings
   uint32_t quietFrom = 0, startFrom = 0;
   int draw = 0;                     // its own draw above the least, mA (drawChanged)

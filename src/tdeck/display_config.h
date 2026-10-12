@@ -23,10 +23,13 @@ public:
             auto c = _bus.config();
             c.spi_host    = SPI2_HOST;
             c.spi_mode    = 0;
-            c.freq_write  = 40000000;   // LilyGo's own T-Deck examples. NOT 80 MHz: it halves the time a frame
-                                        // takes to send and read back clean in every test on USB, but it is past
-                                        // the ST7789's rating (62.5 MHz) and the owner's unit showed rainbow lines
-                                        // after a day carried on battery (2026-10-09)
+            c.freq_write  = 80000000;   // Halves the send (34 -> 19 ms a frame): with the overlapped push
+                                        // (board_pins.h BOARD_ASYNC_PUSH) scrolling goes ~27 -> ~36 fps, the
+                                        // pager's range. It is past the ST7789's 62.5 MHz rating, and the owner's
+                                        // unit showed rainbow lines after a day on battery at 80 MHz once (2026-10-09)
+                                        // - but that was traced to the async push sharing the bus without a lock,
+                                        // which is now fixed (ui.cpp pushTask). Back at 80 MHz 2026-10-11 to be
+                                        // carried a day on battery; if the lines return, drop to 40000000.
             c.freq_read   = 16000000;
             c.dma_channel = SPI_DMA_CH_AUTO;
             c.pin_sclk    = PIN_SPI_SCK;

@@ -43,6 +43,7 @@ struct Limits {
   double battery = 6;       // on battery, 12 minutes after the last change: within this of the truth
   double usb = -1;          // on USB, over the whole stretch: within this (-1: not looked at)
   bool neverEarly100 = true;
+  int maxUps = -1;          // on battery: how many times the figure may go up (-1: not looked at)
   bool timeToFull = false;  // the time it gives as the cable goes in is checked against when the cell is full
 };
 
@@ -54,6 +55,7 @@ static void run(const char* name, World& w, BatteryEstimate& e, uint32_t& t, con
   bool first = t == 0;
   int lastPct = e.percent, lastExt = e.external, flips = 0, real = 0;
   double lastLoad = -1, worstBat = 0, worstUsb = 0;
+  int ups = 0, moves = 0;
   uint32_t changedAt = t, t0 = t, saidAt = 0;
   int lastPower = st[0].power, said = -1;
   for (int k = 0; k < n; k++) {
@@ -102,6 +104,7 @@ static void run(const char* name, World& w, BatteryEstimate& e, uint32_t& t, con
         check(out <= (took * 0.12 > 25 ? took * 0.12 : 25), "the time to full was out by more than 12% (or 25 minutes)", tm);
         said = -1;
       }
+      if (!power && t - changedAt > 12 * 60000) { if ((int)e.percent > lastPct) ups++; if ((int)e.percent != lastPct) moves++; }
       const double off = fabs(e.percent - w.soc);
       if (!power && t - changedAt > 12 * 60000 && off > worstBat) worstBat = off;
       if (power && off > worstUsb) worstUsb = off;
@@ -116,6 +119,7 @@ static void run(const char* name, World& w, BatteryEstimate& e, uint32_t& t, con
   check(flips == real, "it changed its mind about the cable more often than the cable moved", t);
   check(worstBat <= lim.battery, "on battery, further from the truth than allowed", t);
   if (lim.usb >= 0) check(worstUsb <= lim.usb, "on USB, further from the truth than allowed", t);
+  if (lim.maxUps >= 0) { printf("  on battery the figure moved %d times, %d of them up\n", moves, ups); check(ups <= lim.maxUps, "the figure jumped about on battery", t); }
   printf("  end: true %.0f%%, shown %u%%, rate %.1f%%/h; worst on battery %.0f, on usb %.0f; cable moved %d times, seen %d\n",
          w.soc, e.percent, e.rate, worstBat, worstUsb, real, flips);
 }
@@ -238,6 +242,16 @@ int main() {
     const Step s[] = {{30, 0, 0.12}};
     Limits l;
     run("nearly empty, on battery", w, e, t, s, 1, 9, l);
+  }
+  // What the owner saw: a big cell in the flat middle of its range, the screen going on
+  // and off, and wiring that drops more than the estimate allows for.
+  {
+    World w; w.soc = 46; w.capMah = 10000; w.r = 0.30; BatteryEstimate e; uint32_t t = 0;
+    e.rate = 5.0f;
+    Step s[24];
+    for (int i = 0; i < 24; i++) { s[i].minutes = i % 2 ? 10 : 5; s[i].power = 0; s[i].loadA = i % 2 ? 0.07 : 0.27; }
+    Limits l; l.maxUps = 2; l.battery = 8;
+    run("a 10,000 mAh cell at 46%, three hours of the screen on and off: does the figure hold still?", w, e, t, s, 24, 15, l, true);
   }
   printf("\n%s (%d failures)\n", failures ? "FAILED" : "all good", failures);
   return failures ? 1 : 0;

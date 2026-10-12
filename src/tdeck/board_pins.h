@@ -21,15 +21,31 @@
 #define BOARD_HAS_KB_BACKLIGHT 1    // set through the keyboard's own controller
 #define BOARD_HAS_TOUCH        1    // GT911 capacitive touch: the main input on this board
 #define BOARD_ROW_H            28   // menu rows sized for a finger (5 mm), not a wheel
-// BOARD_ASYNC_PUSH (a finished frame sent from the other core while the next is drawn,
-// Nav::present) is OFF and should stay off until it is understood: with it on, the
-// owner's T-Deck froze with a band of garbage across a half-sent frame (2026-10-08),
-// at the ordinary 40 MHz too. Nothing in a day of read-back tests on USB caught it.
+// BOARD_ASYNC_PUSH: a finished frame is sent from the other core while the loop draws
+// the next (Nav::present), so a frame costs the longer of draw and send, not their sum.
+// On this board draw is ~25 ms and the send is a hard ~34 ms (the SPI wall at the panel's
+// safe 40 MHz), so overlapping them lifts scrolling from ~16 to ~27 fps - near the one
+// that redrawing a whole frame at 40 MHz allows.
+// Why it was off before: the panel (LovyanGFX) and the radio/SD (inw_spi) are the SAME
+// SPI peripheral, and the send held no bus lock, so a radio access on the loop's core
+// could land in the middle of a frame - a band of garbage, and once a freeze (2026-10-08).
+// The send now holds inw_spi's transaction for its length (ui.cpp pushTask), the way
+// BootBusLock does at boot, so no other bus user can cut in. Checked 2026-10-11: ~900
+// frames read back clean under a background save and live radio, scrolling stayed smooth.
+// The frame is handed over by swapping two buffers, not copied. The USB command "async 0"
+// still turns it off at runtime to compare.
 #ifndef BOARD_ASYNC_PUSH
-#define BOARD_ASYNC_PUSH        0    // (a test build can pass -D BOARD_ASYNC_PUSH=1 to study it)
+#define BOARD_ASYNC_PUSH        1
 #endif
 #define BOARD_FADE_BY_CLOCK     1    // tdeck/backlight.h: the fade follows the clock, and a wake's starts from the picture
 #define BOARD_HAS_TRACKBALL     1    // rolls two ways: rotary.takeXY(), View::roll()
+// Frame pacing (main.cpp loop): a steady 33 ms (~30 fps) between frames. With the 80 MHz
+// link a frame's draw cost swings with what is on screen (17-30 ms), so without this the
+// rate wandered 26-40 fps and the time-based motion looked like it sped up and slowed
+// down. An even cadence reads as flat motion; a frame that overruns just passes through.
+#ifndef BOARD_FRAME_MS
+#define BOARD_FRAME_MS          33
+#endif
 // No BOARD_FX_SPEED_PCT: screen changes play at the pager's pace. They were tried at 2.5x here
 // (2026-10-08) and the owner found them far too fast - the pager's pace is the one they like.
 #define BOARD_HOME_DASHBOARD   1    // home is src/tdeck/dashboard.cpp, not the wheel carousel

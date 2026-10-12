@@ -559,18 +559,29 @@ void Nav::begin(LGFX* d, Theme* t) {
 }
 
 #if BOARD_ASYNC_PUSH
-// A frame takes 19 ms to send, and nothing else used to happen meanwhile: the next one
-// wasn't started until the last had gone. Now the finished picture is copied aside
-// (4 ms) and a task on the other core sends the copy while the loop draws the next.
+#include <SPI.h>
+extern SPIClass inw_spi;   // variants/<board>/target.cpp: the one SPI bus (panel, radio, SD)
+// A frame takes 34 ms to send on this board, and nothing else used to happen meanwhile:
+// the next one wasn't started until the last had gone. Now the finished picture is copied
+// aside and a task on the other core sends the copy while the loop draws the next, so a
+// frame costs the longer of the two, not their sum.
 // Whatever draws on the panel directly - a screen change, an icon's animation, the
 // panel's sleep command - goes through display() or waitPresented(), which hold it
 // until the copy has gone: the screen library is not made for two callers at once.
-// (The radio and the card are safe already: every user of the bus takes its lock.)
+// The catch that made this corrupt a frame before: the panel is driven by LovyanGFX,
+// the radio and card by inw_spi, and they are the SAME SPI peripheral (FSPI/SPI2). A
+// radio or card access on the loop's core landing in the middle of a send left a band
+// of garbage across the frame. The two draw stacks don't share a lock on their own, so
+// the send holds inw_spi's transaction for its length: any bus user on the other core
+// waits for the frame to finish, exactly as BootBusLock does at boot. (Safe from
+// deadlock because the send itself never calls back into inw_spi.)
 void Nav::pushTask(void* self) {
   Nav* n = (Nav*)self;
   for (;;) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    n->_front.pushSprite(n->_d, 0, 0);
+    inw_spi.beginTransaction(SPISettings(4000000, MSBFIRST, SPI_MODE0));
+    n->_sentPtr->pushSprite(n->_d, 0, 0);
+    inw_spi.endTransaction();
     n->_pushing = false;
   }
 }
@@ -581,12 +592,15 @@ void Nav::present(int shakeX) {
   waitPresented();
   if (shakeX || !asyncPush || !_pusher || !_front.getBuffer()) {   // a shake, or no second picture: sent from here, as before
     if (shakeX) _d->fillRect(shakeX > 0 ? 0 : L::W + shakeX, 0, abs(shakeX), L::H, _t->bg);
-    _canvas.pushSprite(_d, shakeX, 0);
+    back().pushSprite(_d, shakeX, 0);
     nSync++;
     return;
   }
   nAsync++;
-  memcpy(_front.getBuffer(), _canvas.getBuffer(), (size_t)L::W * L::H * 2);
+  // The frame just drawn (back) is handed to the panel by swapping the two buffers:
+  // the pusher sends it while the loop draws the next into what was last sent. No copy,
+  // and the two never clash because waitPresented() above has let the last send finish.
+  Canvas* tmp = _backPtr; _backPtr = _sentPtr; _sentPtr = tmp;
   _pushing = true;
   xTaskNotifyGive((TaskHandle_t)_pusher);
 }
@@ -603,7 +617,7 @@ void Nav::beginTransition(uint8_t kind) {
   Canvas* old = fx::scratch();
   if (!old) return;
   compose();                               // exactly what's on the panel now
-  memcpy(old->getBuffer(), _canvas.getBuffer(), (size_t)L::W * L::H * 2);
+  memcpy(old->getBuffer(), back().getBuffer(), (size_t)L::W * L::H * 2);
   _trans = kind;
 }
 
@@ -794,10 +808,11 @@ void Nav::tick() {
 void Nav::compose(bool overlays) {
   View* v = top();
   if (!v || !_d) return;
-  _canvas.fillScreen(_t->bg);
-  if (!v->isLock()) drawStatusBar(_canvas, *_t, !v->hasClock());
-  v->draw(_canvas);
-  if (overlays) drawOverlays(_canvas);
+  Canvas& g = back();
+  g.fillScreen(_t->bg);
+  if (!v->isLock()) drawStatusBar(g, *_t, !v->hasClock());
+  v->draw(g);
+  if (overlays) drawOverlays(g);
 }
 
 void Nav::drawOverlays(lgfx::LovyanGFX& g) {
@@ -863,8 +878,8 @@ void Nav::draw() {
     // of where it's going, and a toast raised on the way would sit in it half slid
     // in, cut off at the bottom edge, for the whole transition. It slides in after.
     compose(false);
-    if (old && app::animationsOk()) fx::transition((fx::Trans)k, *old, _canvas);
-    else _canvas.pushSprite(_d, 0, 0);
+    if (old && app::animationsOk()) fx::transition((fx::Trans)k, *old, back());
+    else back().pushSprite(_d, 0, 0);
     if (_toastUntil) _toastAt = millis() | 1;
     if (_bannerUntil) _bannerAt = millis() | 1;
     v->dirty = !!(_toastUntil || _bannerUntil);
@@ -880,17 +895,20 @@ void Nav::draw() {
     _statusDirty = false;
     return;
   }
-  _canvas.fillScreen(_t->bg);
-  if (!v->isLock()) drawStatusBar(_canvas, *_t, !v->hasClock());
-  v->draw(_canvas);
-  drawOverlays(_canvas);
-  fx::draw(_canvas);
+  {
+    Canvas& g = back();
+    g.fillScreen(_t->bg);
+    if (!v->isLock()) drawStatusBar(g, *_t, !v->hasClock());
+    v->draw(g);
+    drawOverlays(g);
+    fx::draw(g);
+  }
   const int sx = fx::shakeX();                        // a failed send shakes the screen
 #if BOARD_ASYNC_PUSH
   present(sx);
 #else
   if (sx) _d->fillRect(sx > 0 ? 0 : L::W + sx, 0, abs(sx), L::H, _t->bg);
-  _canvas.pushSprite(_d, sx, 0);
+  back().pushSprite(_d, sx, 0);
   nSync++;
 #endif
   v->dirty = false;

@@ -109,7 +109,7 @@ public:
   // transition to reveal (or collapse) the real picture.
   void compose(bool overlays = true);
 
-  Canvas& canvas() { return _canvas; }
+  Canvas& canvas() { return back(); }
 #if BOARD_ASYNC_PUSH
   // The panel, to draw on directly (a screen change, an icon's animation): not before
   // a frame that is on its way out has gone. See present() in ui.cpp.
@@ -117,13 +117,18 @@ public:
   LGFX* displayNoWait() { return _d; }      // only to pass on to something that waits itself before drawing
   void waitPresented();                      // returns once nothing is being sent to the panel
   bool asyncPush = true;                     // false: every frame is sent from the loop, as it used to be
+  // Two full-screen buffers: the loop draws into one while the other is on its way to
+  // the panel. They trade places each frame (present), so a finished frame is handed
+  // over as a pointer, not copied.
+  Canvas& back() { return *_backPtr; }
   uint32_t nAsync = 0, nSync = 0, nTrans = 0, nCustom = 0;   // how pictures have reached the panel (the USB "peek" prints them)
-  Canvas& lastFrame() { return asyncPush && _pusher && _front.getBuffer() ? _front : _canvas; }   // what was last sent
+  Canvas& lastFrame() { return asyncPush && _pusher && _front.getBuffer() ? *_sentPtr : back(); }   // what waslast sent
 #else
   LGFX* display() { return _d; }
   LGFX* displayNoWait() { return _d; }
   void waitPresented() {}
   bool asyncPush = false;
+  Canvas& back() { return _canvas; }
   Canvas& lastFrame() { return _canvas; }
   uint32_t nAsync = 0, nSync = 0, nTrans = 0, nCustom = 0;
 #endif
@@ -139,7 +144,9 @@ private:
 #if BOARD_ASYNC_PUSH
   void present(int shakeX);
   static void pushTask(void* self);
-  Canvas _front;                             // the frame being sent, while the next is drawn in _canvas
+  Canvas _front;                             // the second full-screen buffer (see back())
+  Canvas* _backPtr = &_canvas;               // where the loop draws now
+  Canvas* _sentPtr = &_front;                // the frame last handed to the panel
   void* _pusher = nullptr;                   // its task
   volatile bool _pushing = false;
 #endif

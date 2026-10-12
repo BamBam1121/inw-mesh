@@ -1470,6 +1470,45 @@ static void usbCommands() {
       Serial.printf("[fps] '%s': %d frames in %lu ms = %.1f fps\n", g_screenTitle, n, (unsigned long)(us / 1000), n * 1e6f / (float)us);
       continue;
     }
+    // "cadence N": N real frames, timing each one, to see how even the frame rate is
+    // (uneven frame times make time-based motion look like it speeds up and slows down).
+    if (!strncmp(line, "cadence", 7)) {
+      const int n = max(5, atoi(line + 7));
+      nav.waitPresented();
+      uint32_t lo = 0xFFFFFFFF, hi = 0, sum = 0;
+      for (int i = 0; i < n; i++) {
+        const uint32_t a = micros();
+        nav.invalidate(); nav.draw();          // present() inside waits for the prior push, then kicks this one
+        const uint32_t d = micros() - a;
+        if (d < lo) lo = d; if (d > hi) hi = d; sum += d;
+      }
+      nav.waitPresented();
+      const uint32_t avg = sum / n;
+      Serial.printf("[cadence] '%s': per frame min %lu us (%.0f fps), avg %lu us (%.0f fps), max %lu us (%.0f fps); spread %lu us\n",
+                    g_screenTitle, (unsigned long)lo, 1e6f / lo, (unsigned long)avg, 1e6f / avg,
+                    (unsigned long)hi, 1e6f / hi, (unsigned long)(hi - lo));
+      continue;
+    }
+    // "loopcad": how even the real loop's drawn frames have been since the last call
+    // (this reflects the frame pacing; "cadence" above measures raw cost without it).
+    if (!strcmp(line, "loopcad")) {
+      extern uint32_t inwLoopCad(uint32_t*, uint32_t*, uint32_t*);
+      uint32_t mn = 0, mx = 0, av = 0;
+      const uint32_t c = inwLoopCad(&mn, &mx, &av);
+      if (c) Serial.printf("[loopcad] %lu frames: interval min %lu ms (%.0f fps), avg %lu ms (%.0f fps), max %lu ms (%.0f fps); spread %lu ms\n",
+                           (unsigned long)c, (unsigned long)mn, 1000.0f / (mn ? mn : 1), (unsigned long)av, 1000.0f / (av ? av : 1),
+                           (unsigned long)mx, 1000.0f / (mx ? mx : 1), (unsigned long)(mx - mn));
+      else Serial.println("[loopcad] no frames recorded");
+      continue;
+    }
+#if BOARD_FRAME_MS
+    if (!strncmp(line, "pace", 4)) {
+      extern uint32_t g_paceMs;
+      if (line[4]) g_paceMs = max(10, atoi(line + 4));
+      Serial.printf("[pace] frame interval %lu ms (%.0f fps)\n", (unsigned long)g_paceMs, 1000.0f / g_paceMs);
+      continue;
+    }
+#endif
 #if INW_TDECK
     // "framecheck N" (above). "async 0|1": frames sent from the loop / from the other
     // core. "spi 40|80": the speed they are sent at, in MHz.
@@ -1561,6 +1600,30 @@ static void usbCommands() {
     if (!strncmp(line, "framecheck", 10)) { s_fcLeft = max(1, atoi(line + 10)); s_fcFrames = s_fcBadFrames = s_fcWorst = 0; s_fcDrawn = false; dimmer.note(); continue; }
     if (!strncmp(line, "async ", 6)) { nav.waitPresented(); nav.asyncPush = line[6] == '1'; Serial.printf("[async] %d\n", nav.asyncPush); continue; }
     if (!strncmp(line, "spi ", 4)) { nav.waitPresented(); display.writeFreq((uint32_t)atoi(line + 4) * 1000000UL); Serial.printf("[spi] %lu MHz\n", (unsigned long)(display.writeFreq() / 1000000UL)); nav.invalidate(); continue; }
+    if (!strncmp(line, "framebench", 10)) {
+      const int n = max(10, atoi(line + 10));
+      nav.waitPresented();
+      Canvas& g = nav.canvas();
+      uint32_t t0 = micros();
+      for (int i = 0; i < n; i++) nav.compose();           // redraw: fillScreen + status bar + the view
+      const uint32_t drawUs = (micros() - t0) / n;
+      t0 = micros();
+      for (int i = 0; i < n; i++) g.pushSprite(&display, 0, 0);  // the whole 320x240 to the panel
+      const uint32_t pushUs = (micros() - t0) / n;
+      // The same push, but only the list body (below the status bar): what a partial
+      // push during a scroll would send. SPI time is linear in rows, so scale it.
+      const uint32_t bodyUs = (uint32_t)((uint64_t)pushUs * (L::H - L::STATUS_H) / L::H);
+      const uint32_t frameUs = drawUs + pushUs, bodyFrameUs = drawUs + bodyUs;
+      Serial.printf("[framebench] '%s' at %lu MHz, %d each: redraw %lu us, full push %lu us -> %lu us/frame (%lu fps). "
+                    "body-only push %lu us -> %lu us/frame (%lu fps).\n",
+                    g_screenTitle, (unsigned long)(display.writeFreq() / 1000000UL), n,
+                    (unsigned long)drawUs, (unsigned long)pushUs, (unsigned long)frameUs,
+                    (unsigned long)(frameUs ? 1000000UL / frameUs : 0),
+                    (unsigned long)bodyUs, (unsigned long)bodyFrameUs,
+                    (unsigned long)(bodyFrameUs ? 1000000UL / bodyFrameUs : 0));
+      nav.invalidate();
+      continue;
+    }
 #endif
     if (!strcmp(line, "scrcheck")) {
       nav.waitPresented();
@@ -2364,6 +2427,25 @@ static void autoAdvertTick() {
   }
 }
 
+#if BOARD_FRAME_MS
+uint32_t g_paceMs = BOARD_FRAME_MS;   // frame interval; "pace N" over USB adjusts it to tune
+#endif
+#if INW_DEV
+// How even the real drawn-frame cadence is (USB "loopcad"): the interval between the
+// frames the loop actually draws, which the pacing is meant to hold steady.
+static uint32_t s_lcLast = 0, s_lcMin = 0xFFFFFFFF, s_lcMax = 0, s_lcSum = 0, s_lcCnt = 0;
+void inwFrameTick(uint32_t nowMs) {
+  if (s_lcLast) { const uint32_t iv = nowMs - s_lcLast; if (iv < s_lcMin) s_lcMin = iv; if (iv > s_lcMax) s_lcMax = iv; s_lcSum += iv; s_lcCnt++; }
+  s_lcLast = nowMs;
+}
+uint32_t inwLoopCad(uint32_t* mn, uint32_t* mx, uint32_t* avg) {
+  const uint32_t c = s_lcCnt;
+  if (c) { *mn = s_lcMin; *mx = s_lcMax; *avg = s_lcSum / c; }
+  s_lcMin = 0xFFFFFFFF; s_lcMax = 0; s_lcSum = 0; s_lcCnt = 0; s_lcLast = 0;
+  return c;
+}
+#endif
+
 void loop() {
   // Anything that holds the loop long enough to feel like a freeze gets logged
   // with where the time went.
@@ -2572,7 +2654,28 @@ void loop() {
   // Something woke the screen (a message, say): the panel wakes before it is drawn
   // on or lit.
   if (!dimmer.asleep()) panelWake();
-  if (!dimmer.asleep() || nav.overlayActive()) nav.draw();
+  // Frame pacing: hold a steady interval between frames. Motion advances by real time,
+  // so when the per-frame draw cost swings with what is on screen (an empty row vs one
+  // with an avatar and long text) the frames arrive unevenly and the motion looks like
+  // it speeds up and slows down. Capping the rate to a cadence the screen can keep makes
+  // it even. A frame that overruns the interval just passes through; the first frame
+  // after idle is always due, so a tap still shows at once.
+#if BOARD_FRAME_MS
+  static uint32_t s_frameAt = 0;
+  const bool frameDue = millis() - s_frameAt >= g_paceMs;
+#else
+  const bool frameDue = true;
+#endif
+  if (frameDue && (!dimmer.asleep() || nav.overlayActive())) {
+#if INW_DEV
+    extern void inwFrameTick(uint32_t nowMs);
+    inwFrameTick(millis());
+#endif
+#if BOARD_FRAME_MS
+    s_frameAt = millis();
+#endif
+    nav.draw();
+  }
   // (They wait for a frame on its way out themselves, and only when they have something to draw.)
   if (!dimmer.asleep() && nav.top() && !nav.top()->isLock()) animateBatteryIcon(nav.displayNoWait(), theme);
   if (!dimmer.asleep() && nav.top() && !nav.top()->isLock() && !nav.overlayActive()) animateSignalIcon(nav.displayNoWait(), theme);
