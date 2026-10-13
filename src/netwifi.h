@@ -18,6 +18,10 @@ namespace wifi {
   const char* statusText();     // "home-net 192.168.1.40 -61 dBm" / "joining home-net..." / "home-net: wrong password?"
   const char* shortStatus();    // for a tile: "off" / the network / "wrong password?" / "searching"
   const char* ssid();
+  // Deeper modem sleep while staying joined: the radio wakes every LISTEN_INTERVAL
+  // beacons (about a second) instead of every one, and the router holds what comes
+  // for us in between. For a dark screen with the home link up.
+  void setDeepSleep(bool deep);
 
   // Saved networks
   uint8_t savedCount();

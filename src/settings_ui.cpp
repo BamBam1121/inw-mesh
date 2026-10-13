@@ -13,6 +13,8 @@
 #include "gps.h"
 #include "backlight.h"
 #include "netwifi.h"
+#include "homelink.h"
+#include "multiradio.h"
 #include "power.h"
 #include "battery.h"
 #include "notify.h"
@@ -643,6 +645,25 @@ static void wifiMenu() {
       const String ss = wifi::savedSsid(i);
       v.value(ss, [i]() -> String { return String(wifi::savedState(i)); },
               [i, ss] { confirm("Forget " + ss + "?", "to fix a password, scan + join it again", [i] { wifi::forget(i); nav.toast("forgotten"); }); });
+    }
+    v.header("home link");
+    v.toggle("use a companion at home", [] { return homelink::enabled(); },
+             [&v] { homelink::setEnabled(!homelink::enabled()); nav.statusChanged(); v.resume(); });
+    if (homelink::enabled()) {
+      v.info("link", []() -> String { return String(homelink::statusText()); });
+      if (wifi::connected()) {
+        v.value("companion on this network", []() -> String {
+          const String h = homelink::hostText(wifi::ssid());
+          return h.length() ? h : String("none"); },
+          [] {
+            const String ss = wifi::ssid();
+            prompt("Companion", "host[:port] on " + ss + ", blank = none", homelink::hostText(ss.c_str()), 70,
+                   [ss](const String& h) { homelink::setHost(ss.c_str(), h.c_str()); nav.toast(h.length() ? "saved" : "cleared"); });
+          });
+      }
+      v.info("traffic", []() -> String {
+        const auto& n = g_radio.counters();
+        return String(n.linkTx) + " sent, " + String(n.linkRx) + " heard, " + String(n.tooBig) + " too big (sent on radio)"; });
     }
     v.header("map tiles");
     v.toggle("download tiles while viewing map", [] { return ui_settings.tileFetch; },

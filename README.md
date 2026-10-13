@@ -40,6 +40,10 @@ sounds, the vibration, the charging indicator and the plug-in chime.
 - **Tools:** discover nearby repeaters, recently heard nodes, radio stats, a
   packet sniffer, GPS status, screenshots to SD.
 - **Wi-Fi:** saved networks, internet time, map tiles.
+- **Home link:** on a saved network with a companion set for it (any companion that
+  takes raw packets: MeshCore, an openHop Repeater's companion listener, others), the pager sends and hears
+  through that companion over Wi-Fi and lets its own radio sleep. Off that network
+  it is back on its own radio. Settings > Wi-Fi > home link.
 - **Wi-Fi updates:** the pager checks for a new release on start (or from
   Settings > System) and asks before installing. Releases are signed; the pager
   verifies the signature and the download before switching, and keeps the old
@@ -134,6 +138,7 @@ firmware is GPL-3.0. If you'd rather have a build with no ST code in it, use the
 | `src/ui.*` | view stack, menus, prompts, text and emoji rendering |
 | `src/home.cpp`, `chats.cpp`, `contacts.cpp`, `mapview.cpp`, `tools.cpp`, `settings_ui.cpp`, `nfcapp.cpp` | the screens |
 | `src/netwifi.*` | Wi-Fi, NTP, tile downloads |
+| `src/homelink.*`, `multiradio.*` | the home link: a companion over TCP, and which radio the node uses ([docs/home-link.md](docs/home-link.md)) |
 | `variants/inw_pager/` | board definition for MeshCore |
 | `docs/hardware.md` | pinout and hardware notes |
 

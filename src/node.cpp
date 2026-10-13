@@ -7,6 +7,7 @@
 #include <vector>
 #include "app.h"
 #include "regions.h"
+#include "multiradio.h"
 #include <helpers/esp32/SerialBLEInterface.h>
 #include <helpers/TxtDataHelpers.h>
 #include <helpers/AdvertDataHelpers.h>
@@ -747,6 +748,7 @@ void InwNode::logPacket(bool tx, uint8_t header, uint8_t pathLen, uint8_t len, f
   e.len = len;
   e.snr4 = (int8_t)(snr * 4);
   e.rssi = (int16_t)rssi;
+  e.viaLink = false;
   pktHead = (pktHead + 1) % PKT_LOG_MAX;
   if (pktCount < PKT_LOG_MAX) pktCount++;
   pktGen++;
@@ -765,6 +767,15 @@ void InwNode::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
   // Transport-coded routes carry 4 bytes of codes before the path length.
   const int pl = (route == 0 || route == 3) ? 5 : 1;
   logPacket(false, header, len > pl ? raw[pl] : 0, (uint8_t)min(len, 255), snr, rssi);
+  pktLog[(pktHead + PKT_LOG_MAX - 1) % PKT_LOG_MAX].viaLink = g_radio.lastFromLink();
+}
+
+// While transmits go over the home link, the pager is not a repeater: anything it
+// passed on would go out a second time from the companion, after the repeaters
+// near it had already carried it.
+bool InwNode::allowPacketForward(const mesh::Packet* packet) {
+  if (g_radio.viaLink()) return false;
+  return MyMesh::allowPacketForward(packet);
 }
 
 void InwNode::logTx(mesh::Packet* packet, int len) {
@@ -816,7 +827,8 @@ bool nodeBegin() {
   void* mem = heap_caps_malloc(sizeof(InwNode), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (!mem) mem = malloc(sizeof(InwNode));
   if (!mem) return false;
-  g_node = new (mem) InwNode(radio_driver, g_rng, rtc_clock, g_tables, g_store);
+  // The node talks to MultiRadio: the LoRa chip, plus the home link when there is one.
+  g_node = new (mem) InwNode(g_radio, g_rng, rtc_clock, g_tables, g_store);
 
   g_store.begin();
   g_node->begin(false);
