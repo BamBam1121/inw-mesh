@@ -1,1 +1,1 @@
-tdeck-v1.2.4
+tdeck-v1.2.5

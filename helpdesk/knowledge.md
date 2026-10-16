@@ -224,7 +224,45 @@ Your own themes (pager 1.2.7 and later, T-Deck 1.2.4-beta4 and later)
   can be fixed by choosing another theme in Settings > Theme, or by sending it again with the
   same name and better colours.
 
-New in 1.2.8 (released 2026-10-02, the current pager release)
+Pager 1.2.12 (beta, 2026-10-16) - only for pagers with beta updates switched on
+- Location privacy (GitHub idea #9): Settings > position > "position accuracy": exact, about 100 m,
+  about 500 m or about 1 km. The position sent in adverts and in answers to "telemetry" requests is moved
+  to the middle of a grid square that size, so others see roughly where you are; the same spot always
+  gives the same point, so it can't be averaged back. The position kept on the device stays exact.
+- A received message's details (open its menu) say which region it came in on: "region <name>", "no
+  region (plain flood)", or "a region not on this device" (one whose name this device doesn't have).
+  Only for messages received on this build or later. (GitHub bug #6: it used to show the channel's own
+  sending scope instead.)
+- Older messages on the SD card (GitHub idea #7): history holds the newest 800 messages across all
+  chats; with an SD card in, a message about to drop out of it is saved to the card first
+  (/inw/msgs/, one file per chat) and the chat's menu offers "older messages on the sd card" (the newest
+  300). Clearing a chat clears its saved copy too. No card: nothing changes.
+- The clock keeps the right time after a restart or the reset button. It used to jump back to whenever a
+  contact last changed (minutes or days earlier) until Wi-Fi or a GPS fix set it again. The pager has a
+  clock chip that keeps time while it is on; a T-Deck has none, so after a full power-off it still needs
+  Wi-Fi, a GPS fix or the app to know the time.
+- The first-start setup counts as done once the radio region is picked; it no longer comes back at every
+  start if someone left it after step 1 or 2.
+- "send again" on a message sends the same message again (the copies heard count together on it, and
+  its details count the tries) instead of adding a second copy to the chat.
+- Map: the node picked stays picked (it used to jump to another node every few seconds on a busy mesh).
+- Settings changes are no longer lost when many saves queue up at once (a "dropped: queue full" in a log).
+- The "Update to X?" question shows all of its text, and a crash left in the pager's memory by other
+  firmware (a launcher setup) isn't reported as a Squatch Mesh crash.
+- Everything in 1.2.11 is in it. Everyone without beta updates stays on 1.2.11.
+
+New in 1.2.11 (released 2026-10-16, the current pager release; it was the beta from 2026-10-03)
+- The map crash is fixed: it could crash while downloading map tiles over Wi-Fi and saving them to the SD
+  card. Pagers on 1.2.8 sent these crash reports.
+- No rainbow static when a message wakes the screen or at start-up.
+- Signal bars follow the best packet of the last two minutes, so they no longer jump.
+- Direct messages try up to 15 times, and retried copies show once with a count (x2, x3).
+- With a launcher next to other firmware, an update no longer writes over the other firmware's space.
+- Settings > Backups: the automatic SD backup's interval (hour, 3, 6, 12 hours or a day).
+- A failed update check tries again once and says why in words. The clock can be set by hand with
+  am/pm on a 12-hour clock. The "N new" count follows each chat's notification setting.
+
+New in 1.2.8 (released 2026-10-02)
 - Sounds no longer skip. The start-up tune had a gap in it just as the lock screen appeared, in every theme.
 - SD cards: the pager says when a card is in but can't be read, and can format it (see the SD card notes).
   It also no longer tries to mount a card that isn't there or can't be read, which could crash it.
@@ -307,8 +345,8 @@ Signal bars (pager 1.2.9 beta / T-Deck 1.2.4-beta7, both 2026-10-02)
   an answer comes.
 - From pager 1.2.10 beta / T-Deck 1.2.4-beta8 the bars show the best packet of the last two minutes, so
   they no longer jump with every packet.
-- Pager 1.2.9, 1.2.10 and 1.2.11 are betas: only pagers set to take beta updates get them. The pager release is
-  still 1.2.8.
+- Pager 1.2.9 and 1.2.10 were betas; 1.2.11 has been the pager release since 2026-10-16, so every pager has
+  this.
 
 T-Deck GPS that stays on "searching" (added 2026-10-09; read this before handing a GPS complaint off)
 - Ask first: is it a T-Deck or a T-Deck Plus? The plain LilyGo T-Deck has NO GPS in it. Only the T-Deck Plus
@@ -367,8 +405,8 @@ T-Deck battery percentage: what is known (added 2026-10-10; read before answerin
   long charge or two the percentage on battery reads too low, sometimes by tens of points, and the
   T-Deck may say the battery is empty and refuse to start while it still has charge. None of this harms
   the battery or the T-Deck.
-- It is fixed in the test builds from 1.2.5-beta1 (below) and will be in the next release. Someone
-  bothered by it now can switch on Settings > System > "beta updates" and check for updates.
+- It is fixed in 1.2.5 (released 2026-10-16) and later: a T-Deck on 1.2.4 takes 1.2.5 over Wi-Fi by
+  itself while charging, or from Settings > System > check for updates.
 - On a fixed build: unplugged, the percentage comes from the battery. Plugged in, it is worked out from
   what the battery last showed and how fast that battery fills, which the T-Deck learns from each charge
   (so a bigger battery someone fitted is right after its first charge and unplug). When unplugged it
@@ -380,13 +418,49 @@ T-Deck battery percentage: what is known (added 2026-10-10; read before answerin
 - The T-Deck's charger gives about half an amp whatever it is plugged into: the usual 2,000 mAh battery
   takes about four hours from empty, and a faster wall charger does not shorten that.
 
-T-Deck 1.2.5-beta1 (2026-10-10) - only for T-Decks with beta updates switched on
+T-Deck 1.2.6-beta1 (2026-10-16) - only for T-Decks with beta updates switched on
+- Location privacy (GitHub idea #9): Settings > position > "position accuracy": exact, about 100 m,
+  about 500 m or about 1 km. The position sent in adverts and in answers to "telemetry" requests is moved
+  to the middle of a grid square that size, so others see roughly where you are; the same spot always
+  gives the same point, so it can't be averaged back. The position kept on the device stays exact.
+- A received message's details (open its menu) say which region it came in on: "region <name>", "no
+  region (plain flood)", or "a region not on this device" (one whose name this device doesn't have).
+  Only for messages received on this build or later. (GitHub bug #6: it used to show the channel's own
+  sending scope instead.)
+- Older messages on the SD card (GitHub idea #7): history holds the newest 800 messages across all
+  chats; with an SD card in, a message about to drop out of it is saved to the card first
+  (/inw/msgs/, one file per chat) and the chat's menu offers "older messages on the sd card" (the newest
+  300). Clearing a chat clears its saved copy too. No card: nothing changes.
+- The clock keeps the right time after a restart or the reset button. It used to jump back to whenever a
+  contact last changed (minutes or days earlier) until Wi-Fi or a GPS fix set it again. The pager has a
+  clock chip that keeps time while it is on; a T-Deck has none, so after a full power-off it still needs
+  Wi-Fi, a GPS fix or the app to know the time.
+- The first-start setup counts as done once the radio region is picked; it no longer comes back at every
+  start if someone left it after step 1 or 2.
+- "send again" on a message sends the same message again (the copies heard count together on it, and
+  its details count the tries) instead of adding a second copy to the chat.
+- Map: the node picked stays picked (it used to jump to another node every few seconds on a busy mesh).
+- Settings changes are no longer lost when many saves queue up at once (a "dropped: queue full" in a log).
+- Map: pinch with two fingers to zoom. Tap a node's name, not only its dot; where several nodes sit
+  on one spot, another tap on it (slower than a double tap) steps to the next, and the bar at the
+  bottom says which (2/3). The map follows the finger without stopping to read tiles from the SD card,
+  fills in once it is let go, and reads the tiles round it ahead while it is left still.
+- Everything in 1.2.5 is in it. Everyone without beta updates stays on 1.2.5.
+
+T-Deck 1.2.5 (released 2026-10-16, the current T-Deck release)
+- Scrolling and animations about twice as smooth (16 to 30-40 frames a second) and at an even pace.
+- The battery fix, time to full and time left (the battery section above), and the GPS first fix in
+  the dark (1.2.5-beta1 below). 1.2.5 is 1.2.5-beta2 under its release name.
+- The link to the screen runs faster. If someone reports coloured streaks or lines on the screen, hand
+  it off with what they were doing: it can be set back.
+
+T-Deck 1.2.5-beta1 (2026-10-10) - a test build, now part of 1.2.5
 - The battery percentage fix, the time to full and the time left: see the battery section just above.
 - GPS: a GPS with no fix yet now stays on after the screen goes dark until it has one (three minutes at
   most, then it waits half an hour, an hour, two, four before trying again). Before this a T-Deck Plus
   that was only glanced at could say "searching" all day, because the GPS was put to sleep every time
   the screen went dark. On this build, leaving it outdoors for a few minutes is enough.
-- Everything in 1.2.4 is in it. Everyone without beta updates stays on 1.2.4.
+- Everything in 1.2.4 is in it.
 
 T-Deck 1.2.4 (released 2026-10-10): the T-Deck is no longer a beta
 - Squatch Mesh for the T-Deck is a normal release now, not a beta. 1.2.4 is the build everyone gets: the
