@@ -14,12 +14,16 @@ struct TouchEvent {
     Tap,         // down and up again without moving much
     LongPress,   // held still for LONG_MS (fires while still down)
     Swipe,       // a quick flick: dir is 'L', 'R', 'U' or 'D'
+    Pinch,       // two fingers: x, y the point between them, x0, y0 where that began,
+                 // scale their spread over what it was at the start
+    PinchEnd,    // the second finger lifted: the last x, y and scale
   } type;
   int16_t x, y;          // where, in screen pixels (for Drag: where the finger is now)
   int16_t x0, y0;        // where the finger first landed
   int16_t dx, dy;        // Drag: movement since the last event
   char dir;              // Swipe
   bool coast;            // Drag: the list still gliding after the finger let go
+  float scale;           // Pinch, PinchEnd
 };
 
 class Gestures {
@@ -115,6 +119,8 @@ public:
   // Stop a glide (a new screen came up), and whether the screen under the finger
   // glides at all (a map or the lock face follow the finger, they don't coast).
   void stopCoast() { _coasting = false; }
+  // Forget the finger without an Up, Tap or Swipe: a second finger made it a pinch.
+  void cancel() { _down = false; _queued = false; _coasting = false; }
   void allowCoast(bool ok) { _coastOk = ok; if (!ok) _coasting = false; }
 
 private:

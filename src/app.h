@@ -56,6 +56,8 @@ namespace app {
   // says are night. 0 = off.
   uint8_t  trackballSpeed();           // 0 slow, 1 medium, 2 fast (boards with a trackball)
   void     setTrackballSpeed(uint8_t s);
+  uint8_t  locPrecision();             // position sent to others: 0 exact, 1 ~100 m, 2 ~500 m, 3 ~1 km
+  void     setLocPrecision(uint8_t p);
   uint8_t  nightBrightness();
   void     setNightBrightness(uint8_t level);
   uint8_t  nightFrom();              // the hour it starts, 0-23

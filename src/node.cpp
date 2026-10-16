@@ -59,9 +59,39 @@ static uint8_t pathOf(mesh::Packet* pkt, uint8_t* out, uint8_t cap) {
 
 // The same repeaters in full: each one's whole path hash, however many bytes the mesh
 // uses (History::route), so two repeaters sharing a first byte can be told apart.
-static void keepRoute(uint32_t id, mesh::Packet* pkt) {
+// The region a received flood came in on (GitHub issue #6). A scoped flood carries
+// transport code = HMAC(region key, type + payload) (TransportKey::calcTransportCode),
+// not the name, so it is checked against every region this device knows of: the
+// list, the default, and the channel's own scope. One it has no name for shows as
+// that; a message that came direct says nothing about regions and records nothing.
+static void keepRegion(uint32_t id, const mesh::Packet* pkt, const char* channelScope) {
+  if (!id || !pkt->isRouteFlood()) return;
+  if (!pkt->hasTransportCodes()) { history.setRegion(id, History::REGION_PLAIN); return; }
+  static char names[regions::LIST_MAX + 2][regions::NAME_LEN + 1];
+  int n = regions::list(names, regions::LIST_MAX);
+  if (*regions::defaultName()) strlcpy(names[n++], regions::defaultName(), sizeof(names[0]));
+  if (channelScope && *channelScope) strlcpy(names[n++], channelScope, sizeof(names[0]));
+  for (int i = 0; i < n; i++) {
+    TransportKey k;
+    regions::keyFor(names[i], k.key);
+    if (k.calcTransportCode(pkt) == pkt->transport_codes[0]) {
+      history.setRegion(id, names[i]);
+#if INW_DEV
+      Serial.printf("[region] msg %lu came in on %s\n", (unsigned long)id, names[i]);
+#endif
+      return;
+    }
+  }
+  history.setRegion(id, History::REGION_UNKNOWN);
+#if INW_DEV
+  Serial.printf("[region] msg %lu: code %04x matches none of %d known\n", (unsigned long)id, pkt->transport_codes[0], n);
+#endif
+}
+
+static void keepRoute(uint32_t id, mesh::Packet* pkt, const char* channelScope = nullptr) {
   if (id && pkt->isRouteFlood() && pkt->getPathHashCount())
     history.setRoute(id, pkt->path, pkt->getPathHashSize(), pkt->getPathHashCount());
+  keepRegion(id, pkt, channelScope);
 }
 
 static bool mentions(const char* text, const char* me) {
@@ -342,7 +372,8 @@ void InwNode::onChannelMessageRecv(const mesh::GroupChannel& ch, mesh::Packet* p
   uint8_t hp[8];
   const uint8_t hn = pathOf(pkt, hp, sizeof(hp));
   keepRoute(history.add(ConvKey::channel(ch.secret), flags, ST_RECV, who, body,
-                        getRTCClock()->getCurrentTime(), hopsOf(pkt), (int8_t)(pkt->getSNR() * 4), hp, hn), pkt);
+                        getRTCClock()->getCurrentTime(), hopsOf(pkt), (int8_t)(pkt->getSNR() * 4), hp, hn), pkt,
+            regions::forChannel(ch.secret));
   int idx = findChannelIdx(ch);
   emit(NodeEvent::ChannelMsg, &idx);
 }
@@ -644,9 +675,11 @@ bool InwNode::advertZeroHop() { return advert(); }
 
 bool InwNode::advertFlood() {
   NodePrefs& p = prefs();
+  double lat = sensors.node_lat, lon = sensors.node_lon;
+  inwLocShare(lat, lon);                                  // as exact as Settings > position says
   mesh::Packet* pkt = p.advert_loc_policy == ADVERT_LOC_NONE
       ? createSelfAdvert(p.node_name)
-      : createSelfAdvert(p.node_name, sensors.node_lat, sensors.node_lon);
+      : createSelfAdvert(p.node_name, lat, lon);
   if (!pkt) return false;
   sendFlood(pkt, (uint32_t)0, (uint8_t)(p.path_hash_mode + 1));
   return true;

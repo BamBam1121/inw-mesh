@@ -86,6 +86,15 @@ public:
   void setRoute(uint32_t id, const uint8_t* hashes, uint8_t sz, uint8_t n);
   void heardVia(uint32_t id, const uint8_t* hashes, uint8_t sz, uint8_t n);
   const Route* route(uint32_t id);
+  // The region a received flood came in on (GitHub issue #6), worked out as it arrived:
+  // "" not known (sent by us, came direct, or older than this), REGION_PLAIN for a
+  // plain unscoped flood, REGION_UNKNOWN for a region this device has no name for,
+  // else the region's name. Kept in /hist_region.bin beside the history.
+  static constexpr const char* REGION_PLAIN = "\x01";
+  static constexpr const char* REGION_UNKNOWN = "\x02";
+  static constexpr uint8_t REGION_LEN = 31;
+  void setRegion(uint32_t id, const char* name);
+  const char* region(uint32_t id);
   const Route* route(const HistMsg& m) { const Route* r = routeOf(&m); return r && r->n ? r : nullptr; }   // no search
 
   // Oldest first. Callers that walk a whole conversation should use collect().
@@ -119,6 +128,10 @@ private:
   void saveRoutes();
   Route* routeOf(const HistMsg* m) { return _routes ? &_routes[m - _ring] : nullptr; }
   Route* _routes = nullptr;   // beside _ring, same index
+  void loadRegions();
+  void saveRegions();
+  char* regionOf(const HistMsg* m) { return _rgn ? _rgn + (m - _ring) * REGION_LEN : nullptr; }
+  char* _rgn = nullptr;       // REGION_LEN bytes each, beside _ring, same index
 
   HistMsg* _ring = nullptr;
   uint16_t _head = 0, _count = 0;

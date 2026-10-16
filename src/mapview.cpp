@@ -9,6 +9,7 @@
 #include "node.h"
 #include "dataio.h"
 #include "netwifi.h"
+#include "fx.h"
 #include <SD.h>
 #include <math.h>
 #include <algorithm>
@@ -55,7 +56,7 @@ static bool mapCard() {
 
 class TileCache {
 public:
-  static constexpr int N = 12;
+  static constexpr int N = 24;            // ~3 MB of PSRAM: the level shown, the one out, and a margin
   TileSlot slots[N];
   uint8_t* fileBuf = nullptr;
   static constexpr size_t FILE_MAX = 96 * 1024;
@@ -83,6 +84,25 @@ public:
     victim->missing = !load(*victim);
     if (victim->missing && layer == 0) wifi::requestTile((uint8_t)z, x, y);
     return victim->missing ? nullptr : victim->spr;
+  }
+
+  // What is known of a tile without reading anything: 0 not tried yet, 1 in memory,
+  // 2 there is none (not on the card, not downloadable now).
+  int state(int z, int x, int y, uint8_t layer) const {
+    const int n = 1 << z;
+    if (y < 0 || y >= n) return 2;
+    x = ((x % n) + n) % n;
+    for (auto& s : slots) if (s.z == z && s.x == x && s.y == y && s.layer == layer) return s.missing ? 2 : 1;
+    return 0;
+  }
+  // The tile if it is in memory; never reads the card.
+  lgfx::LGFX_Sprite* peek(int z, int x, int y, uint8_t layer) {
+    const int n = 1 << z;
+    if (y < 0 || y >= n) return nullptr;
+    x = ((x % n) + n) % n;
+    for (auto& s : slots)
+      if (s.z == z && s.x == x && s.y == y && s.layer == layer) { s.used = millis(); return s.missing ? nullptr : s.spr; }
+    return nullptr;
   }
 
   // No card: a downloaded tile goes straight into a slot, decoded, and shows from there.
@@ -245,12 +265,59 @@ public:
           rotate(1);
           return true;
         }
+        // Several nodes under the finger (sharing a spot, or close together): another
+        // tap on the same place, slower than a double tap, steps on to the next of them.
+        const bool again = _lastTap && abs(e.x - _tapX) < 30 && abs(e.y - _tapY) < 30;
         _lastTap = now; _tapX = e.x; _tapY = e.y;
-        _focus = nodeAt(e.x, e.y);        // nothing there: let go of the one picked
+        int cand[STACK_MAX];
+        const int nc = nodesAt(e.x, e.y, cand);
+        int pick = nc ? cand[0] : -1;    // nothing there: let go of the one picked
+        if (again && nc > 1)
+          for (int i = 0; i < nc; i++) if (cand[i] == _focus) { pick = cand[(i + 1) % nc]; break; }
+        _focus = pick;
         return true;
       }
+      case TouchEvent::Down: _held = true; return false;      // no card reads while a finger is down
+      case TouchEvent::Up:   _held = false; dirty = _pending || dirty; return false;
+      case TouchEvent::Pinch: {
+        _held = false;
+        if (!_pinch) beginPinch(e.x0, e.y0);
+        // No further than the zoom levels there are (3 to 17).
+        _pscale = constrain(e.scale, ldexpf(1.0f, 3 - _pz0), ldexpf(1.0f, 17 - _pz0));
+        _pcx = e.x; _pcy = e.y;
+        dirty = true;
+        return true;
+      }
+      case TouchEvent::PinchEnd:
+        if (_pinch) endPinch();
+        return true;
       default: return false;
     }
+  }
+
+  // A pinch begins: keep the picture on the screen, and the place under the point
+  // between the fingers.
+  void beginPinch(int cx, int cy) {
+    _pinch = true;
+    _pz0 = _z;
+    _pcx0 = _pcx = cx; _pcy0 = _pcy = cy;
+    _pscale = 1.0f;
+    const double left = lon2x(_lon, _z) - L::W / 2.0, top = lat2y(_lat, _z) - MAP_H / 2.0;
+    _plon = x2lon(left + cx, _z);
+    _plat = y2lat(top + (cy - MAP_Y), _z);
+  }
+  // The fingers lift: the nearest zoom level to how far they spread, with the place
+  // that was between them where the point between them is now.
+  void endPinch() {
+    _pinch = false;
+    const int z1 = constrain(_pz0 + (int)lroundf(log2f(_pscale)), 3, 17);
+    const double left = lon2x(_plon, z1) - _pcx, top = lat2y(_plat, z1) - (_pcy - MAP_Y);
+    const double world = (double)(1 << z1) * TILE, px = left + L::W / 2.0;
+    _z = z1;
+    _lon = x2lon(fmod(fmod(px, world) + world, world), z1);
+    _lat = constrain(y2lat(top + MAP_H / 2.0, z1), -85.0, 85.0);
+    ui_settings.mapZoom = _z;
+    dirty = true;
   }
 
   void tick() override {
@@ -277,44 +344,114 @@ public:
     }
     if (g_node && g_node->contactsGen() != _gen && millis() - _collected > 5000) { collectNodes(); dirty = true; }
     if (millis() - _last > 5000) { _last = millis(); dirty = true; }   // my position moves
+    if (_pending && !_held && !_pinch) dirty = true;    // the next tile of the view, next frame
+    if (dirty || _held || _pinch) { _stillAt = millis(); return; }
+    // Still for half a second: read one tile of the level out around the view, so a
+    // pinch out has real map to show straight away. One a pass, never with a finger down.
+    if (millis() - _stillAt < 500 || _z <= 3) return;
+    const Proj p = proj();
+    // One level out and then two: what the screen would show pinched out 2x and 4x.
+    const double cx = p.ox + L::W / 2.0, cy = p.oy + MAP_H / 2.0;
+    for (int k = 1; k <= 2 && _z - k >= 3; k++) {
+      const int lv = _z - k;
+      const double m = (double)(1 << k), mx = cx / m, my = cy / m;
+      for (int ty = (int)floor((my - MAP_H / 2.0) / TILE); ty <= (int)floor((my + MAP_H / 2.0) / TILE); ty++)
+        for (int tx = (int)floor((mx - L::W / 2.0) / TILE); tx <= (int)floor((mx + L::W / 2.0) / TILE); tx++)
+          if (_cache->state(lv, tx, ty, _layer) == 0) { _cache->get(lv, tx, ty, _layer); return; }
+    }
+  }
+
+  // Where things go on the screen: world pixels at zoom level z, scaled by k (1, except
+  // mid-pinch): screen x = (wx - ox) * k, screen y = (wy - oy) * k + MAP_Y. Drawing, the
+  // labels and what a tap hits all use this, so they agree in every state.
+  struct Proj { int z; double k, ox, oy; };
+  Proj proj() const {
+    if (_pinch) {
+      const float zf = _pz0 + log2f(_pscale);
+      const int zb = constrain((int)lroundf(zf), 3, 17);
+      const double k = _pscale * ldexp(1.0, _pz0 - zb);
+      return {zb, k, lon2x(_plon, zb) - _pcx / k, lat2y(_plat, zb) - (_pcy - MAP_Y) / k};
+    }
+    return {_z, 1.0, lon2x(_lon, _z) - L::W / 2.0, lat2y(_lat, _z) - MAP_H / 2.0};
+  }
+  static int scrX(const Proj& p, double lon) { return (int)lround((lon2x(lon, p.z) - p.ox) * p.k); }
+  static int scrY(const Proj& p, double lat) { return (int)lround((lat2y(lat, p.z) - p.oy) * p.k) + MAP_Y; }
+
+  // The tiles of level lv that the screen covers, (f = how many level-p.z pixels one of
+  // its pixels is). fn(tx, ty, screen x, screen y, scale).
+  template <typename F> void eachTile(const Proj& p, int lv, F fn) const {
+    const double f = ldexp(1.0, p.z - lv), sc = p.k * f;
+    const double wx0 = p.ox / f, wy0 = p.oy / f, wx1 = (p.ox + L::W / p.k) / f, wy1 = (p.oy + MAP_H / p.k) / f;
+    for (int ty = (int)floor(wy0 / TILE); ty <= (int)floor(wy1 / TILE); ty++)
+      for (int tx = (int)floor(wx0 / TILE); tx <= (int)floor(wx1 / TILE); tx++)
+        fn(tx, ty, (tx * TILE * f - p.ox) * p.k, (ty * TILE * f - p.oy) * p.k + MAP_Y, sc);
   }
 
   void draw(Canvas& g) override {
     const Theme& t = nav.theme();
-    const double cx = lon2x(_lon, _z), cy = lat2y(_lat, _z);
-    const double left = cx - L::W / 2.0, top = cy - MAP_H / 2.0;
-    const int tx0 = (int)floor(left / TILE), ty0 = (int)floor(top / TILE);
-    const int tx1 = (int)floor((left + L::W) / TILE), ty1 = (int)floor((top + MAP_H) / TILE);
+    const Proj p = proj();
+    const double left = p.ox, top = p.oy;      // (level p.z, unscaled: what the rest used)
     g.setClipRect(0, MAP_Y, L::W, MAP_H);
     g.fillRect(0, MAP_Y, L::W, MAP_H, t.panel);
-    bool any = false;
-    for (int ty = ty0; ty <= ty1; ty++) {
-      for (int tx = tx0; tx <= tx1; tx++) {
-        const int sx = (int)lround(tx * TILE - left), sy = (int)lround(ty * TILE - top) + MAP_Y;
-        lgfx::LGFX_Sprite* s = _cache->get(_z, tx, ty, _layer);
-        if (s) { s->pushSprite(&g, sx, sy); any = true; }
-        else {
-          // No tile: a faint grid so panning still reads as movement.
-          for (int k = 0; k < TILE; k += 64) {
-            g.drawFastHLine(sx, sy + k, TILE, t.line);
-            g.drawFastVLine(sx + k, sy, TILE, t.line);
-          }
+    // Tiles. Where the level shown has nothing in memory yet, the level out is drawn
+    // under it, twice the size, so there is always a map rather than a blank. Nothing is
+    // read from the card while a finger is on the glass or a pinch is under way (a tile
+    // takes ~0.1 s to read and decode): the map follows the finger at the full frame
+    // rate, then fills in a tile a frame once it is let go (tick() asks for the frames).
+    // Mid-pinch the level the pinch began at is drawn as well - its tiles are the ones
+    // in memory - finer ones over coarser ones.
+    bool complete = true;
+    eachTile(p, p.z, [&](int tx, int ty, double, double, double) { if (_cache->state(p.z, tx, ty, _layer) != 1) complete = false; });
+    int lv[16], nl = 0;
+    auto addLevel = [&](int v) { if (v < 3 || v > 17) return; for (int i = 0; i < nl; i++) if (lv[i] == v) return; lv[nl++] = v; };
+    if (!complete) addLevel(p.z - 1);
+    addLevel(p.z);
+    if (_pinch)                          // and every level between it and where the pinch began
+      for (int v = min(p.z, _pz0); v <= max(p.z, _pz0); v++) addLevel(v);
+    std::sort(lv, lv + nl);
+    int budget = (_pinch || _held) ? 0 : 1, drawn = 0;
+    bool waiting = false;
+    for (int i = 0; i < nl; i++) {
+      eachTile(p, lv[i], [&](int tx, int ty, double dx, double dy, double sc) {
+        lgfx::LGFX_Sprite* s = nullptr;
+        const int st = _cache->state(lv[i], tx, ty, _layer);
+        if (st == 1) s = _cache->peek(lv[i], tx, ty, _layer);
+        else if (st == 0 && lv[i] == p.z) {
+          if (budget > 0) { budget--; s = _cache->get(lv[i], tx, ty, _layer); }
+          else waiting = true;
         }
-      }
+        if (!s) return;
+        if (sc == 1.0) s->pushSprite(&g, (int)lround(dx), (int)lround(dy));
+        else {
+          const float z = (float)(sc + 1.0 / TILE);     // a hair over, so no seams between tiles
+          s->setPivot(0, 0);
+          s->pushRotateZoom(&g, (float)dx, (float)dy, 0.0f, z, z);
+        }
+        drawn++;
+      });
     }
-    // Nodes
+    _pending = waiting;
+    const bool any = drawn > 0;
+    if (!any && !_pinch) {
+      // Nothing at all: a faint grid so panning still reads as movement.
+      const int gx0 = (int)(64 - fmod(left, 64.0)), gy0 = (int)(64 - fmod(top, 64.0));
+      for (int x = gx0 % 64; x < L::W; x += 64) g.drawFastVLine(x, MAP_Y, MAP_H, t.line);
+      for (int y = gy0 % 64; y < MAP_H; y += 64) g.drawFastHLine(0, MAP_Y + y, L::W, t.line);
+    }
+    // Nodes. Their names are tap targets as well as their dots (_labels, nodesAt).
+    const float zShown = _pinch ? _pz0 + log2f(_pscale) : (float)_z;
+    if (!_pinch) _labels.clear();
     g.setFont(&fonts::Font2);
     for (int i = 0; i < (int)_nodes.size(); i++) {
       const MapNode& n = _nodes[i];
-      const int x = (int)lround(lon2x(n.lon, _z) - left);
-      const int y = (int)lround(lat2y(n.lat, _z) - top) + MAP_Y;
+      const int x = scrX(p, n.lon), y = scrY(p, n.lat);
       if (x < -20 || x > L::W + 20 || y < MAP_Y - 20 || y > L::H + 20) continue;
       const bool f = i == _focus;
       const uint16_t col = n.type == ADV_TYPE_REPEATER ? t.green : n.type == ADV_TYPE_ROOM ? t.amber : t.blue;
       if (n.type == ADV_TYPE_REPEATER) { g.fillTriangle(x, y - 6, x - 5, y + 4, x + 5, y + 4, col); g.drawTriangle(x, y - 7, x - 6, y + 5, x + 6, y + 5, t.bg); }
       else { g.fillCircle(x, y, 4, col); g.drawCircle(x, y, 5, t.bg); }
       if (f) g.drawCircle(x, y, 9, t.white);
-      if ((ui_settings.mapLabels && _z >= 11) || f) {
+      if ((ui_settings.mapLabels && zShown >= 10.5f) || f) {
         char nm[40];
         sanitize(n.name, nm, sizeof(nm) - 4);
         richFit(g, nm, 130);
@@ -322,21 +459,20 @@ public:
         g.fillRoundRect(x + 8, y - 8, w, 16, 3, f ? t.greenDim : t.bg);
         g.setTextColor(f ? t.white : t.txt, f ? t.greenDim : t.bg);
         drawRich(g, nm, x + 11, y - 8);
+        if (!_pinch) _labels.push_back({i, (int16_t)(x + 8), (int16_t)(y - 8), (int16_t)w, (int16_t)16});
       }
     }
     // Breadcrumb trail (field tools): the path walked, and a flag at the start.
     size_t tn = 0;
     const field::TrailPt* tp = field::trail(tn);
     if (tn) {
-      int px = 0, py = 0;
+      int lx = 0, ly = 0;
       for (size_t i = 0; i < tn; i++) {
-        const int x = (int)lround(lon2x(tp[i].lon, _z) - left);
-        const int y = (int)lround(lat2y(tp[i].lat, _z) - top) + MAP_Y;
-        if (i) { g.drawLine(px, py, x, y, t.amber); g.drawLine(px, py + 1, x, y + 1, t.amber); }
-        px = x; py = y;
+        const int x = scrX(p, tp[i].lon), y = scrY(p, tp[i].lat);
+        if (i) { g.drawLine(lx, ly, x, y, t.amber); g.drawLine(lx, ly + 1, x, y + 1, t.amber); }
+        lx = x; ly = y;
       }
-      const int sx = (int)lround(lon2x(tp[0].lon, _z) - left);
-      const int sy = (int)lround(lat2y(tp[0].lat, _z) - top) + MAP_Y;
+      const int sx = scrX(p, tp[0].lon), sy = scrY(p, tp[0].lat);
       g.drawFastVLine(sx, sy - 14, 14, t.white);
       g.fillTriangle(sx, sy - 14, sx, sy - 7, sx + 9, sy - 10, t.green);
       g.fillCircle(sx, sy, 3, t.green);
@@ -344,22 +480,21 @@ public:
     // Me
     double la, lo;
     if (app::myPosition(la, lo)) {
-      const int x = (int)lround(lon2x(lo, _z) - left);
-      const int y = (int)lround(lat2y(la, _z) - top) + MAP_Y;
+      const int x = scrX(p, lo), y = scrY(p, la);
       g.fillCircle(x, y, 7, t.white);
       g.fillCircle(x, y, 5, t.blue);
     }
     g.clearClipRect();
 
-    // Chrome: zoom chip, scale bar, focus panel.
+    // Chrome: zoom chip, scale bar, focus panel. Full size and sharp in every state.
     char z[40];
     if (wifi::connected() && ui_settings.tileFetch && !_layer)
-      snprintf(z, sizeof(z), TOUCH ? "z%d  wifi %u" : "z%d  wifi %u tiles", _z, wifi::tilesFetched());
+      snprintf(z, sizeof(z), TOUCH ? "z%d  wifi %u" : "z%d  wifi %u tiles", p.z, wifi::tilesFetched());
     else if (!any && !wifi::connected() && !sdMounted())
       // Nothing to draw streets from: say where they come from.
-      snprintf(z, sizeof(z), "z%d  no tiles: wi-fi or sd", _z);
+      snprintf(z, sizeof(z), "z%d  no tiles: wi-fi or sd", p.z);
     else
-      snprintf(z, sizeof(z), "z%d%s%s", _z, _layer ? " topo" : "", any ? "" : TOUCH ? "  no tiles" : "  no tiles here");
+      snprintf(z, sizeof(z), "z%d%s%s", p.z, _layer ? " topo" : "", any ? "" : TOUCH ? "  no tiles" : "  no tiles here");
     int zx = 6;
     if (TOUCH) {
       // Back, where Nav looks for a tap on a header's "<".
@@ -376,7 +511,7 @@ public:
       }
     }
     drawPill(g, zx, MAP_Y + 4, g.textWidth(z) + 16, 18, t.panel, t.txt, z);
-    const double mpp = 156543.03392 * cos(_lat * M_PI / 180.0) / (1 << _z);
+    const double mpp = 156543.03392 * cos(_lat * M_PI / 180.0) / ((1 << p.z) * p.k);
     static const double STEPS_M[] = {20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000};
     static const double STEPS_MI[] = {0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 50, 100};
     double meters = 0; char label[16] = "";
@@ -402,11 +537,21 @@ public:
       char info[96];
       if (n.dist >= 0) snprintf(info, sizeof(info), "%s  %s", n.name, app::fmtDistance(n.dist));
       else snprintf(info, sizeof(info), "%s", n.name);
+      if (TOUCH && !_pinch) {          // one of several on this spot: which, and that a tap steps on
+        int cand[STACK_MAX];
+        const int nc = nodesAt(scrX(p, n.lon), scrY(p, n.lat), cand);
+        for (int i = 0; nc > 1 && i < nc; i++)
+          if (cand[i] == _focus) {
+            const size_t len = strlen(info);
+            snprintf(info + len, sizeof(info) - len, "  %d/%d", i + 1, nc);
+            break;
+          }
+      }
       const int w = min(TOUCH ? L::W / 2 : L::W - 20, widthUtf8(g, info) + 20);
       _pillX = L::W - w - 6;
       drawPill(g, _pillX, L::H - 24, w, 20, t.panel, t.green, info);
     } else {
-      const char* hint = TOUCH ? "drag: move  double tap: zoom" : "turn zoom  wasd pan  n next node  c me";
+      const char* hint = TOUCH ? "drag: move  pinch: zoom" : "turn zoom  wasd pan  n next node  c me";
       g.setTextColor(t.txt, t.bg);
       g.fillRect(L::W - g.textWidth(hint) - 12, L::H - 22, g.textWidth(hint) + 12, 20, t.bg);
       g.drawString(hint, L::W - g.textWidth(hint) - 6, L::H - 20);
@@ -418,6 +563,13 @@ public:
 
 private:
   void collectNodes() {
+    // The picked node is a place in this list, and the list is rebuilt and sorted
+    // again whenever the contacts change - every few seconds on a busy mesh. Kept by
+    // its key, or the label at the bottom right jumped to whatever node took its place.
+    uint8_t keep[32];
+    const bool had = _focus >= 0 && _focus < (int)_nodes.size();
+    if (had) memcpy(keep, _nodes[_focus].pub, sizeof(keep));
+    _focus = -1;
     _nodes.clear();
     _collected = millis();
     if (!g_node) return;
@@ -441,6 +593,9 @@ private:
       if ((a.dist < 0) != (b.dist < 0)) return b.dist < 0;
       return a.dist < b.dist;
     });
+    if (had)
+      for (int i = 0; i < (int)_nodes.size(); i++)
+        if (!memcmp(_nodes[i].pub, keep, sizeof(keep))) { _focus = i; break; }
   }
 
   // The touch buttons down the right edge: 0 zoom in, 1 zoom out, 2 me; -1 none.
@@ -455,17 +610,31 @@ private:
     return -1;
   }
 
-  // The node drawn nearest (x, y), within a fingertip; -1 if none.
-  int nodeAt(int x, int y) const {
-    const double left = lon2x(_lon, _z) - L::W / 2.0, top = lat2y(_lat, _z) - MAP_H / 2.0;
-    int best = -1, bestD = 18 * 18;
-    for (int i = 0; i < (int)_nodes.size(); i++) {
-      const int nx = (int)lround(lon2x(_nodes[i].lon, _z) - left) - x;
-      const int ny = (int)lround(lat2y(_nodes[i].lat, _z) - top) + MAP_Y - y;
-      const int d = nx * nx + ny * ny;
-      if (d < bestD) { bestD = d; best = i; }
+  // What a tap at (x, y) is on: the node names drawn there (the one on top first), then
+  // the dots within a fingertip, nearest first. Up to STACK_MAX.
+  static constexpr int STACK_MAX = 12, REACH = 22;
+  int nodesAt(int x, int y, int* out) const {
+    int n = 0;
+    auto have = [&](int i) { for (int j = 0; j < n; j++) if (out[j] == i) return true; return false; };
+    for (int j = (int)_labels.size() - 1; j >= 0 && n < STACK_MAX; j--) {
+      const LabelBox& b = _labels[j];
+      if (x >= b.x - 3 && x < b.x + b.w + 3 && y >= b.y - 3 && y < b.y + b.h + 3 && !have(b.i)) out[n++] = b.i;
     }
-    return best;
+    const Proj p = proj();
+    const int first = n;
+    int dd[STACK_MAX];
+    for (int i = 0; i < (int)_nodes.size(); i++) {
+      const int nx = scrX(p, _nodes[i].lon) - x, ny = scrY(p, _nodes[i].lat) - y;
+      const int d = nx * nx + ny * ny;
+      if (d >= REACH * REACH || have(i)) continue;
+      int j;
+      if (n < STACK_MAX) j = n++;
+      else if (d >= dd[STACK_MAX - 1]) continue;     // full, and further than all of them
+      else j = STACK_MAX - 1;
+      while (j > first && dd[j - 1] > d) { dd[j] = dd[j - 1]; out[j] = out[j - 1]; j--; }
+      dd[j] = d; out[j] = i;
+    }
+    return n;
   }
 
   void jump(int d) {
@@ -482,6 +651,15 @@ private:
   std::vector<MapNode> _nodes;
   double _lat = 0, _lon = 0;
   int _z = 12, _focus = -1, _pillX = L::W;
+  bool _pinch = false;                 // two fingers are zooming it
+  int _pz0 = 12, _pcx0 = 0, _pcy0 = 0, _pcx = 0, _pcy = 0;
+  float _pscale = 1.0f;
+  double _plat = 0, _plon = 0;          // the place that was between the fingers
+  bool _held = false;                  // a finger is on the glass
+  bool _pending = false;               // tiles of the level shown still to read
+  uint32_t _stillAt = 0;               // when the map last moved or was touched
+  struct LabelBox { int i; int16_t x, y, w, h; };
+  std::vector<LabelBox> _labels;       // node names as drawn, for taps
   uint32_t _lastTap = 0;              // double tap to zoom
   int _tapX = 0, _tapY = 0;
   uint8_t _layer = 0;

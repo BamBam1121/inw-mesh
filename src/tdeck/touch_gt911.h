@@ -40,6 +40,8 @@ public:
       const uint16_t w = res[0] | (res[1] << 8), h = res[2] | (res[3] << 8);
       if (w >= 100 && w <= 4096 && h >= 100 && h <= 4096) { _resX = w; _resY = h; }
     }
+    uint8_t mt;
+    if (rd(0x804C, &mt, 1)) _maxTouches = mt & 0x0F;  // how many fingers it is set to report
     if (PIN_TOUCH_INT >= 0) pinMode(PIN_TOUCH_INT, INPUT);
     _ok = true;
     return true;
@@ -51,6 +53,13 @@ public:
   uint32_t touches() const { return _count; }
   uint16_t resX() const { return _resX; }     // the range it reports in (its portrait frame)
   uint16_t resY() const { return _resY; }
+  // A second finger, while two are down (pinch). Same frame and mapping as the first.
+  bool second(int16_t& x, int16_t& y) const {
+    if (!_down || !_down2) return false;
+    x = _x2; y = _y2;
+    return true;
+  }
+  uint8_t maxTouches() const { return _maxTouches; }   // as configured in the chip (0x804C)
   // Settings > Display: a panel that comes out mirrored, or a screen turned over.
   void setMirror(bool mx, bool my) { _mx = mx; _my = my; }
 
@@ -98,17 +107,27 @@ private:
         wr(0x814E, 0);
         return;
       }
-      _x = (int16_t)constrain((int)ry * SCREEN_W / _resY, 0, SCREEN_W - 1);
-      _y = (int16_t)constrain(SCREEN_H - 1 - (int)rx * SCREEN_H / _resX, 0, SCREEN_H - 1);
-      if (_mx) _x = SCREEN_W - 1 - _x;
-      if (_my) _y = SCREEN_H - 1 - _y;
+      map(rx, ry, _x, _y);
+      // A second finger: its record is the next 8 bytes (track id at 0x8157, x at 0x8158).
+      uint8_t q[4];
+      _down2 = (st & 0x0F) >= 2 && rd(0x8158, q, 4);
+      if (_down2) map(q[0] | (q[1] << 8), q[2] | (q[3] << 8), _x2, _y2);
       if (!_down) _count++;
       _down = true;
     } else {
       _down = false;                              // a real lift
+      _down2 = false;
       _phantom = false;
     }
     wr(0x814E, 0);                                // acknowledge the frame
+  }
+
+  // The chip's portrait frame to screen pixels in the landscape the UI runs.
+  void map(uint16_t rx, uint16_t ry, int16_t& x, int16_t& y) const {
+    x = (int16_t)constrain((int)ry * SCREEN_W / _resY, 0, SCREEN_W - 1);
+    y = (int16_t)constrain(SCREEN_H - 1 - (int)rx * SCREEN_H / _resX, 0, SCREEN_H - 1);
+    if (_mx) x = SCREEN_W - 1 - x;
+    if (_my) y = SCREEN_H - 1 - y;
   }
 
   bool rd(uint16_t reg, uint8_t* buf, uint8_t n) {
@@ -133,6 +152,9 @@ private:
   bool     _ok = false, _down = false, _phantom = false, _jitter = false, _mx = false, _my = false;
   uint32_t _count = 0;
   int16_t  _x = 0, _y = 0;
+  int16_t  _x2 = 0, _y2 = 0;              // a second finger (pinch)
+  bool     _down2 = false;
+  uint8_t  _maxTouches = 0;
   uint16_t _prx = 0, _pry = 0, _lrx = 0, _lry = 0;
   uint16_t _resX = SCREEN_H, _resY = SCREEN_W;
   uint32_t _at = 0, _frameAt = 0, _pressAt = 0;

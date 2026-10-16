@@ -48,6 +48,7 @@ static Gestures   gestures;
 #include "mascot.h"
 #include "app.h"
 #include "regions.h"
+#include "archive.h"
 #include "node.h"
 #include "history.h"
 #include "dataio.h"
@@ -239,6 +240,39 @@ static void applyOrientation() {
   nav.invalidate();
 }
 #endif
+
+// How exactly this node's position is told to others (adverts and telemetry replies):
+// 0 exact, else to the middle of a grid square ~100 m / 500 m / 1 km across (GitHub
+// issue #9). A fixed grid, not random jitter: every advert from the same spot gives the
+// same point, so many of them cannot be averaged back to the real one. The position
+// kept on the device, and shown in Settings, stays exact. In its own NVS key.
+static int8_t s_locPrec = -1;
+uint8_t app::locPrecision() {
+  if (s_locPrec < 0) {
+    s_locPrec = 0;
+    Preferences p;
+    if (p.begin("inw-fx", true)) { s_locPrec = min<int>(p.getUChar("locp", 0), 3); p.end(); }
+  }
+  return (uint8_t)s_locPrec;
+}
+void app::setLocPrecision(uint8_t v) {
+  s_locPrec = min<int>(v, 3);
+  Preferences p;
+  if (p.begin("inw-fx", false)) { p.putUChar("locp", (uint8_t)s_locPrec); p.end(); }
+}
+void inwLocShare(double& lat, double& lon) {
+  static const uint16_t STEP_M[] = {0, 100, 500, 1000};
+  const uint16_t m = STEP_M[app::locPrecision()];
+  if (!m || (lat == 0 && lon == 0)) return;
+  const double dLat = m / 111320.0;
+  lat = (floor(lat / dLat) + 0.5) * dLat;
+  double c = cos(lat * M_PI / 180.0);
+  if (c < 0.01) c = 0.01;
+  const double dLon = m / (111320.0 * c);
+  lon = (floor(lon / dLon) + 0.5) * dLon;
+}
+double inwLocLat() { double la = sensors.node_lat, lo = sensors.node_lon; inwLocShare(la, lo); return la; }
+double inwLocLon() { double la = sensors.node_lat, lo = sensors.node_lon; inwLocShare(la, lo); return lo; }
 
 #if BOARD_HAS_TRACKBALL
 // How far the ball has to roll for one step on the screen: 0 slow, 1 medium, 2 fast.
@@ -1666,9 +1700,32 @@ static void usbCommands() {
       nav.invalidate();
       continue;
     }
+    // "pinch S [X Y]": two fingers at their spread S times what it was, about (X, Y) (the
+    // middle of the screen if left out); "pinchend": they lift. "map": open the map.
+    if (!strncmp(line, "pinch ", 6) || !strcmp(line, "pinchend")) {
+      TouchEvent te = {};
+      float sc = 1; int x = L::W / 2, y = L::H / 2;
+      if (line[5] == ' ') sscanf(line + 6, "%f %d %d", &sc, &x, &y);
+      te.type = line[5] == ' ' ? TouchEvent::Pinch : TouchEvent::PinchEnd;
+      te.x = te.x0 = x; te.y = te.y0 = y; te.scale = sc;
+      nav.touch(te);
+      nav.invalidate();
+      continue;
+    }
+    if (!strcmp(line, "map")) { app::openMap(0, 0, nullptr); continue; }
 #endif
     if (!strcmp(line, "ask")) {
       confirm("Update to 1.2.12?", "1.2.12 beta: the automatic backup's interval can be set, and a failed update check says so in words. takes about a minute; messages pause while it downloads.", [] {});
+      continue;
+    }
+    // "touch": what the touch chip is set to report, and the fingers on it right now.
+    if (!strcmp(line, "touch")) {
+      bool d; int16_t x, y, x2 = -1, y2 = -1;
+      touchPanel.poll(d, x, y);
+      const bool two = touchPanel.second(x2, y2);
+      Serial.printf("[touch] reports up to %u fingers; now: %s (%d,%d)%s", touchPanel.maxTouches(),
+                    d ? "down" : "up", x, y, two ? " and a second" : "\n");
+      if (two) Serial.printf(" (%d,%d)\n", x2, y2);
       continue;
     }
     if (!strcmp(line, "tb")) {
@@ -2223,6 +2280,8 @@ void setup() {
   bootStep("keyboard", keyboard.begin(Wire));
 #if BOARD_HAS_TOUCH
   bootStep("touch", touchPanel.begin(Wire));
+  // Pinch needs a second finger; the chip reports as many as its config says (0x804C).
+  Serial.printf("[touch] gt911 reports up to %u fingers\n", touchPanel.maxTouches());
   applyOrientation();
 #endif
   keyboard.setBacklight(ui_settings.kbBacklight);
@@ -2484,7 +2543,38 @@ void loop() {
     static View* coastOn = nullptr;
     if (nav.top() != coastOn) { gestures.stopCoast(); coastOn = nav.top(); }
     gestures.allowCoast(!dimmer.asleep() && nav.top() && nav.top()->coasts());
-    while (gestures.feed(down, tx, ty, millis(), te)) {
+    // Two fingers: a pinch. While both are down the one-finger gesture is set aside
+    // (cancelled, so lifting cannot end as a tap) and the screen gets Pinch events.
+    // The second finger lifting sends PinchEnd; then nothing more is read until every
+    // finger is off the glass.
+    bool skipFeed = false;
+    {
+      static bool pinching = false, waitUp = false;
+      static float d0 = 1, lastScale = 1;
+      static int16_t cx0 = 0, cy0 = 0, lcx = 0, lcy = 0;
+      int16_t x2, y2;
+      if (down && !dimmer.asleep() && touchPanel.second(x2, y2)) {
+        lcx = (tx + x2) / 2; lcy = (ty + y2) / 2;
+        const float d = hypotf((float)(x2 - tx), (float)(y2 - ty));
+        if (!pinching) { pinching = true; d0 = d > 20 ? d : 20; cx0 = lcx; cy0 = lcy; gestures.cancel(); }
+        TouchEvent pe = {};
+        pe.type = TouchEvent::Pinch;
+        pe.x = lcx; pe.y = lcy; pe.x0 = cx0; pe.y0 = cy0;
+        pe.scale = lastScale = d / d0;
+        dimmer.note();
+        nav.touch(pe);
+        waitUp = true;
+      } else if (pinching) {
+        pinching = false;
+        TouchEvent pe = {};
+        pe.type = TouchEvent::PinchEnd;
+        pe.x = lcx; pe.y = lcy; pe.x0 = cx0; pe.y0 = cy0; pe.scale = lastScale;
+        nav.touch(pe);
+      }
+      if (waitUp && !down) waitUp = false;
+      skipFeed = waitUp;
+    }
+    while (!skipFeed && gestures.feed(down, tx, ty, millis(), te)) {
       if (dimmer.asleep()) {
         // Double tap to wake, if it's on (Settings > Display): two taps close together.
         static uint32_t lastTap = 0;
@@ -2821,6 +2911,7 @@ void loop() {
                  (nav.top() && nav.top()->wantsAllKeys() && dimmer.idleFor() < 20000)));
 #endif
   inwSetScreenOn(!dimmer.asleep());
+  archive::tick(dimmer.asleep());      // messages leaving history go to the SD card in the dark
   lap(7);
   const uint32_t total = millis() - tLoop;
   if (total > 150) {

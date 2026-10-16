@@ -65,6 +65,11 @@ static void profileMenu() {
       return String(P().node_lat, 5) + ", " + String(P().node_lon, 5); });
     v.toggle("share position in adverts", [] { return P().advert_loc_policy != ADVERT_LOC_NONE; },
              [] { P().advert_loc_policy = P().advert_loc_policy ? ADVERT_LOC_NONE : ADVERT_LOC_SHARE; markPrefsDirty(); });
+    v.adjust("position accuracy", []() -> String {
+               static const char* const N[] = {"exact", "about 100 m", "about 500 m", "about 1 km"};
+               return N[min<int>(app::locPrecision(), 3)];
+             },
+             [](int d) { app::setLocPrecision((uint8_t)constrain((int)app::locPrecision() + d, 0, 3)); });
     v.toggle("follow gps live", [] { return ui_settings.gpsLivePosition; },
              [] { ui_settings.gpsLivePosition = !ui_settings.gpsLivePosition; markUiDirty(); });
     v.action("set from gps now", [] {
@@ -196,7 +201,10 @@ static void zoneMenu(const char* title, std::function<void()> next) {
 
 // Shown once, on a pager's first start (and once after the update that brought it):
 // its radio region, time zone, and clock and units. Each step can keep what's there;
-// backing out of it leaves it for the next start.
+// backing out of step 1 (before the radio region is settled) leaves it for the next
+// start. Once past step 1 it counts as done: a German pager owner kept getting the
+// whole setup at every start (help desk, 1.2.8, 2026-10-12), and stopping after the
+// region is a fair place to stop - time zone and units are in Settings.
 static View* s_setupBelow = nullptr;
 static void setupUnits() {
   auto* m = new MenuView("Setup 3/3  clock and units");
@@ -212,7 +220,11 @@ static void setupUnits() {
   });
   nav.push(m);
 }
-static void setupZone() { zoneMenu("Setup 2/3  time zone", setupUnits); }
+static void setupZone() {
+  ui_settings.setupDone = 1;                // the radio region is settled: no more setup at start
+  markUiDirty();
+  zoneMenu("Setup 2/3  time zone", setupUnits);
+}
 void startSetup() {
   s_setupBelow = nav.top();
   if (g_node) regionMenu("Setup 1/3  your radio region", setupZone);
