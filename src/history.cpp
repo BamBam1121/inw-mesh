@@ -1,4 +1,5 @@
 #include "history.h"
+#include "archive.h"
 #include <esp_heap_caps.h>
 
 History history;
@@ -9,6 +10,7 @@ static const char* READS_PATH = "/hist_read.bin";
 // of its own rather than a new kind of record in the log, which older firmware would
 // read as a torn tail and stop at, losing every message after it.
 static const char* ROUTE_PATH = "/hist_route.bin";
+static const char* REGION_PATH = "/hist_region.bin";   // History::region(), GitHub issue #6
 
 struct StatusRec { uint32_t id; uint8_t status, attempts, repeats; uint16_t rtt10; } __attribute__((packed));
 
@@ -20,6 +22,8 @@ bool History::begin() {
   loadLog();
   loadReads();
   loadRoutes();
+  _rgn = (char*)heap_caps_calloc(CAP, REGION_LEN, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  loadRegions();
   return true;
 }
 
@@ -116,6 +120,7 @@ uint32_t History::add(const ConvKey& k, uint8_t flags, uint8_t status, const cha
                       const char* text, uint32_t ts, uint8_t hops, int8_t snr4,
                       const uint8_t* path, uint8_t path_len) {
   HistMsg& m = _ring[_head];
+  if (_count == CAP) archive::push(m);  // the oldest is about to go: to the SD card (issue #7)
   memset(&m, 0, sizeof(m));
   m.id = _nextId++;
   m.conv = k;
@@ -129,6 +134,7 @@ uint32_t History::add(const ConvKey& k, uint8_t flags, uint8_t status, const cha
   m.path_len = path && path_len ? min<uint8_t>(path_len, sizeof(m.path)) : 0;
   if (m.path_len) memcpy(m.path, path, m.path_len);
   if (Route* r = routeOf(&m)) r->n = 0;
+  if (char* g = regionOf(&m)) g[0] = 0;
   _head = (_head + 1) % CAP;
   if (_count < CAP) _count++;
   appendRecord('N', &m, sizeof(m));    // 'M' was the layout before paths
@@ -229,6 +235,64 @@ void History::saveRoutes() {
     len += need;
   }
   inwQueueReplace(ROUTE_PATH, buf, len);
+}
+
+void History::setRegion(uint32_t id, const char* name) {
+  HistMsg* m = find(id);
+  char* g = m ? regionOf(m) : nullptr;
+  if (!g || !name || !*name || !strcmp(g, name)) return;
+  strlcpy(g, name, REGION_LEN);
+  saveRegions();
+}
+
+const char* History::region(uint32_t id) {
+  HistMsg* m = find(id);
+  const char* g = m ? regionOf(m) : nullptr;
+  return g ? g : "";
+}
+
+// As saveRoutes: the whole file from what is in history, {id 4}{len 1}{name len}.
+void History::saveRegions() {
+  if (!_rgn) return;
+  static uint8_t* buf = nullptr;
+  static size_t cap = 0;
+  size_t len = 0;
+  for (uint16_t i = 0; i < _count; i++) {
+    const HistMsg* m = at(i);
+    const char* g = regionOf(m);
+    const size_t n = strnlen(g, REGION_LEN - 1);
+    if (!n) continue;
+    if (len + 5 + n > cap) {
+      size_t nc = cap ? cap * 2 : 2048;
+      while (nc < len + 5 + n) nc *= 2;
+      uint8_t* nb = (uint8_t*)ps_realloc(buf, nc);
+      if (!nb) return;
+      buf = nb; cap = nc;
+    }
+    memcpy(buf + len, &m->id, 4);
+    buf[len + 4] = (uint8_t)n;
+    memcpy(buf + len + 5, g, n);
+    len += 5 + n;
+  }
+  inwQueueReplace(REGION_PATH, buf, len);
+}
+
+void History::loadRegions() {
+  if (!_rgn) return;
+  File f = SPIFFS.open(REGION_PATH, FILE_READ);
+  if (!f) return;
+  uint8_t hd[5];
+  char name[REGION_LEN];
+  while (f.read(hd, 5) == 5) {
+    uint32_t id;
+    memcpy(&id, hd, 4);
+    const uint8_t n = hd[4];
+    if (!n || n >= REGION_LEN || f.read((uint8_t*)name, n) != n) break;
+    name[n] = 0;
+    HistMsg* m = find(id);
+    if (m) strlcpy(regionOf(m), name, REGION_LEN);
+  }
+  f.close();
 }
 
 void History::loadRoutes() {
@@ -335,11 +399,13 @@ void History::markRead(const ConvKey& k) {
 void History::clearConv(const ConvKey& k) {
   for (uint16_t i = 0; i < _count; i++) if (at(i)->conv == k) at(i)->conv.type = 0;
   appendRecord('D', &k, sizeof(k));
+  archive::forget(k);              // and what the SD card kept of it
   gen++;
 }
 
 void History::clearAll() {
   _count = 0; _head = 0;
+  archive::forgetAll();
   inwDropPath(LOG_PATH);          // queued records would recreate what's being cleared
   inwDropPath(READS_PATH);
   SPIFFS.remove(LOG_PATH);

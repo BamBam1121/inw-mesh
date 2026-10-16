@@ -41,7 +41,12 @@ HELPER = r'''
 void inwStoreSaved(const char* path, size_t bytes);
 
 struct InwJob { FILESYSTEM* fs; char path[24]; uint8_t* buf; size_t len; };
-static InwJob inw_q[4];                 // one queued save per file (contacts, channels, read marks, spare)
+// One queued save per FILE, so this is how many different files can wait at once. It was 4,
+// and while the contacts file took ~36 s to write, history's two side files (routes and,
+// since 2026-10-16, regions - rewritten with every message heard) and the UI mirror filled
+// it: prefs.json was "dropped: queue full", a settings change lost at the next restart. There
+// are about nine files that ever come through here; ten slots means none is ever dropped.
+static InwJob inw_q[10];
 
 // One append stream (the message history log): records collect here in order
 // and the task appends them in one go. Only one path is supported; a different
@@ -542,10 +547,31 @@ def patch_mymesh(src):
         raise SystemExit("patch_meshcore.py: MyMesh.cpp command frame call changed upstream, patch did not apply")
     src = src.replace(old, "    inwAppFrame(true); handleCmdFrame(len); inwAppFrame(false);   // INW: the app's sends\n"
                            "  } else if (_iter_started")
+    # GitHub issue #9: the adverts MeshCore builds itself (the zero-hop advert, the app's
+    # "send advert", the timed ones) carry the position rounded to Settings > position
+    # accuracy, the same as InwNode::advertFlood (src/main.cpp inwLocShare).
+    old = "createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon)"
+    if src.count(old) < 1:
+        raise SystemExit("patch_meshcore.py: MyMesh.cpp self advert changed upstream, patch did not apply")
+    src = src.replace(old, "createSelfAdvert(_prefs.node_name, inwLocLat(), inwLocLon())")
+    # The clock after a restart: MeshCore sets it to "newest contact change + 1 s" on every
+    # start, even over a right time just read from the pager's clock chip - and that write
+    # goes on into the chip (target.h onSet), so the pager came back up to whenever a
+    # contact last changed, minutes or days ago (help desk, pager 1.2.8, 2026-10-12;
+    # reproduced 2026-10-16: 25 minutes back after the reset button, Wi-Fi off). Now it
+    # only ever moves the clock forward: a real time already set is kept.
+    old = "  bootstrapRTCfromContacts();\n"
+    if src.count(old) != 1:
+        raise SystemExit("patch_meshcore.py: MyMesh.cpp clock bootstrap changed upstream, patch did not apply")
+    src = src.replace(old,
+        "  { const uint32_t inw_t0 = getRTCClock()->getCurrentTime();   // INW: forward only\n"
+        "    bootstrapRTCfromContacts();\n"
+        "    if (inw_t0 > 1735689600UL && getRTCClock()->getCurrentTime() < inw_t0) getRTCClock()->setCurrentTime(inw_t0); }\n")
     old = '#include "MyMesh.h"\n'
     if not src.startswith(old):
         raise SystemExit("patch_meshcore.py: MyMesh.cpp includes changed upstream, patch did not apply")
-    src = old + "void inwAppFrame(bool on);   // INW: src/node.cpp\n" + src[len(old):]
+    src = old + ("void inwAppFrame(bool on);   // INW: src/node.cpp\n"
+                 "double inwLocLat(); double inwLocLon();   // INW: src/main.cpp, rounded position\n") + src[len(old):]
     return src
 
 

@@ -1,4 +1,6 @@
 #include "settings.h"
+#include "logstore.h"
+extern LogStore logs;
 #include <Preferences.h>
 #include <SPIFFS.h>
 #include <SD.h>
@@ -57,7 +59,12 @@ void UiSettings::save() {
   Preferences p;
   if (!p.begin("inw-ui", false)) return;
   p.putUChar("ver", VERSION);
-  p.putBytes("blob", this, sizeof(UiSettings));
+  // A blob that won't write (a full or damaged NVS) would bring back defaults - and
+  // the first-start setup - at every start, with nothing to say why. Say it.
+  if (p.putBytes("blob", this, sizeof(UiSettings)) != sizeof(UiSettings)) {
+    Serial.println("[ui] settings NOT saved to NVS (full or damaged?): the flash copy stands in");
+    logs.add(LOG_WARN, "settings not saved to nvs");
+  }
   p.end();
   saveMirror();
 }

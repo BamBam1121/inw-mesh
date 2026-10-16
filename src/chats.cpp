@@ -4,6 +4,7 @@
 #include "node.h"
 #include "history.h"
 #include "regions.h"
+#include "archive.h"
 void openChannelRegionScope(const uint8_t* secret16);   // settings_ui.cpp
 #include "notify.h"
 #include "fx.h"
@@ -156,14 +157,18 @@ public:
     if (!m || !g_node) return;
     char text[168];
     strlcpy(text, m->text, sizeof(text));
-    const uint32_t nid = history.add(_key, m->flags, ST_SENDING, g_node->name(), text, app::now());
+    // Sent again as the SAME message, not a new one: the copies heard of every send
+    // count together on it ("heard x3") and the chat doesn't show it twice. Its details
+    // count the tries.
+    const uint8_t tries = m->attempts ? m->attempts : 1;
+    history.setStatus(id, ST_SENDING, tries < 250 ? tries + 1 : 250);
     if (_key.type == CONV_CHANNEL) {
       const int idx = g_node->findChannelBySecret(_key.id);
-      if (idx >= 0) g_node->sendChannel(idx, text, nid);
+      if (idx >= 0) g_node->sendChannel(idx, text, id);
     } else if (ContactInfo* c = contact()) {
       uint8_t pub[32];
       memcpy(pub, c->id.pub_key, 32);
-      g_node->sendDM(pub, text, nid);
+      g_node->sendDM(pub, text, id);
     }
     _sel = -1;
     refresh();
@@ -595,6 +600,13 @@ static void openMessageActions(ThreadView* tv, uint32_t id) {
   const ConvKey ck = tv->key();
   m->value("notifications for this chat", [ck]() -> String { return notifyModeName(notifyMode(ck)); },
            [ck] { setNotifyMode(ck, (notifyMode(ck) + 1) % NM_COUNT); });
+  // Messages that have left this device's history but were kept on the SD card (issue #7).
+  if (archive::has(ck))
+    m->action("older messages on the sd card", [ck] {
+      nav.push(new TextPageView("Older messages", [ck](std::vector<String>& out) {
+        archive::read(ck, out, 300, (L::W - 24) / 7);
+      }, 3600000UL));                              // read once: the card is not re-read every pass
+    });
   // The app's Set Region Scope, from the channel's chat as there.
   ChannelDetails chd;
   const int chIdx = ck.type == CONV_CHANNEL && g_node ? g_node->findChannelBySecret(ck.id) : -1;
@@ -623,6 +635,14 @@ static void openMessageActions(ThreadView* tv, uint32_t id) {
       const String name = rt ? repeaterName(rt->h + h * rt->sz, rt->sz) : repeaterName(msg2->path + h, 1);
       m->info(label, [name]() -> String { return name; });
     }
+    // The region it came in on, not this channel's own sending scope (issue #6).
+    if (*history.region(id))
+      m->info("came in on", [id]() -> String {
+        const char* g = history.region(id);
+        if (!strcmp(g, History::REGION_PLAIN)) return String("no region (plain flood)");
+        if (!strcmp(g, History::REGION_UNKNOWN)) return String("a region not on this device");
+        return String("region ") + g;
+      });
     m->info("signal", [id]() -> String { HistMsg* x = history.find(id); return String(x ? x->snr4 / 4.0 : 0, 1) + " dB SNR"; });
   } else {
     m->info("status", [id]() -> String { HistMsg* x = history.find(id); if (!x) return String("");

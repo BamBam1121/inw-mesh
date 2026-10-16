@@ -41,6 +41,7 @@
 #include "app.h"
 #include "mascot.h"
 #include "regions.h"
+#include "archive.h"
 #include "node.h"
 #include "history.h"
 #include "dataio.h"
@@ -229,6 +230,39 @@ void inwStoreTick();
 void inwSetUserBusy(bool busy);
 
 static uint32_t s_hizUntil = 0;   // "batt hiz" test running until then
+
+// How exactly this node's position is told to others (adverts and telemetry replies):
+// 0 exact, else to the middle of a grid square ~100 m / 500 m / 1 km across (GitHub
+// issue #9). A fixed grid, not random jitter: every advert from the same spot gives the
+// same point, so many of them cannot be averaged back to the real one. The position
+// kept on the device, and shown in Settings, stays exact. In its own NVS key.
+static int8_t s_locPrec = -1;
+uint8_t app::locPrecision() {
+  if (s_locPrec < 0) {
+    s_locPrec = 0;
+    Preferences p;
+    if (p.begin("inw-fx", true)) { s_locPrec = min<int>(p.getUChar("locp", 0), 3); p.end(); }
+  }
+  return (uint8_t)s_locPrec;
+}
+void app::setLocPrecision(uint8_t v) {
+  s_locPrec = min<int>(v, 3);
+  Preferences p;
+  if (p.begin("inw-fx", false)) { p.putUChar("locp", (uint8_t)s_locPrec); p.end(); }
+}
+void inwLocShare(double& lat, double& lon) {
+  static const uint16_t STEP_M[] = {0, 100, 500, 1000};
+  const uint16_t m = STEP_M[app::locPrecision()];
+  if (!m || (lat == 0 && lon == 0)) return;
+  const double dLat = m / 111320.0;
+  lat = (floor(lat / dLat) + 0.5) * dLat;
+  double c = cos(lat * M_PI / 180.0);
+  if (c < 0.01) c = 0.01;
+  const double dLon = m / (111320.0 * c);
+  lon = (floor(lon / dLon) + 0.5) * dLon;
+}
+double inwLocLat() { double la = sensors.node_lat, lo = sensors.node_lon; inwLocShare(la, lo); return la; }
+double inwLocLon() { double la = sensors.node_lat, lo = sensors.node_lon; inwLocShare(la, lo); return lo; }
 
 void app::reboot() {
   battSave(true);
@@ -2169,6 +2203,7 @@ void loop() {
   // screen was still running when it was tapped back on a second later, and the
   // wake stalled 1.3 s. A timeout-sleep has already been idle far longer than that.
   inwSetUserBusy(!dimmer.asleep() || dimmer.idleFor() < 15000);
+  archive::tick(dimmer.asleep());      // messages leaving history go to the SD card in the dark
   lap(7);
   const uint32_t total = millis() - tLoop;
   if (total > 150) {

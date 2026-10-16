@@ -358,6 +358,13 @@ public:
 
 private:
   void collectNodes() {
+    // The picked node is a place in this list, and the list is rebuilt and sorted
+    // again whenever the contacts change - every few seconds on a busy mesh. Kept by
+    // its key, or the label at the bottom right jumped to whatever node took its place.
+    uint8_t keep[32];
+    const bool had = _focus >= 0 && _focus < (int)_nodes.size();
+    if (had) memcpy(keep, _nodes[_focus].pub, sizeof(keep));
+    _focus = -1;
     _nodes.clear();
     _collected = millis();
     if (!g_node) return;
@@ -381,6 +388,9 @@ private:
       if ((a.dist < 0) != (b.dist < 0)) return b.dist < 0;
       return a.dist < b.dist;
     });
+    if (had)
+      for (int i = 0; i < (int)_nodes.size(); i++)
+        if (!memcmp(_nodes[i].pub, keep, sizeof(keep))) { _focus = i; break; }
   }
 
   void jump(int d) {

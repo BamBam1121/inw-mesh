@@ -349,7 +349,7 @@ static uint8_t s_fresh = 0;
 // contact's last advert, one file per contact). Everything takes the whole store.
 static const char* const WIPE_DATA[] = {
   "/contacts3", "/contacts3.bak", "/contacts3.tmp", "/channels2", "/channels2.bak", "/channels2.tmp",
-  "/hist.log", "/hist.tmp", "/hist_read.bin", "/hist_route.bin", "/regions.bin", "/chregion.bin"};
+  "/hist.log", "/hist.tmp", "/hist_read.bin", "/hist_route.bin", "/hist_region.bin", "/regions.bin", "/chregion.bin"};
 static const char* const WIPE_REST[] = {"/prefs.json", "/identity/_main.id", "/ui.bin"};
 
 static bool wipedAtLevel1(const char* path) {

@@ -19,7 +19,16 @@ class InwRTCClock : public mesh::RTCClock {
   ESP32RTCClock _base;
 public:
   void (*onSet)(uint32_t epoch) = nullptr;
-  void begin() { _base.begin(); }
+  // MeshCore's ESP32RTCClock::begin() sets the clock to 15 May 2024 after a power-on
+  // reset - and the reset button is one. It runs when the radio starts, after the time
+  // was already read back from the clock chip (main.cpp), so every reset lost the time
+  // until Wi-Fi or a GPS fix set it again (a help desk report, pager 1.2.8, 2026-10-12).
+  // A time already set is kept.
+  void begin() {
+    const uint32_t keep = _base.getCurrentTime();
+    _base.begin();
+    if (keep > 1735689600UL) _base.setCurrentTime(keep);    // after 2025-01-01: a real time
+  }
   uint32_t getCurrentTime() override { return _base.getCurrentTime(); }
   void setCurrentTime(uint32_t t) override {
     _base.setCurrentTime(t);
@@ -30,6 +39,7 @@ public:
 };
 
 namespace ext { void telemetry(CayenneLPP& lpp); }   // src/extport.cpp
+void inwLocShare(double& lat, double& lon);   // src/main.cpp: rounds a position to the chosen accuracy
 
 // No environment sensors on the board itself, only what is plugged into the top
 // header (src/extport.cpp). Location comes from our GPS driver, written into
@@ -39,7 +49,9 @@ public:
   bool hasFix = false;
   bool querySensors(uint8_t perms, CayenneLPP& telemetry) override {
     if ((perms & TELEM_PERM_LOCATION) && (node_lat != 0 || node_lon != 0)) {
-      telemetry.addGPS(TELEM_CHANNEL_SELF, (float)node_lat, (float)node_lon, (float)node_altitude);
+      double lat = node_lat, lon = node_lon;
+      inwLocShare(lat, lon);                    // main.cpp: Settings > position accuracy
+      telemetry.addGPS(TELEM_CHANNEL_SELF, (float)lat, (float)lon, (float)node_altitude);
     }
     if (perms & TELEM_PERM_ENVIRONMENT) ext::telemetry(telemetry);
     return true;

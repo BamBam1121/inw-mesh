@@ -65,6 +65,8 @@ namespace app {
   bool     powerOff(const char* why); // saves, then cuts the battery; false if USB is in
   // Distance/bearing helpers for the map and contact detail.
   bool     myPosition(double& lat, double& lon);
+  uint8_t  locPrecision();             // position sent to others: 0 exact, 1 ~100 m, 2 ~500 m, 3 ~1 km
+  void     setLocPrecision(uint8_t p);
   double   distanceKm(double lat1, double lon1, double lat2, double lon2);
   const char* fmtDistance(double km);
   // Open things from anywhere (defined in the view files).
