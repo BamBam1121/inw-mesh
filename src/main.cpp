@@ -1803,6 +1803,11 @@ void setup() {
   nav.begin(&display, &theme);
   nav.push(makeHomeView());
   ota::announce();                                // "Updated, now on X" after an update restarted it
+  if (history.rescued()) {
+    char msg[48];
+    snprintf(msg, sizeof(msg), "%u lost messages put back", (unsigned)history.rescued());
+    nav.toast(msg, 5000);
+  }
   // A new node is named after its key prefix; ask for a real name once.
   if (g_node) {
     char hex[10];

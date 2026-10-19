@@ -101,6 +101,13 @@ public:
   void clearConv(const ConvKey& k);
   void clearAll();
 
+  // Lost messages put back (history_rescue.cpp): every copy of the log on the device and
+  // its SD card merged in, nothing doubled, chats cleared on purpose left cleared. Runs
+  // at start-up when a copy has changed; requestRescue() makes the next start look again
+  // whatever. rescued(): how many came back at this start.
+  static void requestRescue();
+  uint16_t rescued() const { return _rescued; }
+
   // Distinct conversations that have messages, most recent first.
   uint16_t conversations(ConvKey* out, uint16_t max);
 
@@ -113,6 +120,10 @@ private:
   void writeStatus(const HistMsg& m);
   void loadLog();
   void compact();
+  bool writeWhole();
+  uint16_t rescue(bool force);
+  void noteCleared(const ConvKey* k, uint32_t ts);
+  uint16_t _rescued = 0;
   void saveReads();
   void loadReads();
   void loadRoutes();

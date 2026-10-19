@@ -916,6 +916,17 @@ static void backupsMenu() {
   });
   m->action("import contacts + channels from sd", [] { nav.busy("importing, one moment..."); nav.toast(importJsonNow(), 4000); });
   m->action("recover missing contacts from backups", [] { nav.busy("checking backups..."); nav.toast(recoverMissingContacts(), 4000); });
+  // Every copy of the messages on the pager and the card is looked through at the
+  // restart, and any missing here are put back (history_rescue.cpp). It also happens by
+  // itself at a start where a copy has changed; this is for when it is wanted now.
+  m->action("restore messages", [] {
+    confirm("Restore messages?", "looks through every copy on the device and the sd card and puts back any missing, then restarts", [] {
+      History::requestRescue();
+      nav.toast("restarting to restore");
+      delay(800);
+      app::reboot();
+    });
+  });
   m->action("restore contacts from sd mirror", [] {
     confirm("Restore from SD?", "replaces contacts + channels with /inw on the card, then reboots", [] {
       if (!sdMount() || !SD.exists("/inw/contacts3")) { nav.toast("no /inw backup on sd"); return; }
