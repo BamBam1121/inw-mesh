@@ -151,6 +151,21 @@ struct MapNode {
   float dist;
 };
 
+// What the map shows of the nodes (GitHub #10): every node with names, every node as
+// dots only, the favourites, or none. Kept as two settings (which nodes, and names on
+// or off) that Settings > Display shows separately; the map's own switch steps
+// through these four.
+enum NodeShow : uint8_t { SHOW_ALL, SHOW_DOTS, SHOW_FAVS, SHOW_NONE };
+static NodeShow nodeShow() {
+  if (ui_settings.mapNodes >= 2) return SHOW_NONE;
+  if (ui_settings.mapNodes == 1) return SHOW_FAVS;
+  return ui_settings.mapLabels ? SHOW_ALL : SHOW_DOTS;
+}
+static void setNodeShow(NodeShow s) {
+  ui_settings.mapNodes = s == SHOW_NONE ? 2 : s == SHOW_FAVS ? 1 : 0;
+  if (s != SHOW_NONE) ui_settings.mapLabels = s != SHOW_DOTS;
+}
+
 } // namespace
 
 class MapView : public View {
@@ -162,6 +177,8 @@ public:
     if (lat != 0 || lon != 0) { _lat = lat; _lon = lon; }
     else if (app::myPosition(mla, mlo)) { _lat = mla; _lon = mlo; }
     else { _lat = ui_settings.mapLat; _lon = ui_settings.mapLon; }
+    // Opened on one node ("show on map"): that one is on the map whatever is hidden.
+    if (focus) strlcpy(_pin, focus, sizeof(_pin));
     collectNodes();
     if (focus) {
       for (int i = 0; i < (int)_nodes.size(); i++) if (!strcmp(_nodes[i].name, focus)) _focus = i;
@@ -195,7 +212,7 @@ public:
       }
       case 'n': jump(1); return;
       case 'b': jump(-1); return;
-      case 'm': ui_settings.mapLabels = !ui_settings.mapLabels; dirty = true; return;
+      case 'm': stepNodeShow(); return;
       case 't': _layer = !_layer; dirty = true; return;
       case '=': case '+': rotate(1); return;
       case '-': rotate(-1); return;
@@ -351,9 +368,15 @@ public:
       g.fillRect(L::W - g.textWidth(hint) - 12, L::H - 22, g.textWidth(hint) + 12, 20, t.bg);
       g.drawString(hint, L::W - g.textWidth(hint) - 6, L::H - 20);
     }
-    char cnt[24];
-    snprintf(cnt, sizeof(cnt), "%d nodes", (int)_nodes.size());
-    drawPill(g, L::W - g.textWidth(cnt) - 22, MAP_Y + 4, g.textWidth(cnt) + 16, 18, t.panel, t.txt, cnt);
+    char cnt[32];
+    switch (nodeShow()) {
+      case SHOW_NONE: strlcpy(cnt, "nodes hidden", sizeof(cnt)); break;
+      case SHOW_FAVS: snprintf(cnt, sizeof(cnt), "%d favourite%s", (int)_nodes.size(), _nodes.size() == 1 ? "" : "s"); break;
+      case SHOW_DOTS: snprintf(cnt, sizeof(cnt), "%d nodes, dots", (int)_nodes.size()); break;
+      default:        snprintf(cnt, sizeof(cnt), "%d nodes", (int)_nodes.size()); break;
+    }
+    _cntX = L::W - g.textWidth(cnt) - 22;
+    drawPill(g, _cntX, MAP_Y + 4, g.textWidth(cnt) + 16, 18, t.panel, t.txt, cnt);
   }
 
 private:
@@ -373,8 +396,11 @@ private:
     const bool me = app::myPosition(mla, mlo);
     ContactsIterator it = g_node->startContactsIterator();
     ContactInfo c;
+    const NodeShow show = nodeShow();
     while (it.hasNext(g_node, c)) {
       if (!c.type || (!c.gps_lat && !c.gps_lon)) continue;
+      const bool pinned = _pin[0] && !strcmp(c.name, _pin);
+      if (!pinned && (show == SHOW_NONE || (show == SHOW_FAVS && !(c.flags & 1)))) continue;
       MapNode n;
       memcpy(n.pub, c.id.pub_key, 32);
       strlcpy(n.name, c.name, sizeof(n.name));
@@ -393,8 +419,23 @@ private:
         if (!memcmp(_nodes[i].pub, keep, sizeof(keep))) { _focus = i; break; }
   }
 
+  // The map's own switch for the nodes: names, dots only, favourites, none, and round.
+  void stepNodeShow() {
+    static const char* const SAY[] = {"nodes with names", "nodes as dots only", "favourites only", "nodes hidden"};
+    const NodeShow s = (NodeShow)((nodeShow() + 1) % 4);
+    setNodeShow(s);
+    collectNodes();
+    nav.toast(SAY[s]);
+    dirty = true;
+  }
+
   void jump(int d) {
-    if (_nodes.empty()) { nav.toast("no contacts have shared a position"); return; }
+    if (_nodes.empty()) {
+      const NodeShow s = nodeShow();
+      nav.toast(s == SHOW_NONE ? "nodes are hidden: m shows them"
+                : s == SHOW_FAVS ? "no favourites have shared a position" : "no contacts have shared a position");
+      return;
+    }
     const int n = _nodes.size();
     _focus = _focus < 0 ? (d > 0 ? 0 : n - 1) : ((_focus + d) % n + n) % n;
     _lat = _nodes[_focus].lat;
@@ -408,6 +449,8 @@ private:
   double _lat = 0, _lon = 0;
   int _z = 12, _focus = -1;
   uint8_t _layer = 0;
+  char _pin[32] = "";                  // the node the map was opened on, always shown
+  int _cntX = L::W;                    // the node count at the top right: the nodes switch (touch)
   uint32_t _gen = 0, _collected = 0, _last = 0;
 };
 

@@ -577,7 +577,10 @@ def clean_report(b):
            "why": s("why", 80), "reset": s("reset", 24), "uptime_s": i("uptime_s"), "heap_free": i("heap_free"),
            "heap_min": i("heap_min"), "psram_free": i("psram_free"), "battery": i("battery"),
            "charging": bool(b.get("charging")), "radio": bool(b.get("radio")), "log": s("log", 6000)}
-    for k, n in (("name", 40), ("task", 16), ("pc", 12), ("vaddr", 12), ("backtrace", 240), ("elf_sha", 16)):
+    # "note": what the owner typed when sending a log from Tools (firmware after pager
+    # 1.2.12 / T-Deck 1.2.6-beta1).
+    for k, n in (("name", 40), ("note", 300), ("task", 16), ("pc", 12), ("vaddr", 12), ("backtrace", 240),
+                 ("elf_sha", 16)):
         if b.get(k):
             rep[k] = s(k, n)
     if b.get("cause") is not None:
@@ -666,6 +669,8 @@ def report_noise(rep):
     - A "crash" with no dump and no log from before it: the reset an install ends with,
       or a power cut. There is nothing in it to work from.
     """
+    if rep.get("note"):
+        return ""                                        # someone wrote to us: always read it
     if rep["reset"] == "brownout" or rep["why"] == "brownout":
         return "brownout"
     if rep["kind"] != "crash":
@@ -771,9 +776,13 @@ def mail_report(rep):
                                 {"t-deck": "T-Deck", "t-lora-pager": "Pager"}.get(rep["board"], rep["board"]),
                                 "crash" if rep["kind"] == "crash" else "report", rep["version"],
                                 where or (": " + rep["why"] if rep["why"] else ""))
+    note = re.sub(r"[\r\n]", " ", rep.get("note") or "").strip()
+    if note:
+        subject += ' - "%s"' % (note[:60] + ("..." if len(note) > 60 else ""))
     lines = [
         "From: %s" % (who or "(no name: firmware older than the one that sends it)"),
         "Device %s, firmware %s" % (rep["device"], rep["version"]),
+        "They wrote: %s" % (note or "(nothing)"),
         "Kind: %s (%s)" % (rep["kind"], rep["why"] or "-"),
         "Last reset: %s, up %d s" % (rep["reset"], rep["uptime_s"]),
         "Memory: %d free, lowest %d, PSRAM %d free" % (rep["heap_free"], rep["heap_min"], rep["psram_free"]),
