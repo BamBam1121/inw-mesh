@@ -1,5 +1,7 @@
 #include "history.h"
 #include "archive.h"
+#include "logstore.h"
+extern LogStore logs;
 #include <esp_heap_caps.h>
 
 History history;
@@ -15,6 +17,9 @@ static const char* REGION_PATH = "/hist_region.bin";   // History::region(), Git
 struct StatusRec { uint32_t id; uint8_t status, attempts, repeats; uint16_t rtt10; } __attribute__((packed));
 
 bool History::begin() {
+  // A tidy-up (compact) cut off between removing the old log and renaming the new one
+  // into its place: the new one is whole (it was checked before the old one went).
+  if (!SPIFFS.exists(LOG_PATH) && SPIFFS.exists("/hist.tmp")) SPIFFS.rename("/hist.tmp", LOG_PATH);
   _ring = (HistMsg*)heap_caps_calloc(CAP, sizeof(HistMsg), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   if (!_ring) _ring = (HistMsg*)calloc(CAP, sizeof(HistMsg));
   if (!_ring) return false;
@@ -24,6 +29,7 @@ bool History::begin() {
   loadRoutes();
   _rgn = (char*)heap_caps_calloc(CAP, REGION_LEN, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   loadRegions();
+  _rescued = rescue(false);       // lost messages back from any copy there is (history_rescue.cpp)
   return true;
 }
 
@@ -89,8 +95,13 @@ void History::loadLog() {
     } else if (kind == 'D') {
       ConvKey k;
       if (f.read((uint8_t*)&k, sizeof(k)) != sizeof(k)) break;
-      for (uint16_t i = 0; i < _count; i++) if (at(i)->conv == k) at(i)->conv.type = 0;
+      uint32_t upTo = 0;
+      for (uint16_t i = 0; i < _count; i++) if (at(i)->conv == k) { if (at(i)->ts > upTo) upTo = at(i)->ts; at(i)->conv.type = 0; }
+      noteCleared(&k, upTo);       // so putting lost messages back leaves this chat cleared
     } else if (kind == 'X') {
+      uint32_t upTo = 0;
+      for (uint16_t i = 0; i < _count; i++) if (at(i)->ts > upTo) upTo = at(i)->ts;
+      noteCleared(nullptr, upTo);
       _count = 0; _head = 0;
     } else {
       break;   // torn tail from a power cut: keep everything read so far
@@ -102,18 +113,43 @@ void History::loadLog() {
   if (fileSize > (size_t)CAP * (sizeof(HistMsg) + 1) * 2) compact();
 }
 
+// The log rewritten with only what is in history. The new copy has to be all there
+// before the old log goes: on a store with little room left (thousands of contacts'
+// files) it used to come out short or empty and was swapped in anyway - every message
+// gone at the next start, and the SD card's copy written over by the next backup.
 void History::compact() {
-  File f = SPIFFS.open("/hist.tmp", FILE_WRITE);
-  if (!f) return;
-  const char kind = 'N';          // must match what add() writes, or paths are lost
+  if (!writeWhole()) logs.add(LOG_WARN, "msgs tidy-up skipped: store full?");
+}
+
+// The log written afresh from what history holds: put together in memory, written in
+// one go (each write call on this store costs a good fraction of a second, whatever its
+// size), read back for its size, and only then swapped in for the old log.
+bool History::writeWhole() {
+  size_t n = 0;
+  for (uint16_t i = 0; i < _count; i++) if (at(i)->conv.type) n++;
+  const size_t want = n * (1 + sizeof(HistMsg));
+  uint8_t* buf = want ? (uint8_t*)heap_caps_malloc(want, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : nullptr;
+  if (want && !buf) return false;
+  size_t o = 0;
   for (uint16_t i = 0; i < _count; i++) {
     if (!at(i)->conv.type) continue;
-    f.write((const uint8_t*)&kind, 1);
-    f.write((const uint8_t*)at(i), sizeof(HistMsg));
+    buf[o++] = 'N';               // must match what add() writes, or paths are lost
+    memcpy(buf + o, at(i), sizeof(HistMsg));
+    o += sizeof(HistMsg);
   }
+  inwDropPath(LOG_PATH);          // queued appends are in what is written here
+  File f = SPIFFS.open("/hist.tmp", FILE_WRITE);
+  if (!f) { free(buf); return false; }
+  const size_t wrote = want ? f.write(buf, want) : 0;
   f.close();
+  free(buf);
+  File chk = SPIFFS.open("/hist.tmp", FILE_READ);
+  const size_t got = chk ? chk.size() : 0;
+  if (chk) chk.close();
+  if (wrote != want || got != want) { SPIFFS.remove("/hist.tmp"); return false; }
   SPIFFS.remove(LOG_PATH);
   SPIFFS.rename("/hist.tmp", LOG_PATH);
+  return true;
 }
 
 uint32_t History::add(const ConvKey& k, uint8_t flags, uint8_t status, const char* sender,
@@ -397,13 +433,18 @@ void History::markRead(const ConvKey& k) {
 }
 
 void History::clearConv(const ConvKey& k) {
-  for (uint16_t i = 0; i < _count; i++) if (at(i)->conv == k) at(i)->conv.type = 0;
+  uint32_t upTo = 0;
+  for (uint16_t i = 0; i < _count; i++) if (at(i)->conv == k) { if (at(i)->ts > upTo) upTo = at(i)->ts; at(i)->conv.type = 0; }
+  noteCleared(&k, upTo);           // cleared on purpose: never put back (history_rescue.cpp)
   appendRecord('D', &k, sizeof(k));
   archive::forget(k);              // and what the SD card kept of it
   gen++;
 }
 
 void History::clearAll() {
+  uint32_t upTo = 0;
+  for (uint16_t i = 0; i < _count; i++) if (at(i)->ts > upTo) upTo = at(i)->ts;
+  noteCleared(nullptr, upTo);      // cleared on purpose: never put back (history_rescue.cpp)
   _count = 0; _head = 0;
   archive::forgetAll();
   inwDropPath(LOG_PATH);          // queued records would recreate what's being cleared

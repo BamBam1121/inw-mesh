@@ -291,6 +291,7 @@ void inwProgress(const char* what, uint32_t done, uint32_t total);   // main.cpp
 static const char* s_progress = nullptr;   // set while a backup runs: copies show a progress screen
 
 static size_t copyFileImpl(fs::FS& from, const char* src, fs::FS& to, const char* dst);
+static const char* const HIST_KEEP = "/inw/hist.keep.log";   // the card's messages, set aside (sdBackupNow)
 static size_t copyFile(fs::FS& from, const char* src, fs::FS& to, const char* dst) {
   const uint32_t t0 = millis();
   const size_t n = copyFileImpl(from, src, to, dst);
@@ -1007,6 +1008,18 @@ const char* sdBackupNow(bool force) {
     if (SPIFFS.exists("/chregion.bin")) copyFile(SPIFFS, "/chregion.bin", SD, "/inw/chregion.bin");   // channels' region scopes
     if (SPIFFS.exists("/regions.bin")) copyFile(SPIFFS, "/regions.bin", SD, "/inw/regions.bin");      // the regions added
     s_progress = "copying messages to sd";
+    // Far fewer messages on the device than on the card: something lost them (or they
+    // were cleared). The card's copy may be the only one left, so it is set aside, not
+    // written over (Settings > Backups > restore messages from sd card takes the bigger).
+    {
+      const size_t had = fileSize(SD, "/inw/hist.log"), now = fileSize(SPIFFS, "/hist.log");
+      if (had > 8192 && now < had / 2 && fileSize(SD, HIST_KEEP) < had) {
+        SD.remove(HIST_KEEP);
+        if (SD.rename("/inw/hist.log", HIST_KEEP))
+          logs.add(LOG_WARN, "messages: %u kB on the card, %u kB here: the card's kept as hist.keep.log",
+                   (unsigned)(had / 1024), (unsigned)(now / 1024));
+      }
+    }
     if (copyFile(SPIFFS, "/hist.log", SD, "/inw/hist.log")) n++;
     copyFile(SPIFFS, "/hist_read.bin", SD, "/inw/hist_read.bin");
   }
