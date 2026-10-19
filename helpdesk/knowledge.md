@@ -224,6 +224,26 @@ Your own themes (pager 1.2.7 and later, T-Deck 1.2.4-beta4 and later)
   can be fixed by choosing another theme in Settings > Theme, or by sending it again with the
   same name and better colours.
 
+Messages gone after a restart or an update (fixed in pager 1.2.13 / beta 1.2.14, 2026-10-19)
+- Cause: on a pager with a lot stored, the start-up tidy-up of the message list could replace it with an
+  empty copy. The SD card's copy was then not put back (the list was there, just empty), and the next SD
+  backup wrote over the card's copy too.
+- 1.2.13 and later put them back by themselves: every start looks through every copy of the messages on
+  the pager and the SD card (the backup in /inw, a copy a backup set aside as /inw/hist.keep.log, any
+  hist*.log copied onto the card) and adds any that are missing; it says "N lost messages put back".
+  Chats cleared on purpose stay cleared. Settings > Backups > "restore messages" looks again on demand.
+- Someone who lost messages: update to 1.2.13 (or 1.2.14 beta) with the SD card IN. Before updating,
+  they should not run "back up to sd now". If they can, copy the card's inw folder to a computer first.
+- No SD card, or a card whose copy was already written over: the messages can't come back. Advise keeping
+  a card in with backups on (Settings > Backups).
+
+Pager 1.2.14 (beta, 2026-10-19) - only for pagers with beta updates switched on
+- The 1.2.13 message fix, everything in 1.2.12, and: map node display (Settings > Display > map: nodes on
+  map all / favourites / none, node names on or off; the m key on the map steps through names, dots only,
+  favourites, hidden; GitHub #10). Tools > send log to the developer asks "what happened?" first.
+
+New in 1.2.13 (released 2026-10-19, the current pager release): 1.2.11 plus the message fix above.
+
 Pager 1.2.12 (beta, 2026-10-16) - only for pagers with beta updates switched on
 - Location privacy (GitHub idea #9): Settings > position > "position accuracy": exact, about 100 m,
   about 500 m or about 1 km. The position sent in adverts and in answers to "telemetry" requests is moved
@@ -251,7 +271,7 @@ Pager 1.2.12 (beta, 2026-10-16) - only for pagers with beta updates switched on
   firmware (a launcher setup) isn't reported as a Squatch Mesh crash.
 - Everything in 1.2.11 is in it. Everyone without beta updates stays on 1.2.11.
 
-New in 1.2.11 (released 2026-10-16, the current pager release; it was the beta from 2026-10-03)
+New in 1.2.11 (released 2026-10-16; it was the beta from 2026-10-03)
 - The map crash is fixed: it could crash while downloading map tiles over Wi-Fi and saving them to the SD
   card. Pagers on 1.2.8 sent these crash reports.
 - No rainbow static when a message wakes the screen or at start-up.
