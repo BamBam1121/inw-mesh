@@ -26,7 +26,7 @@
 .sqh-lean { transform-origin: 170px 200px; transition: transform 0.35s cubic-bezier(0.3, 1.5, 0.5, 1); }
 .sqh-breath { transform-origin: 150px 210px; }
 .sqh-head { transform-origin: 112px 118px; }
-.sqh-arm { transform-origin: 124px 166px; }
+.sqh-arm { transform-origin: 108px 160px; }
 .sqh-eyes { transform-origin: 110px 98px; }
 .sqh-pupils { transition: transform 0.12s ease-out; }
 .sqh-hole { transform-origin: 170px 115px; }

@@ -125,16 +125,18 @@
         // the arm reaching up to grip the rim, behind his head
         '<path d="M168 76Q152 52 129 43" fill="none" stroke="var(--sqh-fur)" stroke-width="12" stroke-linecap="round"/>' +
         // body
-        '<path d="' + shaggy(150, 182, 42, 46, 16, 0.1) + '" fill="var(--sqh-fur)" stroke="var(--sqh-fur)" stroke-width="2" stroke-linejoin="round"/>' +
-        '<ellipse cx="141" cy="190" rx="20" ry="22" fill="var(--sqh-skin)"/>' +
-        '<path d="M134 183q3 2 6 0M142 189q3 2 6 0" fill="none" stroke="var(--sqh-skin-dark)" stroke-width="1.4" stroke-linecap="round"/>' +
+        '<path d="' + shaggy(144, 178, 44, 48, 16, 0.1) + '" fill="var(--sqh-fur)" stroke="var(--sqh-fur)" stroke-width="2" stroke-linejoin="round"/>' +
+        // shoulders and neck, so the head sits on the body
+        '<path d="' + shaggy(120, 146, 36, 26, 14, 0.1) + '" fill="var(--sqh-fur)" stroke="var(--sqh-fur)" stroke-width="2" stroke-linejoin="round"/>' +
+        '<ellipse cx="136" cy="186" rx="20" ry="22" fill="var(--sqh-skin)"/>' +
+        '<path d="M129 179q3 2 6 0M137 185q3 2 6 0" fill="none" stroke="var(--sqh-skin-dark)" stroke-width="1.4" stroke-linecap="round"/>' +
         // scarf
         '<path d="M88 126Q112 141 139 128L137 137Q112 151 90 135Z" fill="var(--sqh-scarf)"/>' +
         '<path d="M108 141L120 141L113 156Z" fill="var(--sqh-scarf)"/>' +
         '<circle cx="114" cy="140" r="4.5" fill="var(--sqh-scarf-dark)"/>' +
         // the waving arm
         '<g class="sqh-arm">' +
-          '<path d="M124 166Q96 160 72 140" fill="none" stroke="var(--sqh-fur)" stroke-width="14" stroke-linecap="round"/>' +
+          '<path d="M108 160Q90 156 72 140" fill="none" stroke="var(--sqh-fur)" stroke-width="14" stroke-linecap="round"/>' +
           '<circle cx="56" cy="124" r="3.6" fill="var(--sqh-skin)"/><circle cx="61" cy="119.5" r="3.8" fill="var(--sqh-skin)"/>' +
           '<circle cx="67.5" cy="118.5" r="3.7" fill="var(--sqh-skin)"/><circle cx="73" cy="122" r="3.4" fill="var(--sqh-skin)"/>' +
           '<circle cx="55" cy="136" r="3.2" fill="var(--sqh-skin)"/>' +
@@ -454,7 +456,7 @@
   // Show him once his stylesheet is in (or after a moment regardless).
   const css = document.createElement("link");
   css.rel = "stylesheet";
-  css.href = "/assets/squatch-helper.css?v=2";
+  css.href = "/assets/squatch-helper.css?v=3";
   let shown = false;
   const show = () => { if (!shown) { shown = true; root.hidden = false; enter(); } };
   css.addEventListener("load", show);
