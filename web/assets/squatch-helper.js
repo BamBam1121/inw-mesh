@@ -398,6 +398,7 @@
   const close = root.querySelector(".sqh-close");
   const pupils = root.querySelector(".sqh-pupils");
   const headEl = root.querySelector(".sqh-head");
+  const scene_ = button.querySelector("svg");
   // One mood at a time; each is a class on .sqh that the stylesheet turns into a face
   // and a movement.
   const MOODS = ["surprised", "happy", "sleep", "startle", "dizzy", "pager", "sneeze", "thinking", "tickle", "look", "dance",
@@ -418,6 +419,8 @@
     clearTimeout(moodTimer);
     MOODS.forEach((m) => root.classList.remove(m));
     current = name || "";
+    // the spinning eyes and circling stars only run while he's dizzy
+    if (scene_.pauseAnimations) { if (name === "dizzy") scene_.unpauseAnimations(); else scene_.pauseAnimations(); }
     if (!name) { lookHome(); return; }
     void root.offsetWidth;             // the same mood twice in a row starts over
     root.classList.add(name);
@@ -691,7 +694,8 @@
     later(at, () => {
       if (root.hidden || leaving || !panel.hidden) return;
       try { sessionStorage.setItem(HELLO, "1"); } catch (e) { /* fine */ }
-      say("Need a hand?", 9000);
+      const h = new Date().getHours();
+      say(h >= 22 || h < 5 ? pick(["Up late? Me too.", "Night owl? Need a hand?"]) : "Need a hand?", 9000);
     });
   }
 
@@ -723,9 +727,15 @@
   // Show him once his stylesheet is in (or after a moment regardless).
   const css = document.createElement("link");
   css.rel = "stylesheet";
-  css.href = "/assets/squatch-helper.css?v=8";
+  css.href = "/assets/squatch-helper.css?v=9";
   let shown = false;
-  const show = () => { if (!shown) { shown = true; root.hidden = false; enter(); } };
+  const show = () => {
+    if (shown) return;
+    shown = true;
+    root.hidden = false;
+    if (scene_.pauseAnimations) scene_.pauseAnimations();
+    enter();
+  };
   css.addEventListener("load", show);
   later(2500, show);
   document.head.appendChild(css);

@@ -390,6 +390,9 @@
 .sqh-fine a { color: var(--muted, #86a597); }
 .sqh-fine a:hover { color: var(--heading, #eef6f1); }
 
+/* Big screens: a bigger sasquatch. */
+@media (min-width: 1500px) { .sqh { --sqh-w: 200px; --sqh-h: 247px; } }
+
 /* Phones: a smaller sasquatch, and the chat takes most of the screen while he waits. */
 @media (max-width: 560px) {
   .sqh { --sqh-w: 128px; --sqh-h: 158px; bottom: max(48px, calc(env(safe-area-inset-bottom, 0px) + 30px)); }
