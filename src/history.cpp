@@ -129,7 +129,7 @@ bool History::writeWhole() {
   for (uint16_t i = 0; i < _count; i++) if (at(i)->conv.type) n++;
   const size_t want = n * (1 + sizeof(HistMsg));
   uint8_t* buf = want ? (uint8_t*)heap_caps_malloc(want, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) : nullptr;
-  if (want && !buf) return false;
+  if (want && !buf) { Serial.printf("[history] save: no memory for %u bytes\n", (unsigned)want); return false; }
   size_t o = 0;
   for (uint16_t i = 0; i < _count; i++) {
     if (!at(i)->conv.type) continue;
@@ -139,14 +139,26 @@ bool History::writeWhole() {
   }
   inwDropPath(LOG_PATH);          // queued appends are in what is written here
   File f = SPIFFS.open("/hist.tmp", FILE_WRITE);
-  if (!f) { free(buf); return false; }
-  const size_t wrote = want ? f.write(buf, want) : 0;
+  if (!f) { free(buf); Serial.println("[history] save: /hist.tmp would not open"); return false; }
+  // In pieces: one write of the whole log (~180 kB) comes back with nothing written on
+  // a store that has seen a lot of churn, where room has to be cleared as it goes.
+  size_t wrote = 0;
+  while (wrote < want) {
+    const size_t n = min(want - wrote, (size_t)16384);
+    const size_t w = f.write(buf + wrote, n);
+    wrote += w;
+    if (w != n) break;
+  }
   f.close();
   free(buf);
   File chk = SPIFFS.open("/hist.tmp", FILE_READ);
   const size_t got = chk ? chk.size() : 0;
   if (chk) chk.close();
-  if (wrote != want || got != want) { SPIFFS.remove("/hist.tmp"); return false; }
+  if (wrote != want || got != want) {
+    Serial.printf("[history] save: wanted %u bytes, wrote %u, file has %u\n", (unsigned)want, (unsigned)wrote, (unsigned)got);
+    SPIFFS.remove("/hist.tmp");
+    return false;
+  }
   SPIFFS.remove(LOG_PATH);
   SPIFFS.rename("/hist.tmp", LOG_PATH);
   return true;
