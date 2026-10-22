@@ -39,12 +39,12 @@
 .sqh-out { transform-origin: 170px 210px; }
 .sqh-lean { transform-origin: 170px 200px; transition: transform 0.35s cubic-bezier(0.3, 1.5, 0.5, 1); }
 .sqh-breath { transform-origin: 140px 210px; }
-.sqh-head { transform-origin: 112px 124px; }
-.sqh-arm, .sqh-scratch { transform-origin: 100px 150px; }
+.sqh-head { transform-origin: 113px 124px; }
+.sqh-arm, .sqh-scratch { transform-origin: 98px 144px; }
 .sqh-fist { transform-origin: 103px 113px; }
 .sqh-board { transform-box: view-box; transform-origin: 59px 125px; }
-.sqh-e-open, .sqh-blink { transform-origin: 110px 96px; }
-.sqh-brows { transform-origin: 110px 84px; transition: transform 0.15s; }
+.sqh-e-open, .sqh-blink { transform-origin: 113px 95px; }
+.sqh-brows { transform-origin: 113px 86px; transition: transform 0.15s; }
 .sqh-hole { transform-origin: 170px 115px; }
 .sqh-burst { transform-origin: 150px 115px; }
 .sqh-radio path { transform-origin: 85.8px 120.4px; }
