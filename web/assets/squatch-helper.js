@@ -135,6 +135,14 @@
       dot(84.5, 144.5, 6.3) +
       '<circle class="sqh-thumb" cx="95" cy="131" r="2.7" fill="var(--sqh-skin)" stroke="var(--sqh-skin-dark)" stroke-width=".6"/>' +
       "</g>";
+    // a little wooden sign on a stick, held up beside him
+    const signArm = '<g class="sqh-sign">' +
+      '<path d="M100 150Q84 147 66 128" fill="none" stroke="var(--sqh-fur)" stroke-width="13" stroke-linecap="round"/>' +
+      '<g class="sqh-board"><path d="M59 125L42 101" stroke="#7a5530" stroke-width="3" stroke-linecap="round"/>' +
+        '<rect x="4" y="71" width="66" height="31" rx="3.5" fill="#d6a866" stroke="#7a5530" stroke-width="1.6"/>' +
+        '<path d="M8 78h58M8 94h58" stroke="#b8894a" stroke-width=".7" opacity=".6"/>' +
+        '<text class="sqh-sign-text" x="37" y="84.5" font-size="8.6" text-anchor="middle"><tspan x="37">NOT A GUY</tspan><tspan x="37" dy="10.5">IN A SUIT</tspan></text>' +
+      "</g>" + dot(60, 124, 7.5) + dot(53.5, 119, 3) + dot(54, 125.5, 3) + "</g>";
     const scratchArm = '<g class="sqh-scratch">' +
       '<path d="M100 150Q60 148 64 116Q68 88 80 74" fill="none" stroke="var(--sqh-fur)" stroke-width="12" stroke-linecap="round"/>' +
       '<g class="sqh-scratch-hand">' + dot(78.5, 64, 2.9) + dot(84, 61.5, 3) + dot(89.5, 64, 2.9) + dot(83.5, 70, 6.6) + "</g></g>";
@@ -154,6 +162,7 @@
         '<ellipse cx="112.5" cy="67" rx="27" ry="5" fill="#2a1640" stroke="#1d0f2e" stroke-width=".8"/></g>' +
       '<path d="M110 120c-12 0-21-6-21-14 0-4 1-7 3-9a11 11 0 0 1 18-5 11 11 0 0 1 18 5c2 2 3 5 3 9 0 8-9 14-21 14z" fill="var(--sqh-skin)"/>' +
       '<path class="sqh-brows" d="M92 84Q99 79 106 83.5M114 83.5Q121 79 128 84" fill="none" stroke="var(--sqh-fur-dark)" stroke-width="3" stroke-linecap="round"/>' +
+      '<path class="sqh-brows-sad" d="M92 83Q99 84 106 78.5M114 78.5Q121 84 128 83" fill="none" stroke="var(--sqh-fur-dark)" stroke-width="3" stroke-linecap="round"/>' +
       '<g class="sqh-e-open"><g class="sqh-blink">' +
         '<ellipse cx="101" cy="96" rx="5.3" ry="6.3" fill="#fff"/><ellipse cx="119" cy="96" rx="5.3" ry="6.3" fill="#fff"/>' +
         '<g class="sqh-pupils"><ellipse cx="101.5" cy="97" rx="3.3" ry="4.1" fill="#24160f"/><ellipse cx="119.5" cy="97" rx="3.3" ry="4.1" fill="#24160f"/>' +
@@ -169,6 +178,7 @@
       '<ellipse class="sqh-m-o" cx="110" cy="113.5" rx="3.3" ry="3.9" fill="#6e2a22"/>' +
       '<g class="sqh-m-grin"><path d="M100.5 109Q110 123 119.5 109Z" fill="#8e3b2f"/><path d="M102.6 109.6h14.8l-.9 2.7h-13z" fill="#fff"/></g>' +
       '<path class="sqh-m-wavy" d="M102.5 113.5q1.9-2 3.8 0t3.8 0 3.8 0 3.8 0" fill="none" stroke="#5a3422" stroke-width="1.8" stroke-linecap="round"/>' +
+      '<path class="sqh-m-frown" d="M103.5 116q6.5-5.5 13 0" fill="none" stroke="#5a3422" stroke-width="2" stroke-linecap="round"/>' +
       '<circle class="sqh-snot" cx="116" cy="107.5" r="3.4" fill="#bfe8ff" fill-opacity=".75" stroke="#fff" stroke-width=".6"/>' +
       '<ellipse class="sqh-mist" cx="94" cy="117" rx="9" ry="5.5" fill="#fff" fill-opacity=".7"/>' +
       '<path class="sqh-sweat" d="M141 70c2 3 3.2 5 3.2 6.6a3.2 3.2 0 0 1-6.4 0c0-1.6 1.2-3.6 3.2-6.6z" fill="#8fd3ff" stroke="#fff" stroke-width=".6"/>' +
@@ -211,7 +221,7 @@
         dot(103, 113, 11.5) + dot(93.5, 105.5, 4.3) + dot(92.5, 112.5, 4.4) + dot(93.5, 119.5, 4.3) + dot(99, 124.5, 3.6) +
         '<path d="M97 104q2 9 0 18" fill="none" stroke="var(--sqh-skin-dark)" stroke-width="1.3" stroke-linecap="round"/>' +
       "</g></g>" +
-      '<g clip-path="url(#sqh-clip)">' + moving(scarf + waveArm + pagerArm + head + scratchArm + grip, " sqh-drop") + "</g>" +
+      '<g clip-path="url(#sqh-clip)">' + moving(scarf + waveArm + pagerArm + signArm + head + scratchArm + grip, " sqh-drop") + "</g>" +
       '<g class="sqh-shards" fill="#1b2b24" stroke="var(--sqh-rim)" stroke-opacity=".55" stroke-width=".8" stroke-linejoin="round">' +
         SHARDS.map((s) => '<path class="sqh-shard" d="' + s[0] + '" style="--dx:' + s[1] + "px;--dy:" + s[2] + "px;--r:" + s[3] + 'deg"/>').join("") +
       "</g></svg>";
@@ -390,8 +400,9 @@
   const headEl = root.querySelector(".sqh-head");
   // One mood at a time; each is a class on .sqh that the stylesheet turns into a face
   // and a movement.
-  const MOODS = ["surprised", "happy", "sleep", "startle", "dizzy", "pager", "sneeze", "thinking", "tickle", "look", "dance"];
-  const OWN_EYES = ["pager", "look", "thinking", "sleep", "dizzy", "sneeze"];   // these steer his eyes themselves
+  const MOODS = ["surprised", "happy", "sleep", "startle", "dizzy", "pager", "sneeze", "thinking", "tickle", "look", "dance",
+    "sign", "worried"];
+  const OWN_EYES = ["pager", "look", "thinking", "sleep", "dizzy", "sneeze", "worried"];   // these steer his eyes themselves
   let leaving = false, hovering = false, settled = false, current = "", moodTimer = 0, lastGag = "", gags = 0;
   let lastActive = Date.now();
 
@@ -472,6 +483,15 @@
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !panel.hidden) { setOpen(false); button.focus(); }
   });
+
+  // Heading for his X? He'd rather you didn't.
+  close.addEventListener("pointerenter", () => {
+    if (leaving || still || !settled || (current && current !== "happy" && current !== "tickle")) return;
+    mood("worried", 0);
+    look(-0.3, -1);
+    say(pick(["Wait, don't go!", "Was it something I said?", "Nooo…", "I'll be quiet, promise."]), 1800);
+  });
+  close.addEventListener("pointerleave", () => { if (current === "worried" && !leaving) { mood("happy", 900); hideHello(); } });
 
   // The X: a happy goodbye, back into the hole, the hole seals, gone until a reload.
   close.addEventListener("click", () => {
@@ -634,6 +654,15 @@
         say(pick(["Boo!", "Peekaboo!", "Still here!"]), 1300);
       });
     },
+    sign() {
+      const lines = pick([["NOT A GUY", "IN A SUIT"], ["MESH", "> CELL"], ["NO BARS?", "NO PROBLEM"], ["WILL WAVE", "FOR HOPS"],
+        ["HONK IF", "YOU'RE A NODE"], ["REAL. ALSO", "BLURRY."]]);
+      const spans = root.querySelectorAll(".sqh-sign-text tspan");
+      spans[0].textContent = lines[0];
+      spans[1].textContent = lines[1];
+      mood("sign", 3600);
+      look(-0.6, 0.1);
+    },
     look() {
       mood("look", 2100);
       [[-1, 0], [1, 0.1], [-1, -0.2], [0.7, 0]].forEach((p, i) => later(i * 380, () => { if (current === "look") look(p[0], p[1]); }));
@@ -694,7 +723,7 @@
   // Show him once his stylesheet is in (or after a moment regardless).
   const css = document.createElement("link");
   css.rel = "stylesheet";
-  css.href = "/assets/squatch-helper.css?v=7";
+  css.href = "/assets/squatch-helper.css?v=8";
   let shown = false;
   const show = () => { if (!shown) { shown = true; root.hidden = false; enter(); } };
   css.addEventListener("load", show);
