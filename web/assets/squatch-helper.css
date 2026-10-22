@@ -1,7 +1,10 @@
-/* The sasquatch in the corner (assets/squatch-helper.js). He knocks on the inside of
-   the screen, breaks through its right edge, leans out of the hole and waves; a click
-   opens a small chat with the same helper as /help. Everything is under .sqh so
-   nothing here reaches the page around it. Uses the tokens from style.css. */
+/* The sasquatch at the right edge of every page (assets/squatch-helper.js): he breaks
+   through the screen, leans out of the hole, and pulls faces and gags; a click opens a
+   small chat with the same helper as /help. Everything is under .sqh so nothing here
+   reaches the page around it. Uses the tokens from style.css.
+
+   His moods are classes on .sqh (surprised, happy, sleep, startle, dizzy, pager, sneeze,
+   thinking, tickle, look); each shows the face parts it needs and moves him. */
 
 .sqh { --sqh-fur: #8b5a3c; --sqh-fur-dark: #5f3a24; --sqh-skin: #f6c7a1; --sqh-skin-dark: #e3a57c;
   --sqh-cheek: #f08f80; --sqh-scarf: var(--accent, #3dffa8); --sqh-scarf-dark: #1fa86c; --sqh-rim: #c6ffe4;
@@ -12,67 +15,167 @@
 .sqh[hidden], .sqh [hidden] { display: none !important; }
 .sqh-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
-/* ---- the scene: hole, cracks, shards and the sasquatch ------------------------------ */
+/* ---- the scene ------------------------------------------------------------------------ */
 .sqh-squatch { position: absolute; inset: 0; display: block; width: 100%; height: 100%; padding: 0; border: 0;
   background: none; cursor: pointer; pointer-events: none; -webkit-tap-highlight-color: transparent; }
 .sqh-squatch svg { display: block; width: 100%; height: 100%; overflow: visible; }
 /* Only what's drawn takes clicks, so the page under the empty corners still works. */
 .sqh-hole-fill, .sqh-out { pointer-events: visiblePainted; }
 .sqh-squatch:focus-visible { outline: none; }
-.sqh-squatch:focus-visible .sqh-rim { stroke: var(--accent, #3dffa8); stroke-width: 3; opacity: 1; }
+.sqh-squatch:focus-visible .sqh-rim { stroke: var(--accent, #3dffa8); stroke-width: 3; stroke-opacity: 1; }
+.sqh-drop { filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.5)); }
 
-.sqh-out, .sqh-lean, .sqh-breath, .sqh-head, .sqh-arm, .sqh-eyes, .sqh-hole, .sqh-cracks, .sqh-glow { transform-box: view-box; }
+.sqh-word, .sqh-zz, .sqh-bang, .sqh-q, .sqh-note { font-family: var(--display, system-ui, sans-serif); font-weight: 700; }
+.sqh-note { fill: var(--accent, #3dffa8); stroke: #062a1b; stroke-width: 2px; paint-order: stroke; }
+.sqh-word { fill: #eef6f1; stroke: #070b0a; stroke-width: 3px; paint-order: stroke; letter-spacing: 0.04em; }
+.sqh-zz { fill: #cfe6ff; stroke: #0c1c3d; stroke-width: 2px; paint-order: stroke; }
+.sqh-bang { fill: #ffd76a; stroke: #2a1a10; stroke-width: 2.5px; paint-order: stroke; }
+.sqh-q { fill: #eef6f1; stroke: #2a1a10; stroke-width: 2.5px; paint-order: stroke; }
+
+/* where things turn and grow from */
+.sqh-out, .sqh-lean, .sqh-breath, .sqh-head, .sqh-fist, .sqh-arm, .sqh-scratch, .sqh-hole, .sqh-cracks, .sqh-burst,
+.sqh-e-open, .sqh-blink, .sqh-brows, .sqh-radio path { transform-box: view-box; }
 .sqh-out { transform-origin: 170px 210px; }
 .sqh-lean { transform-origin: 170px 200px; transition: transform 0.35s cubic-bezier(0.3, 1.5, 0.5, 1); }
-.sqh-breath { transform-origin: 150px 210px; }
-.sqh-head { transform-origin: 112px 118px; }
-.sqh-arm { transform-origin: 108px 160px; }
-.sqh-eyes { transform-origin: 110px 98px; }
-.sqh-pupils { transition: transform 0.12s ease-out; }
+.sqh-breath { transform-origin: 140px 210px; }
+.sqh-head { transform-origin: 112px 124px; }
+.sqh-arm, .sqh-scratch { transform-origin: 100px 150px; }
+.sqh-fist { transform-origin: 103px 113px; }
+.sqh-e-open, .sqh-blink { transform-origin: 110px 96px; }
+.sqh-brows { transform-origin: 110px 84px; transition: transform 0.15s; }
 .sqh-hole { transform-origin: 170px 115px; }
-.sqh-shard { transform-box: fill-box; transform-origin: center; opacity: 0; }
+.sqh-burst { transform-origin: 150px 115px; }
+.sqh-radio path { transform-origin: 85.8px 120.4px; }
+.sqh-shard, .sqh-word, .sqh-puff, .sqh-zz, .sqh-note, .sqh-bang, .sqh-q, .sqh-m-o, .sqh-thumb, .sqh-mist, .sqh-stars circle,
+.sqh-scratch-hand { transform-box: fill-box; transform-origin: center; }
+.sqh-snot { transform-box: fill-box; transform-origin: 0% 60%; }
+.sqh-scr rect { transform-box: fill-box; transform-origin: 0% 50%; }
+.sqh-pupils { transition: transform 0.12s ease-out; }
 .sqh-crack { stroke-dasharray: 1; stroke-dashoffset: 0; }
-.sqh-glow { opacity: 0; }
-.sqh-stars circle { transform-box: fill-box; transform-origin: center; }
-@media (prefers-reduced-motion: no-preference) {
-  .sqh-stars circle { animation: sqh-twinkle 2.6s ease-in-out infinite; }
-  .sqh-stars circle:nth-child(3n) { animation-delay: -0.9s; animation-duration: 3.1s; }
-  .sqh-stars circle:nth-child(3n + 1) { animation-delay: -1.7s; animation-duration: 2.2s; }
-}
-@keyframes sqh-twinkle { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.6); } }
-.sqh-squatch .sqh-drop { filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.55)); }
+
+/* the face parts and props a mood brings out */
+.sqh-e-shut, .sqh-e-happy, .sqh-e-dizzy, .sqh-m-o, .sqh-m-grin, .sqh-m-wavy, .sqh-snot, .sqh-sweat, .sqh-bang, .sqh-q,
+.sqh-zzz, .sqh-notes, .sqh-fist, .sqh-orbit, .sqh-pager, .sqh-scratch, .sqh-puffs, .sqh-mist, .sqh-word, .sqh-burst, .sqh-glow, .sqh-shard { opacity: 0; }
+.sqh-cheeks { opacity: 0.6; }
+.sqh-e-open { transition: opacity 0.1s, transform 0.15s; }
+.sqh-e-shut, .sqh-e-happy, .sqh-e-dizzy, .sqh-m-smile, .sqh-m-o, .sqh-m-grin, .sqh-m-wavy, .sqh-arm, .sqh-pager,
+.sqh-scratch, .sqh-cheeks, .sqh-sweat, .sqh-bang, .sqh-q, .sqh-zzz, .sqh-snot, .sqh-orbit { transition: opacity 0.1s; }
 
 /* Hovered: he leans further out. */
 .sqh-squatch:hover .sqh-lean, .sqh.excited .sqh-lean { transform: translate(-7px, -3px) rotate(-5deg); }
 
+/* ---- faces ------------------------------------------------------------------------------ */
+.sqh.surprised .sqh-e-open, .sqh.startle .sqh-e-open { transform: scale(1.25); }
+.sqh.surprised .sqh-brows, .sqh.startle .sqh-brows, .sqh.look .sqh-brows { transform: translateY(-3px); }
+.sqh.surprised .sqh-m-smile, .sqh.startle .sqh-m-smile, .sqh.sleep .sqh-m-smile { opacity: 0; }
+.sqh.surprised .sqh-m-o, .sqh.startle .sqh-m-o { opacity: 1; }
+.sqh.surprised .sqh-bang, .sqh.startle .sqh-bang, .sqh.startle .sqh-sweat { opacity: 1; }
+.sqh.happy .sqh-e-open, .sqh.tickle .sqh-e-open { opacity: 0; }
+.sqh.happy .sqh-e-happy, .sqh.tickle .sqh-e-happy { opacity: 1; }
+.sqh.happy .sqh-m-smile, .sqh.tickle .sqh-m-smile { opacity: 0; }
+.sqh.happy .sqh-m-grin, .sqh.tickle .sqh-m-grin, .sqh.happy .sqh-cheeks, .sqh.tickle .sqh-cheeks { opacity: 1; }
+.sqh.sleep .sqh-e-open, .sqh.dizzy .sqh-e-open { opacity: 0; }
+.sqh.sleep .sqh-e-shut, .sqh.sleep .sqh-zzz, .sqh.sleep .sqh-snot { opacity: 1; }
+.sqh.sleep .sqh-m-o { opacity: 1; transform: scale(0.55); }
+.sqh.sleep .sqh-brows { transform: translateY(1.5px); }
+.sqh.dizzy .sqh-e-dizzy, .sqh.dizzy .sqh-orbit { opacity: 1; }
+.sqh.dizzy .sqh-m-smile, .sqh.thinking .sqh-m-smile { opacity: 0; }
+.sqh.dizzy .sqh-m-wavy, .sqh.thinking .sqh-m-wavy { opacity: 1; }
+.sqh.pager .sqh-arm, .sqh.thinking .sqh-arm { opacity: 0; }
+.sqh.pager .sqh-pager { opacity: 1; }
+.sqh.thinking .sqh-scratch, .sqh.thinking .sqh-q { opacity: 1; }
+.sqh.thinking .sqh-brows { transform: rotate(-6deg) translateY(-1px); }
+.sqh.dance .sqh-e-open { opacity: 0; }
+.sqh.dance .sqh-e-happy, .sqh.dance .sqh-m-grin, .sqh.dance .sqh-cheeks, .sqh.dance .sqh-notes { opacity: 1; }
+.sqh.dance .sqh-m-smile { opacity: 0; }
+/* Halloween week */
+.sqh-hat { display: none; }
+.sqh.spooky .sqh-hat { display: inline; }
+.sqh.spooky .sqh-tuft { display: none; }
+
 @media (prefers-reduced-motion: no-preference) {
-  /* ---- the first visit: knock, knock, crash, eyes in the dark, out he comes ---- */
+  /* ---- the first visit: knock, KNOCK, crash, eyes in the dark, out he comes ---- */
   .sqh.enter .sqh-cracks { animation: sqh-knock 0.9s linear both; }
   .sqh.enter .sqh-crack.a { animation: sqh-draw 0.22s ease-out 0.14s both; }
   .sqh.enter .sqh-crack.b { animation: sqh-draw 0.28s ease-out 0.5s both; }
+  .sqh.enter .sqh-word.w1 { animation: sqh-word 0.75s ease-out 0.1s both; }
+  .sqh.enter .sqh-word.w2 { animation: sqh-word 0.75s ease-out 0.46s both; }
+  .sqh.enter .sqh-burst { animation: sqh-flash 0.5s ease-out 0.84s both; }
   .sqh.enter .sqh-hole { animation: sqh-burst 0.42s cubic-bezier(0.2, 1.6, 0.4, 1) 0.86s both; }
   .sqh.enter .sqh-shard { animation: sqh-fly 0.95s cubic-bezier(0.15, 0.6, 0.35, 1) 0.86s both; }
-  .sqh.enter .sqh-glow { animation: sqh-glow 0.9s ease-in-out 1.15s both; }
-  .sqh.enter .sqh-out { animation: sqh-emerge 0.75s cubic-bezier(0.2, 1.35, 0.4, 1) 1.75s both; }
-  .sqh.enter .sqh-arm { animation: sqh-wave-big 0.42s ease-in-out 2.35s 4; }
-  .sqh.enter .sqh-head { animation: sqh-look 1.3s ease-in-out 2.2s both; }
+  .sqh.enter .sqh-fist { animation: sqh-punch 0.75s cubic-bezier(0.3, 0, 0.3, 1) 0.8s both; }
+  .sqh.enter .sqh-glow { animation: sqh-glow 0.9s ease-in-out 1.45s both; }
+  .sqh.enter .sqh-out { animation: sqh-emerge 0.75s cubic-bezier(0.2, 1.35, 0.4, 1) 2s both; }
+  .sqh.enter .sqh-head { animation: sqh-look 1.1s ease-in-out 2.45s both; }
+  .sqh.enter .sqh-arm { animation: sqh-wave-big 0.42s ease-in-out 3.7s 3; }
 
   /* ---- a later page in the same visit: the hole is there, he pops straight out ---- */
   .sqh.enter-quick .sqh-hole { animation: sqh-burst 0.3s ease-out both; }
   .sqh.enter-quick .sqh-out { animation: sqh-emerge 0.6s cubic-bezier(0.2, 1.35, 0.4, 1) 0.2s both; }
-  .sqh.enter-quick .sqh-arm { animation: sqh-wave-big 0.42s ease-in-out 0.7s 2; }
+  .sqh.enter-quick .sqh-arm { animation: sqh-wave-big 0.42s ease-in-out 0.8s 2; }
 
-  /* ---- settled in: breathing, a sway, blinks and a wave every few seconds ---- */
+  /* ---- settled in: breathing, a sway, blinks, twinkling stars, a wave every few seconds ---- */
   .sqh.idle .sqh-breath { animation: sqh-breathe 3.4s ease-in-out infinite; }
   .sqh.idle .sqh-head { animation: sqh-sway 5s ease-in-out infinite; }
-  .sqh.idle .sqh-eyes, .sqh.enter .sqh-eyes, .sqh.enter-quick .sqh-eyes { animation: sqh-blink 4.2s 1s infinite; }
+  .sqh .sqh-blink { animation: sqh-blink 4.2s 1s infinite; }
   .sqh.idle .sqh-arm { animation: sqh-wave 6s ease-in-out 1.5s infinite; }
-  .sqh.idle.duck .sqh-out { animation: sqh-duck 1.9s cubic-bezier(0.4, 0, 0.3, 1) both; }
-  .sqh.idle.duck .sqh-glow { animation: sqh-glow 1.9s ease-in-out both; }
+  .sqh-stars circle { animation: sqh-twinkle 2.6s ease-in-out infinite; }
+  .sqh-stars circle:nth-child(3n) { animation-delay: -0.9s; animation-duration: 3.1s; }
+  .sqh-stars circle:nth-child(3n + 1) { animation-delay: -1.7s; animation-duration: 2.2s; }
+  .sqh.duck .sqh-out { animation: sqh-duck 1.9s cubic-bezier(0.4, 0, 0.3, 1) both; }
+  .sqh.duck .sqh-glow { animation: sqh-glow 1.9s ease-in-out both; }
 
   /* hovered or clicked: a big, fast wave, and a hop on the click */
   .sqh-squatch:hover .sqh-arm, .sqh.excited .sqh-arm { animation: sqh-wave-big 0.42s ease-in-out infinite; }
   .sqh.excited .sqh-breath { animation: sqh-hop 0.45s ease-out 2; }
+
+  /* ---- moods (after the rules above, so they win) ---- */
+  .sqh.sleep .sqh-arm, .sqh.dizzy .sqh-arm, .sqh.look .sqh-arm, .sqh.sneeze .sqh-arm, .sqh.pager .sqh-arm,
+  .sqh.thinking .sqh-arm, .sqh.surprised .sqh-arm, .sqh.startle .sqh-arm { animation: none; }
+  .sqh.dance .sqh-breath { animation: sqh-dance 0.5s ease-in-out infinite; }
+  .sqh.dance .sqh-head { animation: sqh-bop 0.25s ease-in-out infinite alternate; }
+  .sqh.dance .sqh-arm { animation: sqh-wave-big 0.25s ease-in-out infinite; }
+  .sqh.dance .sqh-note { animation: sqh-zz 1.4s ease-out infinite; }
+  .sqh.dance .sqh-note:nth-child(2) { animation-delay: 0.45s; }
+  .sqh.dance .sqh-note:nth-child(3) { animation-delay: 0.9s; }
+  .sqh.surprised .sqh-bang, .sqh.startle .sqh-bang { animation: sqh-pop-in 0.35s cubic-bezier(0.2, 1.8, 0.4, 1) both; }
+  .sqh.surprised .sqh-breath { animation: sqh-flinch 0.4s ease-out both; }
+  .sqh.startle .sqh-breath { animation: sqh-jump 0.7s ease-out both; }
+  .sqh.startle .sqh-sweat { animation: sqh-drip 1.1s ease-in both; }
+  .sqh.happy .sqh-breath { animation: sqh-hop 0.45s ease-out 2; }
+  .sqh.tickle .sqh-breath { animation: sqh-giggle 0.12s linear 9; }
+  .sqh.tickle .sqh-head { animation: sqh-tilt 0.55s ease-in-out 2; }
+  .sqh.sleep .sqh-head { animation: sqh-nod 3.6s ease-in-out infinite; }
+  .sqh.sleep .sqh-breath { animation: sqh-breathe 4.8s ease-in-out infinite; }
+  .sqh.sleep .sqh-blink { animation: none; }
+  .sqh.sleep .sqh-zz { animation: sqh-zz 2.4s ease-out infinite; }
+  .sqh.sleep .sqh-zz:nth-child(2) { animation-delay: 0.8s; }
+  .sqh.sleep .sqh-zz:nth-child(3) { animation-delay: 1.6s; }
+  .sqh.sleep .sqh-snot { animation: sqh-snot 2.4s ease-in-out infinite; }
+  .sqh.dizzy .sqh-head { animation: sqh-wobble 0.9s ease-in-out infinite; }
+  .sqh.pager .sqh-head { animation: sqh-peer 0.5s ease-out both; }
+  .sqh.pager .sqh-thumb { animation: sqh-tap 0.18s ease-in-out infinite alternate; }
+  .sqh.pager .sqh-scr rect { animation: sqh-type 0.55s steps(5) both; }
+  .sqh.pager .sqh-scr rect:nth-child(1) { animation-delay: 0.3s; }
+  .sqh.pager .sqh-scr rect:nth-child(2) { animation-delay: 0.95s; }
+  .sqh.pager .sqh-scr rect:nth-child(3) { animation-delay: 1.6s; }
+  .sqh.pager .sqh-radio path { animation: sqh-radio 0.9s ease-out 2.2s 2 both; }
+  .sqh.pager .sqh-radio path:nth-child(2) { animation-delay: 2.35s; }
+  .sqh.pager .sqh-radio path:nth-child(3) { animation-delay: 2.5s; }
+  .sqh.thinking .sqh-scratch-hand { animation: sqh-scratch 0.13s linear infinite alternate; }
+  .sqh.thinking .sqh-head { animation: sqh-ponder 1.6s ease-in-out infinite; }
+  .sqh.thinking .sqh-q { animation: sqh-bob 1s ease-in-out infinite; }
+  .sqh.look .sqh-head { animation: sqh-look 1.6s ease-in-out both; }
+  .sqh.sneeze .sqh-head { animation: sqh-sn-head 2.3s ease-in-out both; }
+  .sqh.sneeze .sqh-brows { animation: sqh-sn-brows 2.3s ease-in-out both; }
+  .sqh.sneeze .sqh-e-open { animation: sqh-sn-open 2.3s linear both; }
+  .sqh.sneeze .sqh-e-shut { animation: sqh-sn-shut 2.3s linear both; }
+  .sqh.sneeze .sqh-m-smile { animation: sqh-sn-smile 2.3s linear both; }
+  .sqh.sneeze .sqh-m-o { animation: sqh-sn-o 2.3s ease-in-out both; }
+  .sqh.sneeze .sqh-mist { animation: sqh-sn-mist 2.3s ease-out both; }
+  .sqh.sneeze .sqh-puffs { opacity: 1; }
+  .sqh.sneeze .sqh-puff { animation: sqh-sn-puff 2.3s ease-out both; }
+  .sqh.sneeze .sqh-breath { animation: sqh-sn-body 2.3s linear both; }
 
   /* ---- the X: a goodbye wave, back into the hole, and the hole seals up ---- */
   .sqh.leave .sqh-arm { animation: sqh-wave-big 0.3s ease-in-out 2; }
@@ -87,6 +190,14 @@
   15% { transform: translate(-2.5px, 1px); } 18% { transform: translate(2px, -1px); }
   51% { transform: translate(-3.5px, -1px); } 54% { transform: translate(3px, 1px); }
 }
+@keyframes sqh-word {
+  0% { opacity: 0; transform: scale(0.3); }
+  18% { opacity: 1; transform: scale(1.3); }
+  30% { transform: scale(1); }
+  75% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: translateY(-8px) scale(1); }
+}
+@keyframes sqh-flash { 0% { opacity: 0; transform: scale(0.6); } 20% { opacity: 0.95; transform: scale(1); } 100% { opacity: 0; transform: scale(1.5); } }
 @keyframes sqh-burst { from { opacity: 0; transform: scale(0.15, 0.4); } 1% { opacity: 1; } to { opacity: 1; transform: none; } }
 @keyframes sqh-fly {
   0% { opacity: 0; transform: none; } 1% { opacity: 1; }
@@ -94,18 +205,22 @@
   100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--r)); }
 }
 @keyframes sqh-glow { 0% { opacity: 0; } 25% { opacity: 1; } 45% { opacity: 1; } 50% { opacity: 0.1; } 56% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
-@keyframes sqh-emerge {
-  from { transform: translate(125px, 14px) rotate(14deg); }
-  to { transform: none; }
+@keyframes sqh-punch {
+  0% { opacity: 0; transform: translateX(80px); }
+  8% { opacity: 1; transform: translateX(80px); }
+  20% { transform: translateX(-7px); }
+  28%, 40% { transform: translateX(0); }
+  46% { transform: translateX(-3px) rotate(-3deg); }
+  52% { transform: translateX(0) rotate(2deg); }
+  60% { transform: none; }
+  100% { opacity: 1; transform: translateX(95px); }
 }
-@keyframes sqh-look {
-  0%, 100% { transform: rotate(0deg); }
-  30% { transform: rotate(-9deg); }
-  65% { transform: rotate(6deg); }
-}
+@keyframes sqh-emerge { from { transform: translate(125px, 14px) rotate(14deg); } to { transform: none; } }
+@keyframes sqh-look { 0%, 100% { transform: rotate(0deg); } 30% { transform: rotate(-9deg); } 65% { transform: rotate(6deg); } }
 @keyframes sqh-sway { 0%, 100% { transform: rotate(-2.5deg); } 50% { transform: rotate(3deg); } }
 @keyframes sqh-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.012, 0.988); } }
 @keyframes sqh-blink { 0%, 94%, 100% { transform: scaleY(1); } 96.5% { transform: scaleY(0.08); } }
+@keyframes sqh-twinkle { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.6); } }
 @keyframes sqh-wave {
   0%, 32%, 100% { transform: rotate(0deg); }
   5% { transform: rotate(18deg); } 10% { transform: rotate(-10deg); }
@@ -122,9 +237,63 @@
 @keyframes sqh-leave { to { transform: translate(140px, 16px) rotate(16deg); } }
 @keyframes sqh-seal { to { opacity: 0; transform: scale(0.1, 0.5); } }
 @keyframes sqh-fade { to { opacity: 0; } }
+@keyframes sqh-pop-in { 0% { transform: scale(0) rotate(-25deg); } 70% { transform: scale(1.3) rotate(8deg); } 100% { transform: none; } }
+@keyframes sqh-flinch { 0% { transform: none; } 30% { transform: translate(5px, -2px) rotate(2deg); } 100% { transform: none; } }
+@keyframes sqh-jump {
+  0% { transform: none; } 20% { transform: translateY(-16px); } 45% { transform: translateY(-11px); }
+  70% { transform: translateY(2px); } 100% { transform: none; }
+}
+@keyframes sqh-drip { 0% { transform: none; } 100% { transform: translateY(9px); } }
+@keyframes sqh-giggle { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-1.8px); } 75% { transform: translateX(1.8px); } }
+@keyframes sqh-tilt { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(-7deg); } }
+@keyframes sqh-nod { 0%, 100% { transform: rotate(5deg); } 50% { transform: rotate(9deg) translateY(1px); } }
+@keyframes sqh-zz {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.5); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(12px, -26px) scale(1.2); }
+}
+@keyframes sqh-snot { 0%, 100% { transform: scale(0.35); } 55% { transform: scale(1.3); } }
+@keyframes sqh-wobble {
+  0%, 100% { transform: rotate(-8deg); } 25% { transform: rotate(7deg) translateX(2px); }
+  50% { transform: rotate(-6deg) translateX(-1px); } 75% { transform: rotate(8deg) translateX(1px); }
+}
+@keyframes sqh-peer { to { transform: rotate(7deg) translate(-1px, 2px); } }
+@keyframes sqh-dance {
+  0%, 100% { transform: translate(-4px, 0) rotate(-3deg); }
+  50% { transform: translate(4px, -7px) rotate(3deg); }
+}
+@keyframes sqh-bop { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
+@keyframes sqh-tap { from { transform: translateY(0); } to { transform: translateY(1.8px); } }
+@keyframes sqh-type { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes sqh-radio { 0% { opacity: 0; transform: scale(0.4); } 30% { opacity: 1; } 100% { opacity: 0; transform: scale(1.6); } }
+@keyframes sqh-scratch { from { transform: translate(-1.5px, 0) rotate(-6deg); } to { transform: translate(1.5px, -1px) rotate(6deg); } }
+@keyframes sqh-ponder { 0%, 100% { transform: rotate(-5deg); } 50% { transform: rotate(2deg); } }
+@keyframes sqh-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes sqh-sn-head {
+  0% { transform: none; } 30% { transform: rotate(-10deg) translateY(-1px); } 44% { transform: rotate(-14deg) translateY(-2px); }
+  50% { transform: rotate(12deg) translate(-4px, 3px); } 56% { transform: rotate(-5deg); } 64% { transform: rotate(4deg); }
+  74%, 100% { transform: none; }
+}
+@keyframes sqh-sn-brows { 0% { transform: none; } 30%, 44% { transform: translateY(-4px); } 50%, 100% { transform: none; } }
+@keyframes sqh-sn-open { 0% { opacity: 1; transform: none; } 30%, 44% { opacity: 1; transform: scale(1, 0.7); } 47%, 64% { opacity: 0; } 65%, 100% { opacity: 1; transform: none; } }
+@keyframes sqh-sn-shut { 0%, 46% { opacity: 0; } 47%, 64% { opacity: 1; } 65%, 100% { opacity: 0; } }
+@keyframes sqh-sn-smile { 0%, 64% { opacity: 0; } 65%, 100% { opacity: 1; } }
+@keyframes sqh-sn-o {
+  0% { opacity: 1; transform: scale(0.5); } 40% { transform: scale(1.1); } 46% { transform: scale(1.35); }
+  50% { transform: scale(1.7); } 56% { transform: scale(0.5); } 64% { opacity: 1; transform: scale(0.4); } 65%, 100% { opacity: 0; }
+}
+@keyframes sqh-sn-mist {
+  0%, 47% { opacity: 0; transform: scale(0.3); } 52% { opacity: 0.85; transform: scale(1.2); }
+  78% { opacity: 0; transform: translate(-8px, 2px) scale(1.9); } 100% { opacity: 0; }
+}
+@keyframes sqh-sn-puff { 0%, 47% { opacity: 0; transform: none; } 51% { opacity: 1; } 82%, 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.5); } }
+@keyframes sqh-sn-body {
+  0%, 46% { transform: none; } 50% { transform: translate(-3px, 2px); } 54% { transform: translate(2px, -1px); }
+  58% { transform: translate(-1px, 0); } 62%, 100% { transform: none; }
+}
 
-/* ---- "Need a hand?" ---------------------------------------------------------------- */
-.sqh-hello { position: absolute; right: calc(var(--sqh-w) * 0.62); top: calc(var(--sqh-h) * 0.18); width: max-content; max-width: 190px;
+/* ---- what he says ---------------------------------------------------------------------- */
+.sqh-hello { position: absolute; right: calc(var(--sqh-w) * 0.62); top: calc(var(--sqh-h) * 0.16); width: max-content; max-width: 190px;
   padding: 9px 13px; border-radius: 14px 14px 4px 14px; background: var(--heading, #eef6f1); color: #13201a;
   font-size: 14px; font-weight: 600; line-height: 1.35; box-shadow: var(--shadow, 0 18px 50px rgba(0, 0, 0, 0.45));
   cursor: pointer; pointer-events: auto; animation: sqh-pop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
@@ -140,7 +309,7 @@
 .sqh-close:hover, .sqh-close:focus-visible { opacity: 1; color: var(--heading, #eef6f1); border-color: var(--accent-dim, #2c8f63); }
 .sqh-close:focus-visible { outline: 2px solid var(--accent, #3dffa8); outline-offset: 2px; }
 @media (hover: hover) { .sqh-close { opacity: 0; } .sqh:hover .sqh-close, .sqh-close:focus-visible { opacity: 0.9; } }
-.sqh.leave .sqh-close, .sqh.leave .sqh-hello { display: none; }
+.sqh.leave .sqh-close { display: none; }
 
 /* ---- the chat panel: beside him, where he can keep an eye on it --------------------- */
 .sqh-panel { position: fixed; right: calc(var(--sqh-w) - 14px); bottom: 20px; display: flex; flex-direction: column; pointer-events: auto;
@@ -200,7 +369,8 @@
 /* Phones: a smaller sasquatch, and the chat takes most of the screen while he waits. */
 @media (max-width: 560px) {
   .sqh { --sqh-w: 128px; --sqh-h: 158px; bottom: max(48px, calc(env(safe-area-inset-bottom, 0px) + 30px)); }
-  .sqh-hello { font-size: 13px; max-width: 150px; }
+  .sqh-hello { font-size: 13px; max-width: 150px; top: calc(var(--sqh-h) * 0.22); }
+  .sqh-close { top: -10px; left: 54%; }
   .sqh.open .sqh-squatch, .sqh.open .sqh-close, .sqh.open .sqh-hello { display: none; }
   .sqh-panel { left: max(8px, env(safe-area-inset-left, 0px)); right: max(8px, env(safe-area-inset-right, 0px));
     bottom: max(8px, env(safe-area-inset-bottom, 0px)); width: auto; height: min(620px, calc(100vh - 70px)); height: min(620px, calc(100dvh - 70px)); }
