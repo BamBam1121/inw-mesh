@@ -1,8 +1,11 @@
-/* The sasquatch in the corner of every page. He waves now and then; a click opens a
-   small chat with the same helper as /help (the help desk on the site's own server).
-   The conversation is kept in this tab under the help page's own key, so it carries
-   on from page to page and onto /help. The X hides him until the page is reloaded.
-   On /help itself a click takes you to the chat on the page instead. */
+/* The sasquatch at the right edge of every page. On the first page of a visit he knocks
+   on the inside of the screen, breaks through its edge and leans out of the hole; on
+   later pages he pops straight out. He waves, blinks, watches the pointer and ducks
+   back in now and then. A click opens a small chat with the same helper as /help (the
+   help desk on the site's own server). The conversation is kept in this tab under the
+   help page's own key, so it carries on from page to page and onto /help. The X sends
+   him back in and seals the hole until the page is reloaded. On /help itself a click
+   takes you to the chat on the page instead. */
 (function () {
   if (window.__squatchHelper) return;
   window.__squatchHelper = true;
@@ -77,6 +80,97 @@
         '<ellipse cx="60" cy="69" rx="3.4" ry="1.7" fill="#e0736a"/>' +
       '</g></svg>';
   }
+  // The corner scene in a 170 x 210 box whose right side is the screen's right edge:
+  // a hole broken through the edge with cracks around it, the pieces that fly off, and
+  // the sasquatch leaning out of it - one hand on the rim, the other waving.
+  const HOLE = "M170 26L152 33L143 22L130 38L117 33L108 50L95 47L90 64L78 69L83 86L70 95L77 110L66 122L75 137" +
+    "L68 151L81 160L76 174L90 181L95 196L112 191L121 204L138 195L150 206L170 199Z";
+  const CRACKS_A = ["M108 50L99 31L101 17", "M78 69L60 61L49 66", "M70 95L52 92"];
+  const CRACKS_B = ["M66 122L47 126L36 138", "M68 151L52 160L47 172", "M95 196L88 208", "M130 38L127 18L118 6",
+    "M101 17L92 9", "M49 66L40 58", "M47 126L44 112", "M52 92L41 99"];
+  const SHARDS = [
+    ["M84 80L95 72L92 88Z", -64, -34, -220], ["M70 104L80 98L82 112Z", -86, 8, 260], ["M72 140L84 132L83 148Z", -74, 44, -180],
+    ["M100 52L112 48L106 60Z", -42, -66, 200], ["M86 168L96 162L98 176Z", -58, 64, 240], ["M120 192L132 196L124 204Z", -24, 74, -160],
+    ["M135 30L146 26L142 38Z", -34, -74, 300], ["M77 122L84 118L83 126Z", -104, -12, 320], ["M92 50L97 46L98 54Z", -70, -58, -280],
+  ];
+  function scene() {
+    const crack = (d, k) => '<path class="sqh-crack ' + k + '" pathLength="1" d="' + d + '"/>';
+    return '<svg viewBox="0 0 170 210" aria-hidden="true" focusable="false">' +
+      '<defs>' +
+        '<linearGradient id="sqh-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0c1c3d"/>' +
+          '<stop offset="0.6" stop-color="#1b3a6b"/><stop offset="1" stop-color="#2d5a7a"/></linearGradient>' +
+        '<clipPath id="sqh-clip"><rect x="-300" y="-300" width="470" height="510"/></clipPath>' +
+        '<clipPath id="sqh-holeclip"><path d="' + HOLE + '"/></clipPath>' +
+      '</defs>' +
+      '<g class="sqh-cracks" fill="none" stroke="var(--sqh-rim)" stroke-opacity=".5" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">' +
+        CRACKS_A.map((d) => crack(d, "a")).join("") + CRACKS_B.map((d) => crack(d, "b")).join("") +
+      '</g>' +
+      '<g class="sqh-hole">' +
+        // through the hole: his world, a night sky over the pines
+        '<path class="sqh-hole-fill" d="' + HOLE + '" fill="url(#sqh-sky)" stroke="#000" stroke-opacity=".75" stroke-width="6" stroke-linejoin="round"/>' +
+        '<g clip-path="url(#sqh-holeclip)">' +
+          '<g class="sqh-stars" fill="#fff">' +
+            '<circle cx="150" cy="45" r="1.1"/><circle cx="138" cy="57" r=".8"/><circle cx="86" cy="73" r=".9"/><circle cx="79" cy="104" r="1.2"/>' +
+            '<circle cx="88" cy="150" r=".8"/><circle cx="82" cy="127" r=".7"/><circle cx="161" cy="60" r="1"/><circle cx="100" cy="60" r=".7"/>' +
+            '<circle cx="93" cy="88" r=".6"/><circle cx="157" cy="34" r=".7"/>' +
+          '</g>' +
+          '<path d="M150 50a9 9 0 1 0 7 15 7 7 0 1 1-7-15z" fill="#f4f1d0" opacity=".9"/>' +
+          '<path d="M70 210L82 172L94 210ZM86 210L99 164L112 210ZM104 210L114 180L124 210ZM118 210L131 170L144 210ZM138 210L150 176L162 210Z" fill="#0a2a1e"/>' +
+        '</g>' +
+        '<path class="sqh-rim" d="' + HOLE + '" fill="none" stroke="var(--sqh-rim)" stroke-opacity=".6" stroke-width="1.6" stroke-linejoin="round"/>' +
+        '<g class="sqh-glow"><circle cx="131" cy="112" r="7" fill="#e8ff9a" opacity=".25"/><circle cx="149" cy="112" r="7" fill="#e8ff9a" opacity=".25"/>' +
+          '<ellipse cx="131" cy="112" rx="3.2" ry="2.4" fill="#f4ffc4"/><ellipse cx="149" cy="112" rx="3.2" ry="2.4" fill="#f4ffc4"/></g>' +
+      '</g>' +
+      '<g clip-path="url(#sqh-clip)"><g class="sqh-out"><g class="sqh-lean"><g class="sqh-breath sqh-drop">' +
+        // the arm reaching up to grip the rim, behind his head
+        '<path d="M168 76Q152 52 129 43" fill="none" stroke="var(--sqh-fur)" stroke-width="12" stroke-linecap="round"/>' +
+        // body
+        '<path d="' + shaggy(150, 182, 42, 46, 16, 0.1) + '" fill="var(--sqh-fur)" stroke="var(--sqh-fur)" stroke-width="2" stroke-linejoin="round"/>' +
+        '<ellipse cx="141" cy="190" rx="20" ry="22" fill="var(--sqh-skin)"/>' +
+        '<path d="M134 183q3 2 6 0M142 189q3 2 6 0" fill="none" stroke="var(--sqh-skin-dark)" stroke-width="1.4" stroke-linecap="round"/>' +
+        // scarf
+        '<path d="M88 126Q112 141 139 128L137 137Q112 151 90 135Z" fill="var(--sqh-scarf)"/>' +
+        '<path d="M108 141L120 141L113 156Z" fill="var(--sqh-scarf)"/>' +
+        '<circle cx="114" cy="140" r="4.5" fill="var(--sqh-scarf-dark)"/>' +
+        // the waving arm
+        '<g class="sqh-arm">' +
+          '<path d="M124 166Q96 160 72 140" fill="none" stroke="var(--sqh-fur)" stroke-width="14" stroke-linecap="round"/>' +
+          '<circle cx="56" cy="124" r="3.6" fill="var(--sqh-skin)"/><circle cx="61" cy="119.5" r="3.8" fill="var(--sqh-skin)"/>' +
+          '<circle cx="67.5" cy="118.5" r="3.7" fill="var(--sqh-skin)"/><circle cx="73" cy="122" r="3.4" fill="var(--sqh-skin)"/>' +
+          '<circle cx="55" cy="136" r="3.2" fill="var(--sqh-skin)"/>' +
+          '<circle cx="64" cy="132" r="9.5" fill="var(--sqh-skin)"/>' +
+          '<ellipse cx="64" cy="133.5" rx="4.2" ry="3.3" fill="var(--sqh-skin-dark)" opacity=".55"/>' +
+        '</g>' +
+        // head
+        '<g class="sqh-head">' +
+          '<circle cx="80" cy="96" r="8" fill="var(--sqh-fur)"/><circle cx="80" cy="96" r="4" fill="var(--sqh-skin-dark)"/>' +
+          '<circle cx="144" cy="90" r="8" fill="var(--sqh-fur)"/><circle cx="144" cy="90" r="4" fill="var(--sqh-skin-dark)"/>' +
+          '<path d="M99 70L104 56L109 67L114 53L118 67L124 58L125 71Z" fill="var(--sqh-fur)"/>' +
+          '<path d="' + shaggy(112, 98, 33, 32, 20, 0.11) + '" fill="var(--sqh-fur)" stroke="var(--sqh-fur)" stroke-width="2" stroke-linejoin="round"/>' +
+          '<path d="M110 121c-12 0-20-6-20-14 0-4 1-7 3-9a11 11 0 0 1 17-5 11 11 0 0 1 17 5c2 2 3 5 3 9 0 8-8 14-20 14z" fill="var(--sqh-skin)"/>' +
+          '<path d="M93 86Q99 81 106 85.5M114 85.5Q121 81 127 86" fill="none" stroke="var(--sqh-fur-dark)" stroke-width="2.6" stroke-linecap="round"/>' +
+          '<g class="sqh-eyes">' +
+            '<ellipse cx="101" cy="97" rx="5.2" ry="6.2" fill="#fff"/><ellipse cx="119" cy="97" rx="5.2" ry="6.2" fill="#fff"/>' +
+            '<g class="sqh-pupils"><ellipse cx="101.5" cy="98" rx="3.3" ry="4.1" fill="#24160f"/><ellipse cx="119.5" cy="98" rx="3.3" ry="4.1" fill="#24160f"/>' +
+              '<circle cx="102.8" cy="96.3" r="1.3" fill="#fff"/><circle cx="120.8" cy="96.3" r="1.3" fill="#fff"/></g>' +
+          '</g>' +
+          '<ellipse cx="93" cy="108" rx="4.2" ry="2.8" fill="var(--sqh-cheek)" opacity=".6"/>' +
+          '<ellipse cx="127" cy="108" rx="4.2" ry="2.8" fill="var(--sqh-cheek)" opacity=".6"/>' +
+          '<ellipse cx="110" cy="106" rx="5" ry="3.4" fill="#5a3422"/>' +
+          '<ellipse cx="108.4" cy="104.9" rx="1.6" ry=".8" fill="#fff" opacity=".5"/>' +
+          '<path d="M102 111Q110 120 118 111Q110 114 102 111Z" fill="#8e3b2f"/>' +
+          '<ellipse cx="110" cy="115" rx="3.4" ry="1.7" fill="#e0736a"/>' +
+        '</g>' +
+        // the hand on the rim, fingers over the broken edge
+        '<circle cx="128" cy="42" r="7" fill="var(--sqh-skin)"/>' +
+        '<circle cx="120.5" cy="38.5" r="3.2" fill="var(--sqh-skin)"/><circle cx="123.5" cy="34.6" r="3.2" fill="var(--sqh-skin)"/>' +
+        '<circle cx="128.6" cy="33.2" r="3.1" fill="var(--sqh-skin)"/>' +
+      '</g></g></g></g>' +
+      '<g class="sqh-shards" fill="#1b2b24" stroke="var(--sqh-rim)" stroke-opacity=".55" stroke-width=".8" stroke-linejoin="round">' +
+        SHARDS.map((s) => '<path class="sqh-shard" d="' + s[0] + '" style="--dx:' + s[1] + 'px;--dy:' + s[2] + 'px;--r:' + s[3] + 'deg"/>').join("") +
+      '</g></svg>';
+  }
+
   const ICON = {
     x: '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
     down: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -112,9 +206,9 @@
         '<a href="/help">More help</a> &middot; <a href="/privacy#helper">Privacy</a></p>' +
     '</div>' +
     '<div class="sqh-hello" hidden>Need a hand?</div>' +
-    '<button type="button" class="sqh-close" aria-label="Hide the sasquatch until the page reloads">' + ICON.x + '</button>' +
+    '<button type="button" class="sqh-close" aria-label="Send the sasquatch away until the page reloads">' + ICON.x + '</button>' +
     '<button type="button" class="sqh-squatch" aria-label="Chat with the Squatch helper" aria-expanded="false" aria-controls="sqh-panel">' +
-      squatch(true) + '</button>';
+      scene() + '</button>';
 
   const panel = root.querySelector(".sqh-panel");
   const log = root.querySelector(".sqh-log");
@@ -239,21 +333,29 @@
   });
 
   // ---- opening, closing, waving --------------------------------------------------------
+  const BROKE = "sm-helper-broke";    // the full break-in plays once per tab
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const close = root.querySelector(".sqh-close");
+  const pupils = root.querySelector(".sqh-pupils");
+  let leaving = false, hovering = false;
+
+  const later = (ms, fn) => setTimeout(fn, ms);
   let excitedTimer = 0;
   function excite() {
     root.classList.add("excited");
     clearTimeout(excitedTimer);
-    excitedTimer = setTimeout(() => root.classList.remove("excited"), 1100);
+    excitedTimer = later(1000, () => root.classList.remove("excited"));
   }
   function hideHello() {
     if (hello.hidden) return;
     hello.classList.add("gone");
-    setTimeout(() => { hello.hidden = true; }, 260);
+    later(260, () => { hello.hidden = true; });
   }
   function setOpen(open) {
     panel.hidden = !open;
     root.classList.toggle("open", open);
     button.setAttribute("aria-expanded", String(open));
+    look(open ? -1 : 0, open ? 0.2 : 0);
     if (open) {
       hideHello();
       load();
@@ -262,45 +364,101 @@
     }
   }
   function onSquatch() {
+    if (leaving) return;
     excite();
     hideHello();
     if (pageChat) {               // /help: the big chat is right there
       pageChat.scrollIntoView({ behavior: "smooth", block: "center" });
       const box = document.getElementById("chat-input");
-      if (box) setTimeout(() => box.focus({ preventScroll: true }), 350);
+      if (box) later(350, () => box.focus({ preventScroll: true }));
       return;
     }
     setOpen(panel.hidden);
   }
   button.addEventListener("click", onSquatch);
   hello.addEventListener("click", onSquatch);
+  button.addEventListener("pointerenter", () => { hovering = true; });
+  button.addEventListener("pointerleave", () => { hovering = false; });
   root.querySelector(".sqh-min").addEventListener("click", () => { setOpen(false); button.focus(); });
-  root.querySelector(".sqh-close").addEventListener("click", () => { root.hidden = true; });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !panel.hidden) { setOpen(false); button.focus(); }
   });
 
-  // "Need a hand?" once per tab, a few seconds in, then out of the way.
-  let greeted = false;
-  try { greeted = sessionStorage.getItem(HELLO) === "1"; } catch (e) { /* fine */ }
-  if (!greeted && !pageChat) {
-    setTimeout(() => {
-      if (root.hidden || !panel.hidden) return;
+  // The X: a goodbye wave, back into the hole, the hole seals, gone until a reload.
+  close.addEventListener("click", () => {
+    if (leaving) return;
+    leaving = true;
+    setOpen(false);
+    root.classList.remove("enter", "enter-quick", "duck", "excited");
+    root.classList.add("leave");
+    later(still ? 0 : 1500, () => { root.hidden = true; });
+  });
+
+  // His eyes follow the pointer (or the chat, while it's open).
+  function look(x, y) {
+    if (pupils) pupils.style.transform = "translate(" + (x * 2.2).toFixed(2) + "px," + (y * 2.2).toFixed(2) + "px)";
+  }
+  let lookFrame = 0;
+  if (!still) {
+    document.addEventListener("pointermove", (e) => {
+      if (lookFrame || !panel.hidden || e.pointerType === "touch") return;
+      lookFrame = requestAnimationFrame(() => {
+        lookFrame = 0;
+        const r = pupils.getBoundingClientRect();
+        const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+        const d = Math.hypot(dx, dy) || 1;
+        const k = Math.min(1, d / 120);
+        look((dx / d) * k, (dy / d) * k);
+      });
+    }, { passive: true });
+  }
+
+  // Now and then he ducks back into the hole and pops out again.
+  function scheduleDuck() {
+    later(16000 + Math.random() * 14000, () => {
+      if (leaving) return;
+      if (!hovering && panel.hidden && !document.hidden) {
+        root.classList.add("duck");
+        later(1900, () => root.classList.remove("duck"));
+      }
+      scheduleDuck();
+    });
+  }
+
+  // "Need a hand?" once per tab, once he's out, then out of the way.
+  function greet(at) {
+    let greeted = false;
+    try { greeted = sessionStorage.getItem(HELLO) === "1"; } catch (e) { /* fine */ }
+    if (greeted || pageChat) return;
+    later(at, () => {
+      if (root.hidden || leaving || !panel.hidden) return;
       hello.hidden = false;
-      excite();
       try { sessionStorage.setItem(HELLO, "1"); } catch (e) { /* fine */ }
-      setTimeout(hideHello, 9000);
-    }, 2500);
+      later(9000, hideHello);
+    });
+  }
+
+  // The entrance: the whole break-in on the first page of a visit, a quick pop-out after.
+  function enter() {
+    let first = true;
+    try { first = sessionStorage.getItem(BROKE) !== "1"; sessionStorage.setItem(BROKE, "1"); } catch (e) { /* fine */ }
+    if (still) { root.classList.add("idle"); greet(800); return; }
+    root.classList.add(first ? "enter" : "enter-quick");
+    later(first ? 4100 : 1600, () => {
+      root.classList.remove("enter", "enter-quick");
+      if (!leaving) { root.classList.add("idle"); scheduleDuck(); }
+    });
+    greet(first ? 3300 : 1500);
   }
 
   // Show him once his stylesheet is in (or after a moment regardless).
   const css = document.createElement("link");
   css.rel = "stylesheet";
-  css.href = "/assets/squatch-helper.css?v=1";
+  css.href = "/assets/squatch-helper.css?v=2";
   let shown = false;
-  const show = () => { if (!shown) { shown = true; root.hidden = false; } };
+  const show = () => { if (!shown) { shown = true; root.hidden = false; enter(); } };
   css.addEventListener("load", show);
-  setTimeout(show, 2500);
+  later(2500, show);
   document.head.appendChild(css);
   document.body.appendChild(root);
 })();
