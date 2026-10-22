@@ -40,63 +40,70 @@
   function spiral(cx, cy) {
     let d = "";
     for (let i = 0; i <= 22; i++) {
-      const a = i * 0.6, r = 0.17 * i;
+      const a = i * 0.6, r = 0.18 * i;
       d += (i ? "L" : "M") + (cx + Math.cos(a) * r).toFixed(2) + " " + (cy + Math.sin(a) * r).toFixed(2);
     }
-    return '<ellipse cx="' + cx + '" cy="' + cy + '" rx="4.4" ry="4.1" fill="#fff"/><path d="' + d + '">' +
+    return '<ellipse cx="' + cx + '" cy="' + cy + '" rx="4.8" ry="4.6" fill="#fff"/><path d="' + d + '">' +
       '<animateTransform attributeName="transform" type="rotate" from="0 ' + cx + " " + cy + '" to="360 ' + cx + " " + cy +
       '" dur=".8s" repeatCount="indefinite"/></path>';
   }
-  // A shaggy outline around a polygon: every few units the edge pokes out in a tuft.
-  function fur(pts, amp, step) {
-    const n = pts.length;
-    let cx = 0, cy = 0;
-    pts.forEach((p) => { cx += p[0] / n; cy += p[1] / n; });
-    let d = "";
-    for (let i = 0; i < n; i++) {
-      const x1 = pts[i][0], y1 = pts[i][1], x2 = pts[(i + 1) % n][0], y2 = pts[(i + 1) % n][1];
-      const k = Math.max(1, Math.round(Math.hypot(x2 - x1, y2 - y1) / step));
-      for (let j = 0; j < k; j++) {
-        const ax = x1 + ((x2 - x1) * j) / k, ay = y1 + ((y2 - y1) * j) / k;
-        const mx = x1 + ((x2 - x1) * (j + 0.5)) / k, my = y1 + ((y2 - y1) * (j + 0.5)) / k;
-        const dx = mx - cx, dy = my - cy, l = Math.hypot(dx, dy) || 1;
-        d += (d ? "L" : "M") + ax.toFixed(1) + " " + ay.toFixed(1) +
-          "L" + (mx + (dx / l) * amp).toFixed(1) + " " + (my + (dy / l) * amp).toFixed(1);
-      }
-    }
-    return d + "Z";
+  // A tuft of fur: a thin triangle from a base point, pointing along (dx, dy).
+  function tuft(bx, by, dx, dy, len, half) {
+    const n = Math.hypot(dx, dy) || 1;
+    dx /= n; dy /= n;
+    return "M" + (bx - dy * half).toFixed(1) + " " + (by + dx * half).toFixed(1) + "L" + (bx + dy * half).toFixed(1) + " " +
+      (by - dx * half).toFixed(1) + "L" + (bx + dx * len).toFixed(1) + " " + (by + dy * len).toFixed(1) + "Z";
   }
-  const FUR = 'fill="var(--sqh-fur)" stroke="var(--sqh-fur)" stroke-width="1.5" stroke-linejoin="round"';
   const dot = (x, y, r, paint) => '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" ' + (paint === undefined ? 'fill="var(--sqh-skin)"' : paint) + "/>";
+  const stroke = (d, w, color, extra) => '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="' + w +
+    '" stroke-linecap="round" stroke-linejoin="round"' + (extra || "") + "/>";
 
-  // His head: tall, with a pointed crest, hair hanging down to his shoulders, and a
-  // peach face under a heavy brow - a sasquatch, not a monkey.
-  const HEAD = [[114, 39], [124, 43], [134, 51], [142, 63], [147, 79], [149, 95], [149, 111], [146, 126], [136, 131], [124, 128],
-    [113, 132], [102, 128], [90, 131], [80, 126], [77, 111], [77, 95], [80, 79], [86, 63], [95, 51], [104, 43]];
-  const FACE = "M91 84Q113 74 135 84Q141 101 133 116Q113 130 93 116Q85 101 91 84Z";
-  const BROW = "M88 87Q100 76 113 81Q126 76 138 87Q131 92 123 89Q113 86 103 89Q95 92 88 87Z";
-  const NOSE = '<path d="M105 101Q113 95 121 101Q123 106 118 107Q113 105 108 107Q103 106 105 101Z" fill="#4e2c1c"/>' +
-    '<ellipse cx="110" cy="104.6" rx="1.5" ry="1" fill="#2a170e"/><ellipse cx="116" cy="104.6" rx="1.5" ry="1" fill="#2a170e"/>' +
-    '<ellipse cx="111" cy="99.6" rx="2.2" ry=".8" fill="#fff" opacity=".3"/>';
-  const STRANDS = '<path d="M99 55q-4 8-3 17M127 55q4 8 3 17M113 45v11M86 98q-3 12 0 24M140 98q3 12 0 24" fill="none" ' +
-    'stroke="var(--sqh-fur-dark)" stroke-width="1.4" stroke-linecap="round" opacity=".55"/>';
+  // ---- the sasquatch ------------------------------------------------------------------
+  // A broad, dome-shaped head with a little crest, shaggy cheeks, a heavy brow over
+  // small kind eyes, a broad nose and a lighter muzzle; hair runs straight into big
+  // shoulders. Fur in three tones: --sqh-fur, a darker one for shadow, a lighter one
+  // for the strands that catch the light.
+  const HX = 118, HY = 96, HRX = 34, HRY = 33;
+  // tufts round the head: [angle in degrees, length, half width, how much it hangs down]
+  const HEAD_TUFTS = [[-90, 12, 4.5, 0], [-104, 8, 4.5, 0], [-76, 8, 4.5, 0], [-122, 8, 5, 0.1], [-58, 8, 5, 0.1], [-142, 8, 5, 0.3],
+    [-38, 8, 5, 0.3], [-162, 9, 5, 0.6], [-18, 9, 5, 0.6], [178, 10, 5.5, 0.9], [2, 10, 5.5, 0.9], [160, 10, 5.5, 1.2],
+    [20, 10, 5.5, 1.2], [142, 9, 5, 1.5], [38, 9, 5, 1.5]];
+  function headFur() {
+    let d = "";
+    HEAD_TUFTS.forEach((t) => {
+      const a = (t[0] * Math.PI) / 180;
+      d += tuft(HX + Math.cos(a) * HRX * 0.9, HY + Math.sin(a) * HRY * 0.9, Math.cos(a), Math.sin(a) + t[3], t[1], t[2]);
+    });
+    return '<ellipse cx="' + HX + '" cy="' + HY + '" rx="' + HRX + '" ry="' + HRY + '" fill="var(--sqh-fur)"/>' +
+      '<path d="' + d + '" fill="var(--sqh-fur)" stroke="var(--sqh-fur)" stroke-width="1" stroke-linejoin="round"/>' +
+      // strands: light ones on top, dark ones down the cheeks
+      stroke("M103 70q-3 8-2 16M133 70q3 8 2 16M118 64v11M95 78q-4 6-4 13M141 78q4 6 4 13", 1.6, "var(--sqh-fur-light)") +
+      stroke("M88 104q-1 9 3 17M148 104q1 9-3 17M94 116q1 6 5 10M142 116q-1 6-5 10", 1.5, "var(--sqh-fur-dark)", ' opacity=".7"');
+  }
+  const FACE = '<path d="M95 87Q118 80 141 87Q147 103 137 116Q129 125 118 125Q107 125 99 116Q89 103 95 87Z" fill="var(--sqh-skin)"/>' +
+    '<ellipse cx="118" cy="114" rx="13.5" ry="8.5" fill="var(--sqh-muzzle)"/>' +
+    // the brow's shadow over the eyes
+    '<path d="M96 90Q118 84 140 90Q139 97 129 95Q118 93 107 95Q97 97 96 90Z" fill="var(--sqh-skin-dark)" opacity=".55"/>';
+  const BROW = "M91 91Q103 79 118 85Q133 79 145 91Q138 94 129 91Q118 88 107 91Q98 94 91 91Z";
+  const NOSE = '<path d="M109.5 103Q118 97.5 126.5 103Q129.5 109 123.5 110.5Q118 108.5 112.5 110.5Q106.5 109 109.5 103Z" fill="#4a2a1a"/>' +
+    '<ellipse cx="114.5" cy="107.4" rx="1.6" ry="1.05" fill="#24130b"/><ellipse cx="121.5" cy="107.4" rx="1.6" ry="1.05" fill="#24130b"/>' +
+    '<ellipse cx="116" cy="101.8" rx="2.6" ry=".9" fill="#fff" opacity=".28"/>';
+  const SMILE = '<path d="M108 115Q118 122.5 128 115Q118 118 108 115Z" fill="#7d3328"/>';
 
   // Just his head, for the chat's header.
   function squatch() {
-    return '<svg viewBox="72 34 82 102" aria-hidden="true" focusable="false">' +
-      '<path d="' + fur(HEAD, 3, 6) + '" ' + FUR + "/>" + STRANDS +
-      '<path d="' + FACE + '" fill="var(--sqh-skin)"/>' +
+    return '<svg viewBox="76 50 84 84" aria-hidden="true" focusable="false">' + headFur() + FACE +
       '<path d="' + BROW + '" fill="var(--sqh-fur-dark)"/>' +
-      '<ellipse cx="103" cy="95" rx="3" ry="3.2" fill="#24160f"/><ellipse cx="123" cy="95" rx="3" ry="3.2" fill="#24160f"/>' +
-      NOSE + '<path d="M103 112Q113 119 123 112Q113 114.5 103 112Z" fill="#8e3b2f"/>' +
-      "</svg>";
+      '<ellipse cx="107" cy="96.5" rx="3.2" ry="3.4" fill="#24160f"/><ellipse cx="129" cy="96.5" rx="3.2" ry="3.4" fill="#24160f"/>' +
+      NOSE + SMILE + "</svg>";
   }
 
   // The corner scene in a 170 x 210 box whose right side is the screen's right edge.
   // Back to front: a comic burst, the cracks, "knock" lettering, then the hole - his
-  // night sky, the glowing eyes, and his body standing in it behind the broken rim -
-  // then what leans out over the rim (arms, head, the hand on the rim), and last the
-  // pieces of screen that fly off. His body and what leans out move together.
+  // night sky, the glowing eyes, and his shoulders and the arm up to the rim standing
+  // in it, behind the broken edge - then what leans out over the edge (the waving arm,
+  // his head, the fingers over the rim), and last the pieces of screen that fly off.
+  // His body and what leans out move together.
   const HOLE = "M170 26L152 33L143 22L130 38L117 33L108 50L95 47L90 64L78 69L83 86L70 95L77 110L66 122L75 137" +
     "L68 151L81 160L76 174L90 181L95 196L112 191L121 204L138 195L150 206L170 199Z";
   const CRACKS_A = ["M108 50L99 31L101 17", "M78 69L60 61L49 66", "M70 95L52 92"];
@@ -107,7 +114,8 @@
     ["M100 52L112 48L106 60Z", -42, -66, 200], ["M86 168L96 162L98 176Z", -58, 64, 240], ["M120 192L132 196L124 204Z", -24, 74, -160],
     ["M135 30L146 26L142 38Z", -34, -74, 300], ["M77 122L84 118L83 126Z", -104, -12, 320], ["M92 50L97 46L98 54Z", -70, -58, -280],
   ];
-  const PUFFS = [[84, 72, -11, -9], [144, 70, 10, -10], [114, 42, 0, -13], [84, 122, -13, 6], [142, 122, 12, 7]];
+  const PUFFS = [[86, 76, -11, -9], [150, 74, 10, -10], [118, 56, 0, -13], [88, 124, -13, 6], [148, 124, 12, 7]];
+  const SKIN = "var(--sqh-skin)";
 
   function scene() {
     const crack = (d, k) => '<path class="sqh-crack ' + k + '" pathLength="1" d="' + d + '"/>';
@@ -125,22 +133,32 @@
     const glow = '<g class="sqh-glow"><circle cx="131" cy="112" r="7" fill="#e8ff9a" opacity=".25"/><circle cx="149" cy="112" r="7" fill="#e8ff9a" opacity=".25"/>' +
       '<ellipse cx="131" cy="112" rx="3.2" ry="2.4" fill="#f4ffc4"/><ellipse cx="149" cy="112" rx="3.2" ry="2.4" fill="#f4ffc4"/></g>';
 
-    // In the hole, behind the rim: the arm up to the rim and his big hunched shoulders.
+    // In the hole, behind the rim: big shoulders, and his right arm reaching up to the
+    // top of the rim, well clear of his head.
+    const shoulderTufts = tuft(84, 146, -1, -0.4, 8, 4) + tuft(92, 134, -0.6, -1, 8, 4) + tuft(104, 128, -0.2, -1, 7, 4) +
+      tuft(140, 128, 0.3, -1, 7, 4) + tuft(156, 136, 0.7, -1, 7, 4);
     const body =
-      '<path d="M154 140Q164 92 132 46" fill="none" stroke="var(--sqh-fur)" stroke-width="13" stroke-linecap="round"/>' +
-      '<path d="' + fur([[78, 152], [90, 134], [110, 124], [138, 124], [158, 132], [174, 146], [174, 218], [76, 218]], 3.2, 7) + '" ' + FUR + "/>" +
-      '<path d="M102 152Q122 140 144 152Q144 178 123 190Q102 178 102 152Z" fill="#a06a48" opacity=".6"/>' +
-      '<path d="M112 152q-2 10 1 20M134 152q2 10-1 20" fill="none" stroke="var(--sqh-fur-dark)" stroke-width="1.3" stroke-linecap="round" opacity=".5"/>';
+      stroke("M156 140Q168 96 160 36", 14, "var(--sqh-fur)") +
+      '<path d="' + tuft(166, 96, 1, 0.5, 7, 3) + tuft(165, 70, 1, 0.4, 6, 3) + '" fill="var(--sqh-fur)"/>' +
+      '<path d="M76 214L78 168Q80 140 100 130Q118 124 136 130Q160 136 174 152L174 214Z" fill="var(--sqh-fur)"/>' +
+      '<path d="' + shoulderTufts + '" fill="var(--sqh-fur)"/>' +
+      '<path d="M104 152Q123 140 144 152Q144 178 124 192Q104 178 104 152Z" fill="var(--sqh-fur-light)" opacity=".55"/>' +
+      stroke("M114 154q-2 10 1 20M134 154q2 10-1 20M124 160v14", 1.4, "var(--sqh-fur-dark)", ' opacity=".5"');
 
-    // Leaning out over the rim.
-    const hand = (x, y) => dot(x - 8, y - 8, 3.6) + dot(x - 3, y - 12.5, 3.8) + dot(x + 3.5, y - 13.5, 3.7) + dot(x + 9, y - 10, 3.4) +
-      dot(x - 9, y + 4, 3.2) + dot(x, y, 9.5) + '<ellipse cx="' + x + '" cy="' + (y + 1.5) + '" rx="4.2" ry="3.3" fill="var(--sqh-skin-dark)" opacity=".55"/>';
-    const waveArm = '<g class="sqh-arm">' +
-      '<path d="M98 144Q82 140 70 132" fill="none" stroke="var(--sqh-fur)" stroke-width="15" stroke-linecap="round"/>' +
-      '<path d="M92 148l-3 6 6-2M84 146l-4 5 6-2M77 141l-5 4 6-1" fill="var(--sqh-fur)" stroke="var(--sqh-fur)" stroke-width="1.2" stroke-linejoin="round"/>' +
-      hand(63, 124) + "</g>";
+    // A big open hand, fingers up: palm centre (x, y).
+    const openHand = (x, y) =>
+      stroke("M" + (x - 6) + " " + (y - 3) + "l-3-10M" + (x - 2) + " " + (y - 6) + "l-1-11M" + (x + 2.5) + " " + (y - 6) +
+        "l1.5-11M" + (x + 6.5) + " " + (y - 3) + "l3-9.5M" + (x - 7) + " " + (y + 4) + "l-6.5-4", 4.6, SKIN) +
+      '<ellipse cx="' + x + '" cy="' + y + '" rx="8" ry="8.8" fill="' + SKIN + '"/>' +
+      stroke("M" + (x - 3.5) + " " + (y + 1) + "q3.5 2.5 7 0", 1.1, "var(--sqh-skin-dark)");
+    // The waving arm: the upper arm stays put, the forearm waves from the elbow.
+    const waveArm = '<g class="sqh-armset">' +
+      stroke("M100 140Q86 134 76 124", 15, "var(--sqh-fur)") +
+      '<g class="sqh-arm">' + stroke("M76 124Q67 110 62 96", 13, "var(--sqh-fur)") +
+        '<path d="' + tuft(70, 115, -1, 0.7, 7, 2.6) + tuft(65.5, 105, -1, 0.5, 6, 2.4) + tuft(80, 130, -0.4, 1, 6, 2.6) + '" fill="var(--sqh-fur)"/>' +
+        openHand(61, 87) + "</g></g>";
     const pagerArm = '<g class="sqh-pager">' +
-      '<path d="M98 144Q78 158 83 146" fill="none" stroke="var(--sqh-fur)" stroke-width="13" stroke-linecap="round"/>' +
+      stroke("M100 140Q78 156 83 146", 14, "var(--sqh-fur)") +
       '<g class="sqh-radio" fill="none" stroke="#3dffa8" stroke-width="1.3" stroke-linecap="round">' +
         '<path d="M81 116a6 6 0 0 1 8 0"/><path d="M78 112.5a10.5 10.5 0 0 1 14 0"/><path d="M75 109a15 15 0 0 1 20 0"/></g>' +
       '<path d="M88 130L86 121" stroke="#3a4a44" stroke-width="2" stroke-linecap="round"/>' + dot(85.8, 120.4, 1.5, 'fill="#3dffa8"') +
@@ -149,63 +167,64 @@
       '<g class="sqh-scr" fill="#3dffa8"><rect x="88" y="133.3" width="10" height="1.5" rx=".7"/>' +
         '<rect x="88" y="136" width="7" height="1.5" rx=".7"/><rect x="88" y="138.7" width="11.5" height="1.5" rx=".7"/></g>' +
       dot(106.5, 137.5, 2.5, 'fill="#3a4a44" stroke="#0b1310" stroke-width=".6"') +
-      dot(84.5, 144.5, 6.3) +
-      '<circle class="sqh-thumb" cx="95" cy="131" r="2.7" fill="var(--sqh-skin)" stroke="var(--sqh-skin-dark)" stroke-width=".6"/>' +
+      '<ellipse cx="84" cy="144" rx="6.5" ry="5.5" fill="' + SKIN + '"/>' +
+      '<circle class="sqh-thumb" cx="95" cy="131" r="2.8" fill="' + SKIN + '" stroke="var(--sqh-skin-dark)" stroke-width=".6"/>' +
       "</g>";
     // a little wooden sign on a stick, held up beside him
     const signArm = '<g class="sqh-sign">' +
-      '<path d="M98 144Q84 142 66 128" fill="none" stroke="var(--sqh-fur)" stroke-width="15" stroke-linecap="round"/>' +
+      stroke("M100 140Q84 140 66 128", 15, "var(--sqh-fur)") +
       '<g class="sqh-board"><path d="M59 125L42 101" stroke="#7a5530" stroke-width="3" stroke-linecap="round"/>' +
         '<rect x="4" y="71" width="66" height="31" rx="3.5" fill="#d6a866" stroke="#7a5530" stroke-width="1.6"/>' +
         '<path d="M8 78h58M8 94h58" stroke="#b8894a" stroke-width=".7" opacity=".6"/>' +
         '<text class="sqh-sign-text" x="37" y="84.5" font-size="8.6" text-anchor="middle"><tspan x="37">NOT A GUY</tspan><tspan x="37" dy="10.5">IN A SUIT</tspan></text>' +
-      "</g>" + dot(60, 124, 7.5) + dot(53.5, 119, 3) + dot(54, 125.5, 3) + "</g>";
+      "</g>" + '<ellipse cx="60" cy="124" rx="7.5" ry="7" fill="' + SKIN + '"/>' + stroke("M55 119l-3-2M54.5 124l-3.5-.5M55 129l-3 1.5", 4, SKIN) + "</g>";
     const scratchArm = '<g class="sqh-scratch">' +
-      '<path d="M98 144Q56 140 61 108Q66 80 86 62" fill="none" stroke="var(--sqh-fur)" stroke-width="13" stroke-linecap="round"/>' +
-      '<g class="sqh-scratch-hand">' + dot(83.5, 52.5, 2.9) + dot(89, 50, 3) + dot(94.5, 52.5, 2.9) + dot(88.5, 58.5, 6.6) + "</g></g>";
+      stroke("M100 140Q60 134 64 104Q68 84 86 70", 14, "var(--sqh-fur)") +
+      '<g class="sqh-scratch-hand"><ellipse cx="90" cy="66" rx="7" ry="6.5" fill="' + SKIN + '"/>' +
+        stroke("M86 61l-1-6M90.5 60l.5-6.5M95 61.5l2-5.5", 4.2, SKIN) + "</g></g>";
     // stars circling his head: each rides the same ellipse, a third of a lap apart
     const orbit = '<g class="sqh-orbit" fill="#ffe27a" stroke="#7a5a10" stroke-width=".6" stroke-linejoin="round">' +
       ["0s", "-0.4s", "-0.8s"].map((b) => '<path d="M0-5l1.4 3.6 3.6 1.4-3.6 1.4L0 5l-1.4-3.6L-5 0l3.6-1.4z">' +
-        '<animateMotion dur="1.2s" repeatCount="indefinite" begin="' + b + '" path="M147 42a34 10 0 1 1-68 0a34 10 0 1 1 68 0"/></path>').join("") +
+        '<animateMotion dur="1.2s" repeatCount="indefinite" begin="' + b + '" path="M152 56a34 10 0 1 1-68 0a34 10 0 1 1 68 0"/></path>').join("") +
       "</g>";
-    const head = '<g class="sqh-head">' +
-      '<path d="' + fur(HEAD, 3, 6) + '" ' + FUR + "/>" + STRANDS +
+    const head = '<g class="sqh-head">' + headFur() +
       // Halloween week: a witch's hat
-      '<g class="sqh-hat" transform="translate(0.5 -15)"><path d="M96 66Q107 48 112 30Q117 22 123 27Q118 31 119 38Q122 52 129 66Z" fill="#3a1f5c" stroke="#1d0f2e" stroke-width=".8"/>' +
+      '<g class="sqh-hat" transform="translate(5.5 -4)"><path d="M96 66Q107 48 112 30Q117 22 123 27Q118 31 119 38Q122 52 129 66Z" fill="#3a1f5c" stroke="#1d0f2e" stroke-width=".8"/>' +
         '<path d="M98 60Q113 64 127 60L128.5 66Q113 69 96.5 66Z" fill="var(--sqh-scarf)"/>' +
         '<ellipse cx="112.5" cy="67" rx="27" ry="5" fill="#2a1640" stroke="#1d0f2e" stroke-width=".8"/></g>' +
-      '<path d="' + FACE + '" fill="var(--sqh-skin)"/>' +
+      FACE +
       '<path class="sqh-brows" d="' + BROW + '" fill="var(--sqh-fur-dark)"/>' +
-      '<path class="sqh-brows-sad" d="M88 91Q99 86 109 79Q113 81 117 79Q127 86 138 91Q131 94 123 89Q113 85 103 89Q95 94 88 91Z" fill="var(--sqh-fur-dark)"/>' +
+      '<path class="sqh-brows-sad" d="M91 95Q102 90 113 83Q118 85 123 83Q134 90 145 95Q138 98 129 93Q118 89 107 93Q98 98 91 95Z" fill="var(--sqh-fur-dark)"/>' +
       '<g class="sqh-e-open"><g class="sqh-blink">' +
-        '<ellipse cx="103" cy="95" rx="4.2" ry="3.8" fill="#fff"/><ellipse cx="123" cy="95" rx="4.2" ry="3.8" fill="#fff"/>' +
-        '<g class="sqh-pupils"><ellipse cx="103.4" cy="95.6" rx="2.5" ry="2.8" fill="#24160f"/><ellipse cx="123.4" cy="95.6" rx="2.5" ry="2.8" fill="#24160f"/>' +
-          '<circle cx="104.4" cy="94.6" r=".9" fill="#fff"/><circle cx="124.4" cy="94.6" r=".9" fill="#fff"/></g>' +
+        '<ellipse cx="107" cy="96.5" rx="4.8" ry="4.4" fill="#fff"/><ellipse cx="129" cy="96.5" rx="4.8" ry="4.4" fill="#fff"/>' +
+        '<g class="sqh-pupils"><ellipse cx="107.4" cy="97.2" rx="2.9" ry="3.2" fill="#24160f"/><ellipse cx="129.4" cy="97.2" rx="2.9" ry="3.2" fill="#24160f"/>' +
+          '<circle cx="108.5" cy="96" r="1" fill="#fff"/><circle cx="130.5" cy="96" r="1" fill="#fff"/></g>' +
       "</g></g>" +
-      '<path class="sqh-e-shut" d="M98.5 96q4.5 3 9 0M118.5 96q4.5 3 9 0" fill="none" stroke="#24160f" stroke-width="2" stroke-linecap="round"/>' +
-      '<path class="sqh-e-happy" d="M98.5 97.5q4.5-5 9 0M118.5 97.5q4.5-5 9 0" fill="none" stroke="#24160f" stroke-width="2.2" stroke-linecap="round"/>' +
-      '<g class="sqh-e-dizzy" fill="none" stroke="#24160f" stroke-width="1.3" stroke-linecap="round">' + spiral(103, 95) + spiral(123, 95) + "</g>" +
-      '<g class="sqh-cheeks" fill="var(--sqh-cheek)"><ellipse cx="95" cy="106" rx="3.8" ry="2.4"/><ellipse cx="131" cy="106" rx="3.8" ry="2.4"/></g>' +
+      stroke("M102.5 97.5q4.5 3 9 0M124.5 97.5q4.5 3 9 0", 2, "#24160f", ' class="sqh-e-shut"') +
+      stroke("M102.5 99q4.5-5 9 0M124.5 99q4.5-5 9 0", 2.2, "#24160f", ' class="sqh-e-happy"') +
+      '<g class="sqh-e-dizzy" fill="none" stroke="#24160f" stroke-width="1.3" stroke-linecap="round">' + spiral(107, 96.5) + spiral(129, 96.5) + "</g>" +
+      '<g class="sqh-cheeks" fill="var(--sqh-cheek)"><ellipse cx="99" cy="108" rx="3.8" ry="2.4"/><ellipse cx="137" cy="108" rx="3.8" ry="2.4"/></g>' +
       NOSE +
-      '<g class="sqh-m-smile"><path d="M103 112Q113 119 123 112Q113 114.5 103 112Z" fill="#8e3b2f"/><ellipse cx="113" cy="115" rx="2.8" ry="1.2" fill="#e0736a"/></g>' +
-      '<ellipse class="sqh-m-o" cx="113" cy="113.5" rx="3" ry="3.4" fill="#6e2a22"/>' +
-      '<g class="sqh-m-grin"><path d="M101.5 111Q113 123 124.5 111Z" fill="#8e3b2f"/><path d="M104 111.5h18l-1 2.5h-16z" fill="#fff"/></g>' +
-      '<path class="sqh-m-wavy" d="M104.5 113.5q2-2 4.2 0t4.2 0 4.2 0 4.2 0" fill="none" stroke="#5a3422" stroke-width="1.8" stroke-linecap="round"/>' +
-      '<path class="sqh-m-frown" d="M106 116q7-5 14 0" fill="none" stroke="#5a3422" stroke-width="2" stroke-linecap="round"/>' +
-      '<circle class="sqh-snot" cx="118.5" cy="106" r="3" fill="#bfe8ff" fill-opacity=".75" stroke="#fff" stroke-width=".6"/>' +
-      '<ellipse class="sqh-mist" cx="99" cy="116" rx="9" ry="5.5" fill="#fff" fill-opacity=".7"/>' +
-      '<path class="sqh-sweat" d="M144 72c2 3 3.2 5 3.2 6.6a3.2 3.2 0 0 1-6.4 0c0-1.6 1.2-3.6 3.2-6.6z" fill="#8fd3ff" stroke="#fff" stroke-width=".6"/>' +
+      '<g class="sqh-m-smile">' + SMILE + '<ellipse cx="118" cy="118" rx="2.8" ry="1.1" fill="#e0736a"/></g>' +
+      '<ellipse class="sqh-m-o" cx="118" cy="117" rx="3" ry="3.4" fill="#6e2a22"/>' +
+      '<g class="sqh-m-grin"><path d="M106.5 114Q118 126 129.5 114Z" fill="#7d3328"/><path d="M109 114.5h18l-1 2.5h-16z" fill="#fff"/></g>' +
+      stroke("M109.5 117q2-2 4.2 0t4.2 0 4.2 0 4.2 0", 1.8, "#5a3422", ' class="sqh-m-wavy"') +
+      stroke("M111 119.5q7-5 14 0", 2, "#5a3422", ' class="sqh-m-frown"') +
+      '<circle class="sqh-snot" cx="123.5" cy="109" r="3" fill="#bfe8ff" fill-opacity=".75" stroke="#fff" stroke-width=".6"/>' +
+      '<ellipse class="sqh-mist" cx="104" cy="120" rx="9" ry="5.5" fill="#fff" fill-opacity=".7"/>' +
+      '<path class="sqh-sweat" d="M151 74c2 3 3.2 5 3.2 6.6a3.2 3.2 0 0 1-6.4 0c0-1.6 1.2-3.6 3.2-6.6z" fill="#8fd3ff" stroke="#fff" stroke-width=".6"/>' +
       '<g class="sqh-puffs">' + PUFFS.map((p) => '<circle class="sqh-puff" cx="' + p[0] + '" cy="' + p[1] + '" r="3.2" fill="var(--sqh-fur)" ' +
         'style="--dx:' + p[2] + "px;--dy:" + p[3] + 'px"/>').join("") + "</g>" +
-      '<text class="sqh-bang" x="149" y="60" font-size="24" text-anchor="middle">!</text>' +
-      '<text class="sqh-q" x="149" y="58" font-size="20" text-anchor="middle">?</text>' +
-      '<g class="sqh-zzz"><text class="sqh-zz" x="136" y="62" font-size="9">z</text><text class="sqh-zz" x="143" y="54" font-size="11">z</text>' +
-        '<text class="sqh-zz" x="151" y="45" font-size="13">Z</text></g>' +
-      '<g class="sqh-notes"><text class="sqh-note" x="76" y="66" font-size="13">♪</text><text class="sqh-note" x="148" y="58" font-size="15">♫</text>' +
-        '<text class="sqh-note" x="92" y="44" font-size="11">♪</text></g>' +
+      '<text class="sqh-bang" x="154" y="64" font-size="24" text-anchor="middle">!</text>' +
+      '<text class="sqh-q" x="154" y="62" font-size="20" text-anchor="middle">?</text>' +
+      '<g class="sqh-zzz"><text class="sqh-zz" x="141" y="66" font-size="9">z</text><text class="sqh-zz" x="148" y="58" font-size="11">z</text>' +
+        '<text class="sqh-zz" x="156" y="49" font-size="13">Z</text></g>' +
+      '<g class="sqh-notes"><text class="sqh-note" x="78" y="70" font-size="13">♪</text><text class="sqh-note" x="154" y="62" font-size="15">♫</text>' +
+        '<text class="sqh-note" x="98" y="50" font-size="11">♪</text></g>' +
       orbit + "</g>";
-    // the hand on the rim, fingers over the broken edge
-    const grip = dot(126, 40, 7) + dot(118.5, 37, 3.1) + dot(121.5, 33, 3.1) + dot(126.6, 31.5, 3.1);
+    // his fingers hooked over the top of the rim, right of his head
+    const grip = stroke("M151 26.5l-1 8.5M155.5 26l-.6 9M160 26l.2 8.6M164.5 27l.8 7.8", 4.4, SKIN) +
+      stroke("M150 27.5h15", 2, "var(--sqh-skin-dark)", ' opacity=".5"');
 
     return '<svg viewBox="0 0 170 210" aria-hidden="true" focusable="false">' +
       "<defs>" +
@@ -230,9 +249,9 @@
       "</g>" +
       // the fist that punches through first
       '<g clip-path="url(#sqh-clip)"><g class="sqh-fist">' +
-        '<path d="M176 118L112 114" fill="none" stroke="var(--sqh-fur)" stroke-width="17" stroke-linecap="round"/>' +
+        stroke("M176 118L112 114", 17, "var(--sqh-fur)") +
         dot(103, 113, 11.5) + dot(93.5, 105.5, 4.3) + dot(92.5, 112.5, 4.4) + dot(93.5, 119.5, 4.3) + dot(99, 124.5, 3.6) +
-        '<path d="M97 104q2 9 0 18" fill="none" stroke="var(--sqh-skin-dark)" stroke-width="1.3" stroke-linecap="round"/>' +
+        stroke("M97 104q2 9 0 18", 1.3, "var(--sqh-skin-dark)") +
       "</g></g>" +
       '<g clip-path="url(#sqh-clip)">' + moving(waveArm + pagerArm + signArm + head + scratchArm + grip, " sqh-drop") + "</g>" +
       '<g class="sqh-shards" fill="#1b2b24" stroke="var(--sqh-rim)" stroke-opacity=".55" stroke-width=".8" stroke-linejoin="round">' +
@@ -748,7 +767,7 @@
   // Show him once his stylesheet is in (or after a moment regardless).
   const css = document.createElement("link");
   css.rel = "stylesheet";
-  css.href = "/assets/squatch-helper.css?v=12";
+  css.href = "/assets/squatch-helper.css?v=13";
   let shown = false;
   const show = () => {
     if (shown) return;

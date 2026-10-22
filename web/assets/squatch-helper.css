@@ -6,7 +6,7 @@
    His moods are classes on .sqh (surprised, happy, sleep, startle, dizzy, pager, sneeze,
    thinking, tickle, look); each shows the face parts it needs and moves him. */
 
-.sqh { --sqh-fur: #8b5a3c; --sqh-fur-dark: #5f3a24; --sqh-skin: #f6c7a1; --sqh-skin-dark: #e3a57c;
+.sqh { --sqh-fur: #8b5a3c; --sqh-fur-dark: #5a3520; --sqh-fur-light: #b07a52; --sqh-muzzle: #f9dcc0; --sqh-skin: #f2c29b; --sqh-skin-dark: #d9a07a;
   --sqh-cheek: #f08f80; --sqh-scarf: var(--accent, #3dffa8); --sqh-scarf-dark: #1fa86c; --sqh-rim: #c6ffe4;
   --sqh-w: 170px; --sqh-h: 210px;
   position: fixed; right: 0; bottom: max(64px, calc(env(safe-area-inset-bottom, 0px) + 40px));
@@ -39,12 +39,13 @@
 .sqh-out { transform-origin: 170px 210px; }
 .sqh-lean { transform-origin: 170px 200px; transition: transform 0.35s cubic-bezier(0.3, 1.5, 0.5, 1); }
 .sqh-breath { transform-origin: 140px 210px; }
-.sqh-head { transform-origin: 113px 124px; }
-.sqh-arm, .sqh-scratch { transform-origin: 98px 144px; }
+.sqh-head { transform-origin: 118px 128px; }
+.sqh-arm { transform-origin: 76px 124px; }
+.sqh-scratch { transform-origin: 100px 140px; }
 .sqh-fist { transform-origin: 103px 113px; }
 .sqh-board { transform-box: view-box; transform-origin: 59px 125px; }
-.sqh-e-open, .sqh-blink { transform-origin: 113px 95px; }
-.sqh-brows { transform-origin: 113px 86px; transition: transform 0.15s; }
+.sqh-e-open, .sqh-blink { transform-origin: 118px 96.5px; }
+.sqh-brows { transform-origin: 118px 88px; transition: transform 0.15s; }
 .sqh-hole { transform-origin: 170px 115px; }
 .sqh-burst { transform-origin: 150px 115px; }
 .sqh-radio path { transform-origin: 85.8px 120.4px; }
@@ -60,7 +61,7 @@
 .sqh-zzz, .sqh-notes, .sqh-fist, .sqh-sign, .sqh-brows-sad, .sqh-m-frown, .sqh-orbit, .sqh-pager, .sqh-scratch, .sqh-puffs, .sqh-mist, .sqh-word, .sqh-burst, .sqh-glow, .sqh-shard { opacity: 0; }
 .sqh-cheeks { opacity: 0.6; }
 .sqh-e-open { transition: opacity 0.1s, transform 0.15s; }
-.sqh-e-shut, .sqh-e-happy, .sqh-e-dizzy, .sqh-m-smile, .sqh-m-o, .sqh-m-grin, .sqh-m-wavy, .sqh-arm, .sqh-pager,
+.sqh-e-shut, .sqh-e-happy, .sqh-e-dizzy, .sqh-m-smile, .sqh-m-o, .sqh-m-grin, .sqh-m-wavy, .sqh-armset, .sqh-pager,
 .sqh-scratch, .sqh-cheeks, .sqh-sweat, .sqh-bang, .sqh-q, .sqh-zzz, .sqh-snot, .sqh-orbit, .sqh-sign, .sqh-brows,
 .sqh-brows-sad, .sqh-m-frown { transition: opacity 0.1s; }
 
@@ -84,14 +85,14 @@
 .sqh.dizzy .sqh-e-dizzy, .sqh.dizzy .sqh-orbit { opacity: 1; }
 .sqh.dizzy .sqh-m-smile, .sqh.thinking .sqh-m-smile { opacity: 0; }
 .sqh.dizzy .sqh-m-wavy, .sqh.thinking .sqh-m-wavy { opacity: 1; }
-.sqh.pager .sqh-arm, .sqh.thinking .sqh-arm { opacity: 0; }
+.sqh.pager .sqh-armset, .sqh.thinking .sqh-armset { opacity: 0; }
 .sqh.pager .sqh-pager { opacity: 1; }
 .sqh.thinking .sqh-scratch, .sqh.thinking .sqh-q { opacity: 1; }
 .sqh.thinking .sqh-brows { transform: rotate(-6deg) translateY(-1px); }
 .sqh.dance .sqh-e-open { opacity: 0; }
 .sqh.dance .sqh-e-happy, .sqh.dance .sqh-m-grin, .sqh.dance .sqh-cheeks, .sqh.dance .sqh-notes { opacity: 1; }
 .sqh.dance .sqh-m-smile { opacity: 0; }
-.sqh.sign .sqh-arm { opacity: 0; }
+.sqh.sign .sqh-armset { opacity: 0; }
 .sqh.sign .sqh-sign { opacity: 1; }
 .sqh.sign .sqh-brows { transform: translateY(-2.5px); }
 .sqh.worried .sqh-brows, .sqh.worried .sqh-m-smile { opacity: 0; }
@@ -243,10 +244,10 @@
 @keyframes sqh-twinkle { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.6); } }
 @keyframes sqh-wave {
   0%, 32%, 100% { transform: rotate(0deg); }
-  5% { transform: rotate(18deg); } 10% { transform: rotate(-10deg); }
-  15% { transform: rotate(18deg); } 20% { transform: rotate(-10deg); } 26% { transform: rotate(10deg); }
+  5% { transform: rotate(-22deg); } 10% { transform: rotate(6deg); }
+  15% { transform: rotate(-22deg); } 20% { transform: rotate(6deg); } 26% { transform: rotate(-12deg); }
 }
-@keyframes sqh-wave-big { 0%, 100% { transform: rotate(-14deg); } 50% { transform: rotate(24deg); } }
+@keyframes sqh-wave-big { 0%, 100% { transform: rotate(-28deg); } 50% { transform: rotate(8deg); } }
 @keyframes sqh-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translate(-4px, -10px); } }
 @keyframes sqh-duck {
   0% { transform: none; }
