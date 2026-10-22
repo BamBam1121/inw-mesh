@@ -97,6 +97,8 @@
 .sqh.worried .sqh-brows, .sqh.worried .sqh-m-smile { opacity: 0; }
 .sqh.worried .sqh-brows-sad, .sqh.worried .sqh-m-frown, .sqh.worried .sqh-sweat { opacity: 1; }
 .sqh.worried .sqh-e-open { transform: scale(1.12); }
+.sqh.yawn .sqh-e-open, .sqh.yawn .sqh-m-smile { opacity: 0; }
+.sqh.yawn .sqh-e-shut, .sqh.yawn .sqh-m-o { opacity: 1; }
 /* Halloween week */
 .sqh-hat { display: none; }
 .sqh.spooky .sqh-hat { display: inline; }
@@ -146,6 +148,10 @@
   .sqh.worried .sqh-breath { animation: sqh-tremble 0.14s linear infinite; }
   .sqh.worried .sqh-arm { animation: none; }
   .sqh.worried .sqh-head { animation: sqh-plead 1.4s ease-in-out infinite; }
+  .sqh.yawn .sqh-m-o { animation: sqh-yawn-mouth 2.4s ease-in-out both; }
+  .sqh.yawn .sqh-head { animation: sqh-yawn-head 2.4s ease-in-out both; }
+  .sqh.yawn .sqh-arm { animation: none; }
+  .sqh.yawn .sqh-breath { animation: sqh-yawn-body 2.4s ease-in-out both; }
   .sqh.dance .sqh-breath { animation: sqh-dance 0.5s ease-in-out infinite; }
   .sqh.dance .sqh-head { animation: sqh-bop 0.25s ease-in-out infinite alternate; }
   .sqh.dance .sqh-arm { animation: sqh-wave-big 0.25s ease-in-out infinite; }
@@ -286,6 +292,9 @@
 }
 @keyframes sqh-tremble { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(0.8px); } }
 @keyframes sqh-plead { 0%, 100% { transform: rotate(4deg); } 50% { transform: rotate(7deg) translateY(1px); } }
+@keyframes sqh-yawn-mouth { 0% { transform: scale(0.6); } 35%, 70% { transform: scale(1.9, 2.3); } 100% { transform: scale(0.6); } }
+@keyframes sqh-yawn-head { 0% { transform: none; } 35%, 70% { transform: rotate(-9deg) translateY(-2px); } 100% { transform: none; } }
+@keyframes sqh-yawn-body { 0% { transform: none; } 40%, 70% { transform: scale(1.03, 1.04); } 100% { transform: none; } }
 @keyframes sqh-bop { from { transform: rotate(-7deg); } to { transform: rotate(7deg); } }
 @keyframes sqh-tap { from { transform: translateY(0); } to { transform: translateY(1.8px); } }
 @keyframes sqh-type { from { transform: scaleX(0); } to { transform: scaleX(1); } }

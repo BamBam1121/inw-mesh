@@ -402,7 +402,7 @@
   // One mood at a time; each is a class on .sqh that the stylesheet turns into a face
   // and a movement.
   const MOODS = ["surprised", "happy", "sleep", "startle", "dizzy", "pager", "sneeze", "thinking", "tickle", "look", "dance",
-    "sign", "worried"];
+    "sign", "worried", "yawn"];
   const OWN_EYES = ["pager", "look", "thinking", "sleep", "dizzy", "sneeze", "worried"];   // these steer his eyes themselves
   let leaving = false, hovering = false, settled = false, current = "", moodTimer = 0, lastGag = "", gags = 0;
   let lastActive = Date.now();
@@ -544,9 +544,11 @@
   });
 
   // Nobody's moved for a while: he dozes off. Anything at all wakes him with a start.
-  const SLEEP_AFTER = 40000;
+  const YAWN_AFTER = 25000, SLEEP_AFTER = 40000;
+  let yawned = false;
   function active() {
     lastActive = Date.now();
+    yawned = false;
     if (current === "sleep") {
       mood("startle", 1100);
       later(120, () => say(pick(["I'm up! I'm up!", "Wasn't sleeping!", "Huh? Who's there?"]), 1700));
@@ -556,7 +558,13 @@
     window.addEventListener(ev, active, { passive: true }));
   setInterval(() => {
     if (!settled || leaving || current || hovering || !panel.hidden || still) return;
-    if (Date.now() - lastActive > SLEEP_AFTER) { mood("sleep", 0); look(0, 0); }
+    const idleFor = Date.now() - lastActive;
+    if (idleFor > SLEEP_AFTER) { mood("sleep", 0); look(0, 0); }
+    else if (idleFor > YAWN_AFTER && !yawned) {
+      yawned = true;
+      mood("yawn", 2400);
+      say(pick(["*yawwwn*", "So… sleepy…", "*big yawn*"]), 1900);
+    }
   }, 3000);
 
   // Fling the page about and he gets dizzy.
@@ -727,7 +735,7 @@
   // Show him once his stylesheet is in (or after a moment regardless).
   const css = document.createElement("link");
   css.rel = "stylesheet";
-  css.href = "/assets/squatch-helper.css?v=9";
+  css.href = "/assets/squatch-helper.css?v=11";
   let shown = false;
   const show = () => {
     if (shown) return;
