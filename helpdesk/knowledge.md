@@ -237,12 +237,20 @@ Messages gone after a restart or an update (fixed in pager 1.2.13 / beta 1.2.14,
 - No SD card, or a card whose copy was already written over: the messages can't come back. Advise keeping
   a card in with backups on (Settings > Backups).
 
+Pager 1.2.15 (released 2026-10-22, the current pager release) and T-Deck 1.2.6-beta2 (beta, 2026-10-22)
+- Everything in pager 1.2.12 and 1.2.14 (below), plus a fix to the message rescue: on a busy store 1.2.13
+  and 1.2.14 could put lost messages back but not save them (one big write came back empty), so they were
+  put back again at every start and the start was slower. Now saved the first time, in pieces.
+- T-Deck 1.2.6-beta2: the same message rescue and save fix, map node display (Settings > Display > map;
+  tap the node count on the map to step through the views) and the "what happened?" note on send log.
+- Someone on 1.2.13 whose pager says "lost messages put back" at every start: update to 1.2.15.
+
 Pager 1.2.14 (beta, 2026-10-19) - only for pagers with beta updates switched on
 - The 1.2.13 message fix, everything in 1.2.12, and: map node display (Settings > Display > map: nodes on
   map all / favourites / none, node names on or off; the m key on the map steps through names, dots only,
   favourites, hidden; GitHub #10). Tools > send log to the developer asks "what happened?" first.
 
-New in 1.2.13 (released 2026-10-19, the current pager release): 1.2.11 plus the message fix above.
+New in 1.2.13 (released 2026-10-19): 1.2.11 plus the message fix above.
 
 Pager 1.2.12 (beta, 2026-10-16) - only for pagers with beta updates switched on
 - Location privacy (GitHub idea #9): Settings > position > "position accuracy": exact, about 100 m,
