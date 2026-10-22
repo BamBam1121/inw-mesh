@@ -96,6 +96,7 @@ struct UiSettings {
   // padding, so it reads back off.)
   bool     tapWake       = false;
   bool     squatchQuiet  = false;     // lock screen: the sasquatch's speech bubble off (it talks by default)
+  uint8_t  mapNodes      = 0;         // map: 0 every node with a position, 1 only favourites, 2 none (GitHub #10)
 
   void load();
   void save();

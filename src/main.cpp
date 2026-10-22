@@ -1247,6 +1247,23 @@ static void usbCommands() {
       Serial.printf("[backup] %s\n", sdBackupNow(true));
       continue;
     }
+#if INW_DEV
+    // Test of putting lost messages back (history_rescue.cpp): "histloss" leaves the
+    // message log as a full store's tidy-up used to - empty - and restarts; the start
+    // should put them back from the card. "histcount": how many history holds.
+    if (!strcmp(line, "histcount")) { Serial.printf("[hist] %u messages, %u put back at this start\n", (unsigned)history.size(), (unsigned)history.rescued()); continue; }
+    if (!strcmp(line, "histloss")) {
+      extern void inwDropPath(const char* path);
+      inwDropPath("/hist.log");
+      inwStoreFlush(10000);
+      File f = SPIFFS.open("/hist.log", FILE_WRITE);
+      if (f) f.close();
+      Serial.println("[hist] message log emptied; restarting");
+      Serial.flush();
+      delay(300);
+      ESP.restart();
+    }
+#endif
     if (!strcmp(line, "log")) {             // the on-device log, including "slow" stalls
       for (uint8_t i = 0; i < logs.count(); i++) Serial.printf("[log] %s\n", logs.line(i));
       Serial.println("[log] end");
@@ -1868,33 +1885,57 @@ static void usbCommands() {
     // "gpscmd BODY [seconds]": sends $BODY*checksum to the GPS and counts what comes back
     // each second, to find out what a module does with a command (does it go quiet, and
     // for how long). "gpscmd !" sends four 0xFF bytes instead: does a byte wake it.
-    if (!strncmp(line, "gpscmd ", 7)) {
-      char body[80];
+    // "gpshex BA CE 04 00 ... [/seconds]": the same, for a binary command written out in hex.
+    if (!strncmp(line, "gpscmd ", 7) || !strncmp(line, "gpshex ", 7)) {
       int secs = 12;
-      const char* sp = strrchr(line + 7, ' ');
-      if (sp && isdigit((unsigned char)sp[1])) { secs = constrain(atoi(sp + 1), 1, 120); snprintf(body, sizeof(body), "%.*s", (int)(sp - (line + 7)), line + 7); }
-      else snprintf(body, sizeof(body), "%s", line + 7);
-      if (!strcmp(body, "!")) {
-        static const uint8_t nudge[] = {0xFF, 0xFF, 0xFF, 0xFF};
-        Serial1.write(nudge, sizeof(nudge));
-        Serial.println("[gpscmd] sent four 0xFF bytes");
+      if (line[3] == 'h') {
+        uint8_t raw[64]; size_t n = 0;
+        for (const char* p = line + 7; *p && n < sizeof(raw);) {
+          if (*p == ' ') { p++; continue; }
+          if (*p == '/') { secs = constrain(atoi(p + 1), 1, 120); break; }
+          char* end; const long v = strtol(p, &end, 16);
+          if (end == p) break;
+          raw[n++] = (uint8_t)v; p = end;
+        }
+        Serial1.write(raw, n);
+        Serial.printf("[gpscmd] sent %u bytes\n", (unsigned)n);
       } else {
-        uint8_t sum = 0;
-        for (const char* p = body; *p; p++) sum ^= (uint8_t)*p;
-        Serial1.printf("$%s*%02X\r\n", body, sum);
-        Serial.printf("[gpscmd] sent $%s*%02X\n", body, sum);
+        char body[80];
+        const char* sp = strrchr(line + 7, ' ');
+        if (sp && isdigit((unsigned char)sp[1])) { secs = constrain(atoi(sp + 1), 1, 120); snprintf(body, sizeof(body), "%.*s", (int)(sp - (line + 7)), line + 7); }
+        else snprintf(body, sizeof(body), "%s", line + 7);
+        if (!strcmp(body, "!")) {
+          static const uint8_t nudge[] = {0xFF, 0xFF, 0xFF, 0xFF};
+          Serial1.write(nudge, sizeof(nudge));
+          Serial.println("[gpscmd] sent four 0xFF bytes");
+        } else {
+          uint8_t sum = 0;
+          for (const char* p = body; *p; p++) sum ^= (uint8_t)*p;
+          Serial1.printf("$%s*%02X\r\n", body, sum);
+          Serial.printf("[gpscmd] sent $%s*%02X\n", body, sum);
+        }
       }
       Serial1.flush();
       for (int s = 1; s <= secs; s++) {
         const uint32_t until = millis() + 1000;
         uint32_t n = 0;
         char first[40]; uint8_t k = 0;
+        // Binary replies (CASIC 0xBA 0xCE, u-blox 0xB5 0x62) shown in hex: the ack says
+        // whether the module took a command.
+        char bin[100]; uint8_t bk = 0, binLeft = 0, prev = 0;
         while ((int32_t)(millis() - until) < 0) {
-          while (Serial1.available()) { const int c = Serial1.read(); n++; if (k < sizeof(first) - 1 && c >= 32 && c < 127) first[k++] = (char)c; }
+          while (Serial1.available()) {
+            const int c = Serial1.read(); n++;
+            if (k < sizeof(first) - 1 && c >= 32 && c < 127) first[k++] = (char)c;
+            if ((prev == 0xBA && c == 0xCE) || (prev == 0xB5 && c == 0x62)) binLeft = 14;
+            if (binLeft && bk < sizeof(bin) - 4) { bk += snprintf(bin + bk, sizeof(bin) - bk, "%02X ", c); binLeft--; }
+            prev = (uint8_t)c;
+          }
           delay(5);
         }
         first[k] = 0;
-        Serial.printf("[gpscmd] second %2d: %4lu bytes  %s\n", s, (unsigned long)n, first);
+        bin[bk] = 0;
+        Serial.printf("[gpscmd] second %2d: %4lu bytes  %s%s%s\n", s, (unsigned long)n, first, bk ? "  bin: " : "", bin);
       }
       continue;
     }
@@ -2408,6 +2449,11 @@ void setup() {
   nav.begin(&display, &theme);
   nav.push(makeHomeView());
   ota::announce();                                // "Updated, now on X" after an update restarted it
+  if (history.rescued()) {
+    char msg[48];
+    snprintf(msg, sizeof(msg), "%u lost messages put back", (unsigned)history.rescued());
+    nav.toast(msg, 5000);
+  }
   // A new node is named after its key prefix; ask for a real name once.
   if (g_node) {
     char hex[10];

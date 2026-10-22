@@ -24,6 +24,7 @@ namespace report {
   bool posting();              // a report is out on the network right now (it runs in a task)
   bool enabled();
   void setEnabled(bool on);
-  bool sendLog(const char* why);  // queue the log now (Tools > log); false if the store is full
+  bool sendLog(const char* why, const String& note = String());  // queue the log now (Tools), with what the
+                                                                  // owner typed; false if the store is full
   uint8_t waiting();
 }

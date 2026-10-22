@@ -201,12 +201,17 @@ static String header(const char* kind, const char* why) {
   return j;
 }
 
-bool sendLog(const char* why) {
+bool sendLog(const char* why, const String& note) {
   Mirror m;
   memcpy(&m, &s_m, sizeof(m));
   String lines;
   recentLines(lines, m);
   String j = header("log", why);
+  if (note.length()) {
+    j += ",\"note\":\"";
+    jsonEscape(j, note);
+    j += "\"";
+  }
   j += ",\"log\":\"";
   jsonEscape(j, lines);
   j += "\"}";

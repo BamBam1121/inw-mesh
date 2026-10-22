@@ -317,9 +317,15 @@ void app::openTools() {
   m->action("log", [] { logsPage(); });
 #if BOARD_HAS_REPORTS
   // Something looks wrong and nothing crashed: send the log as it is now.
+  // First a box for what happened: a log alone doesn't say which screen or what was
+  // wrong. Left empty, the log goes without; backed out of, nothing is sent.
   m->action("send log to the developer", [] {
-    if (!report::sendLog("sent from tools")) { nav.toast("can't right now - reports are full, or storage is", 3000); return; }
-    nav.toast(wifi::connected() ? "sending in a few seconds" : "it goes the next time wi-fi is on", 3000);
+    prompt("Send log", "what happened? (optional)", "", 200, [](const String& note) {
+      String n = note;
+      n.trim();
+      if (!report::sendLog("sent from tools", n)) { nav.toast("can't right now - reports are full, or storage is", 3000); return; }
+      nav.toast(wifi::connected() ? "sending in a few seconds - thanks!" : "it goes the next time wi-fi is on", 3000);
+    });
   });
 #endif
   m->action("test notification", [] { app::testNotify(); });
