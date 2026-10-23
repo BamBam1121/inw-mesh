@@ -2759,6 +2759,14 @@ void loop() {
   // Keys only (the M9): its Home key wakes the screen when it is dark, and locks it otherwise.
   if (dimmer.asleep() && btnTap) { btnPress = true; btnTap = false; }
 #endif
+#if INW_M9
+  // Awake, Home goes to the home screen, like a phone's; on the home screen or the lock
+  // face it locks and turns the screen off as above. The keys with pictures on them are
+  // read here and acted on below (keyboard.h).
+  bool m9Home = false;
+  if (btnTap && nav.top() && !nav.top()->isHome() && !nav.top()->isLock()) { btnTap = false; m9Home = true; }
+  const uint8_t m9Key = m9kb::takeAction();
+#endif
   if (dimmer.asleep() && (press || s_touchWake)) { btnPress = true; press = false; }
   s_touchWake = false;
 #endif
@@ -2806,6 +2814,24 @@ void loop() {
         Serial.printf("[W] input slow: %s on '%s' took %lums\n", what, before, (unsigned long)(millis() - tIn));
     }
   }
+#if INW_M9
+  // Home and the picture keys: from wherever you are, never past the lock face, and
+  // dropped with the screen dark (a pocket presses them). Each starts from the home
+  // screen, so pressing one again doesn't pile up screens.
+  if (!dimmer.asleep() && (m9Home || m9Key) && !(nav.top() && nav.top()->isLock())) {
+    dimmer.note();
+    nav.popToHome();
+    switch (m9Key) {
+      case m9kb::CHATS:    app::openChats(); break;
+      case m9kb::CONTACTS: app::openContacts(); break;
+      case m9kb::MAP:      app::openMap(); break;
+      case m9kb::QUICK:    app::openQuickSettings(); break;
+      case m9kb::ADVERT:   // only to the nodes in range: a key bumped by accident mustn't flood the mesh
+        nav.toast(g_node && g_node->advertZeroHop() ? "advert sent to nodes nearby" : "advert failed");
+        break;
+    }
+  }
+#endif
 
   // Screen went dark: next wake lands on the lock face.
   static bool wasAsleep = false;

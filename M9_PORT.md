@@ -15,14 +15,14 @@ Build: `pio run -e thinknode-m9` (or `thinknode-m9-dev` for the USB test command
 |---|---|
 | Screen | ST7789 320x240, the T-Deck's layouts. Rotation 1, as on the T-Deck (Wadamesh: 3 was upside down on a real one). |
 | Keys | An ESP32-S2 key scanner on its own I2C bus (20/21) at 0x6C (v1.0) / 0x6D (v1.1): key code from register 0x01, polled every 15 ms; key light is register 0x02. GPIO20 is also the S3's USB D+, released at start or the keyboard never answers. |
-| Moving around | Arrow keys = the T-Deck's trackball. Enter = select (and send while typing). Del and Back = back / backspace. **Home** = lock and screen off; Home again wakes. |
+| Moving around | Arrow keys = the T-Deck's trackball. Enter or the pad's middle key = select (and send while typing). Del and Back = back / backspace. **Home** = the home screen; on the home screen it locks and turns the screen off; with the screen dark it wakes it (the only key that does). The keys with pictures: speech bubble = chats, the small bubble = contacts, map = the map, pin = an advert to the nodes nearby (not a flood), triangle (bottom left) = quick settings. Ctrl does nothing yet. |
 | Radio | LR1110: CS 39, IRQ 42, BUSY 41, RST 45, 3.3 V TCXO, DIO5/DIO6 antenna switch (both firmwares' table). |
 | GPS | Receives on 3, sends on 2, 115200 (9600 also tried). Enable on GPIO11, active LOW on v1.0 (*HIGH on v1.1, per Meshtastic*). Reset on GPIO5 is held LOW (HIGH holds the GPS in reset). |
 | Battery | Cell / 2 on GPIO13 (ADC2: readings Wi-Fi blocks are dropped). *GPIO1 LOW on USB is unverified* (the USB socket goes to a bridge chip, so the S3 can't see the cable). The flat-battery hold is **off** until a real reading is seen to be right. |
 | Backlight | GPIO17, PWM, active LOW. |
 | Sound | Buzzer on GPIO9, played as PWM. *Never heard.* |
 | USB | A USB-serial bridge, not the S3's own USB: the console and the installer's commands are on UART0. No user button on any GPIO (only the power slider and reset). |
-| Not used yet | PCF8563 clock, QMI8658 motion, QMC6309 compass (second I2C bus, SDA 7 / SCL 6), the message / map / triangle / Ctrl keys, the touch-only settings. |
+| Not used yet | PCF8563 clock, QMI8658 motion, QMC6309 compass (second I2C bus, SDA 7 / SCL 6), Ctrl, the touch-only settings. |
 | Updates | Wi-Fi updates look in `firmware/thinknode-m9/`, signed for "thinknode-m9" only. An `m9-v<FW_VERSION>` tag builds and publishes one (.github/workflows/m9.yml, then build.yml on main); every M9 build goes to both channels. |
 
 ## Format the microSD card first

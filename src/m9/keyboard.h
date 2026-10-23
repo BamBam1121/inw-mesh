@@ -13,7 +13,10 @@
 // and the two traps below, come from.
 //
 // The arrows don't type anything: they are this board's trackball (rotary.h takes
-// them from here), and Home is its lock/wake button (main.cpp, BOARD_KEYS_ONLY).
+// them from here). Home goes home, and from there locks; it also wakes the screen
+// (main.cpp, BOARD_KEYS_ONLY). The keys with pictures open what is on them (main.cpp):
+// speech bubble the chats, the small one contacts, map the map, the pin sends an advert
+// to the nodes nearby, the triangle the quick settings. Ctrl does nothing yet.
 
 #pragma once
 #include <Arduino.h>
@@ -34,8 +37,11 @@ struct KeyEvent {
 
 namespace m9kb {
 // The arrows and Home, for rotary.h and main.cpp.
-struct Nav { int8_t dx = 0, dy = 0; bool home = false; };
+struct Nav { int8_t dx = 0, dy = 0; bool home = false; uint8_t action = 0; };
 inline Nav& nav() { static Nav n; return n; }
+// The keys with a picture on them, for main.cpp: what they open.
+enum : uint8_t { NONE = 0, CHATS, CONTACTS, MAP, ADVERT, QUICK };
+inline uint8_t takeAction() { const uint8_t a = nav().action; nav().action = NONE; return a; }
 }
 
 class Keyboard {
@@ -76,6 +82,11 @@ public:
             case 0xB5: m9kb::nav().dy--; return false;      // up
             case 0xB6: m9kb::nav().dy++; return false;      // down
             case 0x82: m9kb::nav().home = true; return false;
+            case 0x81: m9kb::nav().action = m9kb::CHATS; return false;     // the big speech bubble
+            case 0x83: m9kb::nav().action = m9kb::CONTACTS; return false;  // the small one under it
+            case 0x85: m9kb::nav().action = m9kb::MAP; return false;       // the map
+            case 0x84: m9kb::nav().action = m9kb::ADVERT; return false;    // the pin under it
+            case 0x88: m9kb::nav().action = m9kb::QUICK; return false;     // the triangle, bottom left
             case 0x08: case 0x86: ev.index = KEY_IDX_BACKSPACE; return true;   // Del, and Back
             case 0x0D: ev.ch = '\n'; return true;
             default:
