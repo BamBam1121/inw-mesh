@@ -129,14 +129,25 @@ public:
     void configReport() { Serial.println("[batt] no fuel gauge on this board"); }
 
 private:
+    // GPIO13 is on ADC2, which Wi-Fi takes turns with: a reading made while Wi-Fi has it
+    // comes back near 0 (Wadamesh saw the M9 drop to 0% that way). Those are left out, and
+    // if all of them were, the last good figure stands.
     static uint16_t sample() {
+        static uint16_t last = 0;
         uint32_t sum = 0;
-        for (int i = 0; i < 8; i++) sum += analogReadMilliVolts(PIN_BAT_ADC);
-        return (uint16_t)(BAT_DIVIDER * sum / 8);
+        int n = 0;
+        for (int i = 0; i < 8; i++) {
+            const uint32_t mv = analogReadMilliVolts(PIN_BAT_ADC);
+            if (mv >= 1250) { sum += mv; n++; }              // under 2.5 V at the cell: not a real reading
+        }
+        if (n) last = (uint16_t)(BAT_DIVIDER * sum / n);
+        return last;
     }
+    // The USB socket goes to a bridge chip, so the S3 can't see a cable itself; GPIO1
+    // (from Meshtastic's M9 build) is the only sign. Unverified.
     static bool plugged() {
         pinMode(PIN_EXT_PWR, INPUT_PULLUP);
-        return HWCDC::isPlugged() || digitalRead(PIN_EXT_PWR) == LOW;
+        return digitalRead(PIN_EXT_PWR) == LOW;
     }
 
     BatteryEstimate _est;

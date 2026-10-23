@@ -6,6 +6,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Wire.h>
+#include <soc/usb_serial_jtag_reg.h>
 #include "board_pins.h"
 
 namespace m9 {
@@ -18,13 +19,20 @@ inline uint8_t gpsOnLevel() { return version() == 1 ? LOW : HIGH; }
 class IoExpander {
 public:
     bool begin(TwoWire& w = Wire, uint8_t = 0) {
+        // GPIO20 is also the S3's own USB D+, and its USB block holds that pad (with a
+        // pull-up) from reset. The M9 doesn't use it - its USB socket goes to a bridge
+        // chip - and wires GPIO20/21 to the keyboard instead, which never answers until
+        // the pad is let go (Wadamesh's bring-up #8). First, before any I2C.
+        REG_CLR_BIT(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_USB_PAD_ENABLE);
         // Chip selects up first, so nothing on the shared bus answers by accident
         // (Meshtastic's earlyInitVariant does the same).
         for (int cs : { PIN_LORA_CS, PIN_SD_CS, PIN_TFT_CS }) { ::pinMode(cs, OUTPUT); ::digitalWrite(cs, HIGH); }
         ::pinMode(PIN_POWER_ON, OUTPUT);
         ::digitalWrite(PIN_POWER_ON, POWER_ON_LEVEL);
-        ::pinMode(PIN_GPS_WAKE, OUTPUT);
-        ::digitalWrite(PIN_GPS_WAKE, HIGH);   // v1.1's AG3352 stays awake; harmless on v1.0
+        // The GPS reset goes through a transistor: HIGH holds the GPS in reset, LOW lets
+        // it run (Wadamesh, from the schematic). Left floating it could do either.
+        ::pinMode(PIN_GPS_RST, OUTPUT);
+        ::digitalWrite(PIN_GPS_RST, LOW);
         delay(100);                            // let the keyboard controller and screen come up
         // Which hardware version: the keyboard controller's address says (the GPS enable's
         // sense depends on it). keyboard.h looks again, and agrees.

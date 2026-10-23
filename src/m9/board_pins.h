@@ -1,14 +1,15 @@
 // Elecrow ThinkNode M9 pin map.
 //
-// Nobody here has one: every value below is taken from the two firmwares that run
-// on real M9s - MeshCore's variants/thinknode_m9 and Meshtastic's
-// variants/esp32s3/ELECROW-ThinkNode-M9 - checked against Elecrow's wiki pin table.
-// Copies of those files are in m9-reference/. Where they disagree it is noted.
+// Nobody here has one: every value below is taken from the firmwares that run on
+// real M9s - MeshCore's variants/thinknode_m9, Meshtastic's
+// variants/esp32s3/ELECROW-ThinkNode-M9 (copies in m9-reference/) and Wadamesh's
+// M9 port, whose notes were checked on a real (pre-production) M9 against its
+// schematic. Where they disagree, Wadamesh's hardware findings win.
 //
-// Two hardware versions are out there. They are told apart by the keyboard
-// controller's I2C address (0x6C on v1.0, 0x6D on v1.1), and they differ in the GPS:
-// v1.0 has an L76K at 9600 baud whose enable is active LOW, v1.1 an AG3352 at
-// 115200 whose enable is active HIGH.
+// Two hardware versions are out there, told apart by the keyboard controller's I2C
+// address (0x6C on v1.0, 0x6D on v1.1). Meshtastic gives the GPS enable a different
+// sense on each (active LOW on v1.0, HIGH on v1.1); Wadamesh's v1.0 has a CC1167Q at
+// 115200 with the enable active LOW.
 
 #pragma once
 
@@ -23,7 +24,7 @@
 #define BOARD_HAS_RTC          0    // a PCF8563 is fitted (0x51 on SDA 7 / SCL 6); not driven yet
 #define BOARD_HAS_CHARGER_IC   0    // an LGS4056 charger with no I2C: the battery is an ADC reading
 #define BOARD_HAS_EXT_HEADER   0
-#define BOARD_HAS_KB_BACKLIGHT 1    // a plain GPIO (46), not a command
+#define BOARD_HAS_KB_BACKLIGHT 1    // a command to the keyboard controller (keyboard.h)
 #define BOARD_HAS_TOUCH        0    // no touch panel: the keyboard drives everything
 #define BOARD_ROW_H            28   // the T-Deck's rows: same screen, same size of text
 #ifndef BOARD_ASYNC_PUSH
@@ -69,9 +70,9 @@
 #define PIN_SPI_MOSI   47
 #define PIN_SPI_MISO   38
 
-// ---- I2C: the keyboard controller (STC8H) --------------------------------------
-// Meshtastic puts it on the main bus (SDA 20 / SCL 21); the RTC and sensors are on a
-// second bus (SDA 7 / SCL 6) that nothing here uses yet.
+// ---- I2C: the keyboard controller, on a bus of its own ----------------------------
+// SDA 20 / SCL 21 (20 is also the S3's USB D+: io_expander.h lets that pad go). The RTC
+// and sensors are on a second bus (SDA 7 / SCL 6) that nothing here uses yet.
 #define PIN_I2C_SDA    20
 #define PIN_I2C_SCL    21
 #define PIN_I2C2_SDA   7
@@ -93,17 +94,17 @@
 // ---- microSD (shared SPI bus) ---------------------------------------------------
 #define PIN_SD_CS      48
 
-// ---- Keyboard: an STC8H answering on I2C ----------------------------------------
+// ---- Keyboard: an ESP32-S2 key scanner answering on I2C (keyboard.h) ---------------
 #define ADDR_M9_KB_V10 0x6C
 #define ADDR_M9_KB_V11 0x6D
-#define PIN_KB_INT     12    // rests LOW, goes HIGH when a key is pressed
-#define PIN_KB_BL      46
+// Its signal to us (GPIO12) and a key-light line (GPIO46) are on the schematic, but what
+// they do is undocumented: the keys are polled and the light is a command instead.
 
 // The T-Deck's trackball names, for shared code that reads "the wheel" or "the side
-// button". There is no trackball; shared code still reads PIN_BUTTON at start-up (held:
-// self test) and to wake from the flat-battery sleep, so it is GPIO0, the ESP32-S3's
-// BOOT strap: pulled up, so it reads "not pressed" whether or not the M9 brings a
-// button out to it.
+// button". The M9 has no such button at all (only the power slider and a reset button,
+// neither on a GPIO - Wadamesh, from the schematic). Shared code still reads PIN_BUTTON
+// at start-up (held: self test), so it is GPIO0, the BOOT strap, read with its pull-up
+// on: always "not pressed".
 #define PIN_TB_CLICK     0
 #define PIN_ROTARY_A     (-1)
 #define PIN_ROTARY_B     (-1)
@@ -114,19 +115,17 @@
 #define PIN_M9_BUZZER     9
 
 // ---- GPS, UART ---------------------------------------------------------------------
-// MeshCore's M9 build receives on 3; Meshtastic's on 2. gps.h tries the other way round
-// if nothing is heard (GPS_PINS_UNSURE).
+// Receives on 3 (MeshCore's M9 build; Wadamesh confirmed it with the raw sentences on
+// a real one - Meshtastic's 2 is the other end).
 #define PIN_GPS_RX     3    // ESP32 receives here
 #define PIN_GPS_TX     2
-#define GPS_PINS_UNSURE 1
 #define PIN_GPS_PPS    4
 #define PIN_GPS_EN     11   // active LOW on v1.0, HIGH on v1.1 (io_expander.h picks)
-#define PIN_GPS_RST    5
-#define PIN_GPS_WAKE   10   // v1.1's AG3352: held HIGH so it never sleeps under us
-#define GPS_BAUD       115200   // v1.1
-#define GPS_BAUD_ALT   9600     // v1.0; gps.h tries both
+#define PIN_GPS_RST    5    // through a transistor: HIGH holds it in reset (io_expander.h)
+#define GPS_BAUD       115200   // Wadamesh's CC1167Q
+#define GPS_BAUD_ALT   9600     // Meshtastic's v1.0 L76K; gps.h tries both
 
-// ---- Battery: half the cell voltage on GPIO13; GPIO1 LOW when USB power is in ------
+// ---- Battery: half the cell voltage on GPIO13 (ADC2: battery.h); GPIO1 LOW on USB? ----
 #define PIN_BAT_ADC    13
 #define PIN_EXT_PWR    1
 

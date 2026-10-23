@@ -1,18 +1,16 @@
 // ThinkNode M9 display: ST7789 2.4" IPS, 240x320, on the shared SPI bus (radio, SD).
 // Brightness is left to backlight.h (PWM on PIN_TFT_BL, active LOW).
 //
-// Rotation 3 is the landscape the M9 is held in, keyboard at the bottom. MeshCore's
-// M9 build sets MADCTL to MV|MY (landscapeScreen() then flipScreenVertically(), with
-// DISPLAY_FLIP_VERTICALLY), which is LovyanGFX's rotation 3 - the T-Deck is MV|MX,
-// rotation 1. MeshCore also turns inversion on (INVON), as the T-Deck needs.
-// If a real M9 shows the picture upside down, this is the line: rotation 1.
+// Rotation 1 is the landscape the M9 is held in, keyboard at the bottom: MADCTL MV|MX,
+// the same as the T-Deck. Wadamesh found that on a real M9 (Adafruit rotation 1; 3 was
+// upside down). MeshCore also turns inversion on (INVON), as the T-Deck needs.
 
 #pragma once
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 #include "board_pins.h"
 
-#define TFT_ROTATION 3
+#define TFT_ROTATION 1
 
 class LGFX : public lgfx::LGFX_Device {
     lgfx::Panel_ST7789 _panel;
