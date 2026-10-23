@@ -29,3 +29,4 @@ helpdesk/salt.bin
 
 # T-Deck beta installer files: made by tools/package_tdeck.py, not source
 web/tdeck/
+dist/

@@ -23,12 +23,14 @@ public:
         // A second's worth of NMEA (~500 bytes) must fit between two loop passes.
         _uart->setRxBufferSize(2048);
 #ifdef GPS_BAUD_ALT
-        _uart->begin(baud(), SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);   // the speed it last found
+        _uart->begin(baud(), SERIAL_8N1, rxPin(), txPin());   // the speed it last found
 #else
-        _uart->begin(GPS_BAUD, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
+        _uart->begin(GPS_BAUD, SERIAL_8N1, rxPin(), txPin());
 #endif
         if (PIN_GPS_PPS >= 0) pinMode(PIN_GPS_PPS, INPUT);
         _started = true;
+        _begunAt = millis();
+        _heardAtBegin = bytesRead;
         return true;
     }
 
@@ -64,6 +66,17 @@ public:
             _uart->updateBaudRate(_alt ? GPS_BAUD_ALT : GPS_BAUD);
             _probeFrom = bytesRead;
             _len = 0;
+        }
+#endif
+#ifdef GPS_PINS_UNSURE
+        // A board whose published pin maps disagree on which GPS line is which (the M9:
+        // MeshCore receives on 3, Meshtastic on 2): not a byte in 6 s on one, try the other.
+        // Once anything has been heard the pins are settled for good.
+        if (bytesRead != _heardAtBegin) _pinsFound = true;
+        else if (!_pinsFound && millis() - _begunAt > 6000) {
+            _swapped = !_swapped;
+            _uart->end();
+            begin(*_uart);
         }
 #endif
         return parsed;
@@ -256,7 +269,13 @@ private:
         return true;
     }
 
+    int rxPin() const { return _swapped ? PIN_GPS_TX : PIN_GPS_RX; }
+    int txPin() const { return _swapped ? PIN_GPS_RX : PIN_GPS_TX; }
+
     HardwareSerial* _uart = nullptr;
+    bool     _swapped = false;            // GPS_PINS_UNSURE: listening on the other line
+    bool     _pinsFound = false;          // ... until something was heard
+    uint32_t _begunAt = 0, _heardAtBegin = 0;
     bool     _asleep = false;
     uint32_t _wokeAt = 0, _wakeFrom = 0;
     char     _line[100] = {0};

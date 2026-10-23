@@ -122,9 +122,7 @@ extern char g_screenTitle[32];   // ui.cpp: the last header drawn
 static uint32_t s_prefsDirtyAt = 0, s_uiDirtyAt = 0;
 static uint32_t s_kbFlashUntil = 0;
 static bool s_radioOk = false;
-#if BOARD_HAS_TOUCH
-static bool s_touchWake = false;   // touchscreen: a double tap on the dark screen (tapWake)
-#endif
+static bool s_touchWake = false;   // touchscreen: a double tap on the dark screen (tapWake); never set without one
 #if INW_DEV
 static regions::Scan s_usbScan;    // USB "regions scan"
 #endif
@@ -407,7 +405,10 @@ void app::rebootDiscard() {
 static void powerOffShow();                   // the goodbye animation, further down
 static void goodbyeFrame(Canvas& g, uint32_t ms, int32_t brk) { boot::drawGoodbye(g, ms, brk); }
 
-#if BOARD_BATTERY_FROM_VOLTAGE
+#ifndef BOARD_FLAT_HOLD
+#define BOARD_FLAT_HOLD 1      // board_pins.h can leave the flat-battery hold out (the M9, for now)
+#endif
+#if BOARD_BATTERY_FROM_VOLTAGE && BOARD_FLAT_HOLD
 static void flatSleep();                      // the flat-battery wait, further down
 #endif
 bool app::powerOff(const char* why) {
@@ -431,7 +432,7 @@ bool app::powerOff(const char* why) {
   // Still running: USB went in at the last moment, or the charger didn't take
   // it. Sleep instead; the side button wakes it with a fresh boot.
   Serial.println("[power] battery not cut, sleeping instead");
-#if BOARD_BATTERY_FROM_VOLTAGE
+#if BOARD_BATTERY_FROM_VOLTAGE && BOARD_FLAT_HOLD
   // Turned off for a flat battery: sleep the way a flat start does, so it looks for a
   // charge every few minutes and comes back on by itself.
   if (!strcmp(why, "battery empty")) flatSleep();
@@ -2186,7 +2187,18 @@ static void bootNote(const char* msg) {      // a long step the user should know
   display.drawString(msg, (L::W - display.textWidth(msg)) / 2, boot::ERR_Y0 + 2);
 }
 
-#if BOARD_BATTERY_FROM_VOLTAGE
+// A board can leave the flat-battery hold out (board_pins.h: the M9, until its battery
+// reading is seen to be right on a real one - a wrong reading would keep it from starting).
+#ifndef BOARD_FLAT_HOLD
+#define BOARD_FLAT_HOLD 1
+#endif
+#ifndef BOARD_KEYS_ONLY
+#define BOARD_KEYS_ONLY 0      // board_pins.h: no trackball click, only keys (the M9)
+#endif
+#ifndef BAT_DIVIDER
+#define BAT_DIVIDER 2.037f
+#endif
+#if BOARD_BATTERY_FROM_VOLTAGE && BOARD_FLAT_HOLD
 #include "flat_hold.h"
 // A flat battery waits for a charge instead of starting (tdeck/flat_hold.h has the
 // rule and why). While it waits it sleeps, looks again every three minutes, and the
@@ -2208,7 +2220,7 @@ static void flatHoldQuickLook() {
   analogReadMilliVolts(PIN_BAT_ADC);                    // the first one after setup reads low
   uint32_t sum = 0;
   for (int i = 0; i < 8; i++) sum += analogReadMilliVolts(PIN_BAT_ADC);
-  if (FlatHold::hold((uint16_t)(2.037f * sum / 8), true, false)) flatSleep();
+  if (FlatHold::hold((uint16_t)(BAT_DIVIDER * sum / 8), true, false)) flatSleep();
 }
 
 static void flatBatteryHold(int rr) {
@@ -2251,7 +2263,7 @@ static void flatBatteryHold(int rr) {
 
 void setup() {
   clearForceDownloadBoot();     // first thing: one trip into flash mode stays one trip
-#if BOARD_BATTERY_FROM_VOLTAGE
+#if BOARD_BATTERY_FROM_VOLTAGE && BOARD_FLAT_HOLD
   flatHoldQuickLook();
 #endif
   s_bootT0 = millis();
@@ -2333,7 +2345,7 @@ void setup() {
     logs.add(battery.configured() ? LOG_WARN : LOG_INFO, "battery %u%% (gauge %u%%) %umV, pack %umAh%s", battery.percent(),
              battery.gaugePercent(), battery.millivolts(), battery.designNow(),
              battery.configured() ? " (was set wrong, fixed)" : "");
-#if BOARD_BATTERY_FROM_VOLTAGE
+#if BOARD_BATTERY_FROM_VOLTAGE && BOARD_FLAT_HOLD
   flatBatteryHold(rr);
 #endif
   const bool audioOk = codec.begin(Wire);
@@ -2680,7 +2692,11 @@ void loop() {
   // pager's side button does - lock and screen off - and a click wakes it. A
   // click that wakes the screen is used up waking it.
   bool btnPress = false;
-  const bool btnTap = rotary.takeLongPress();
+  bool btnTap = rotary.takeLongPress();
+#if BOARD_KEYS_ONLY
+  // Keys only (the M9): its Home key wakes the screen when it is dark, and locks it otherwise.
+  if (dimmer.asleep() && btnTap) { btnPress = true; btnTap = false; }
+#endif
   if (dimmer.asleep() && (press || s_touchWake)) { btnPress = true; press = false; }
   s_touchWake = false;
 #endif
@@ -2718,7 +2734,9 @@ void loop() {
       if (press) nav.press();
       for (uint8_t i = 0; i < nchars; i++) {
         View* v = nav.top();
-        if (chars[i] == '\n' && v && !v->wantsAllKeys() && !v->isHome() && !v->isLock()) nav.press();
+        // Enter presses what is highlighted. Not on home or the lock screen, where the
+        // trackball click does that - except on a board with nothing but keys (the M9).
+        if (chars[i] == '\n' && v && !v->wantsAllKeys() && (BOARD_KEYS_ONLY || (!v->isHome() && !v->isLock()))) nav.press();
         else nav.key(chars[i]);
       }
       if (backspace) nav.backspace();
