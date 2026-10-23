@@ -351,9 +351,13 @@ Elecrow ThinkNode M9 (beta, added 2026-10-23)
   run on it. It can't harm the M9; MeshCore or Meshtastic can always be flashed back (the page says how).
   Someone trying it is helping test it: ask them to send a photo of Tools > hardware check, or what the
   installer's "Show the details" says, through the hand-off.
-- It is the T-Deck's screens, driven from the keyboard (no touchscreen): arrow keys move, Enter picks and
-  sends (and unlocks the lock screen), Back or Del goes back, Home locks the screen or wakes it. Version
-  numbers follow the T-Deck's (the first is 1.2.6-beta1).
+- It is the T-Deck's screens, driven from the keyboard (no touchscreen): arrow keys move, the pad's middle
+  key or Enter picks and sends (and unlocks the lock screen), Back or Del goes back. Home goes to the home
+  screen; pressed on the home screen it locks and turns the screen off; with the screen dark only Home wakes
+  it (so a pocket can't). The keys with pictures: big speech bubble = chats, small bubble = contacts, map
+  key = map, pin = an advert to the nodes in range (not a flood; the whole-mesh advert is in Tools), the
+  triangle at the bottom left = quick settings (Wi-Fi, Bluetooth, GPS, sound, brightness). Ctrl does
+  nothing yet. Version numbers follow the T-Deck's (the first is 1.2.6-beta1).
 - Plugging in: the M9's USB socket goes to a USB-serial chip, so in the browser's list it is named after
   that chip (USB Serial, CH340, CP210x; on a Mac cu.usbserial or cu.wchusbserial), not "USB JTAG". Some
   computers want that chip's driver first. It has no BOOT button and doesn't need one: if it won't connect,
