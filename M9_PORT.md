@@ -22,6 +22,15 @@ Build: `pio run -e thinknode-m9` (or `thinknode-m9-dev` for the USB test command
 | Not used yet | PCF8563 clock, QMI8658 motion, QMC6309 compass (second I2C bus, SDA 7 / SCL 6), the Mute / Time / torch / FM / Preset keys, the touch-only settings. |
 | Updates | Wi-Fi updates look in `firmware/thinknode-m9/` (none published yet), signed for "thinknode-m9" only. |
 
+## Format the microSD card first
+
+Some M9 batches shipped with a Windows worm on the microSD card (Elecrow confirmed
+it, September 2026: a hidden `autorun.inf` that runs on a Windows PC). It can't run on
+the M9, but Squatch Mesh writes backups and map tiles to that card and people copy
+them to a PC. Before using it: take Elecrow's free replacement card, or format the
+card (not on a Windows PC with auto-play on, and never open `autorun.inf` or a `.pif`
+file on it). Elecrow's notice: https://www.elecrow.com/Thinknode-M9-Security-Advisory-SD-Card-Malware-Risk.html
+
 ## First test on a real M9 (in this order)
 
 1. Flash `squatch-mesh-thinknode-m9-<version>-full.bin` at 0x0 (esptool, or the ESP web flasher). Hold BOOT while plugging in if it won't connect. **This replaces the stock firmware**; the stock MeshCore identity and contacts are read across on the first start (as on the T-Deck), but make a backup in the stock firmware first.
