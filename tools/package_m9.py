@@ -14,6 +14,7 @@ OUT_DIR gets what the site serves under /m9/:
 
 The same layout and checks as the T-Deck's (tools/package_tdeck.py).
 """
+import hashlib
 import json
 import os
 import re
@@ -65,13 +66,19 @@ def main():
     full_name = "squatch-mesh-thinknode-m9-%s-full.bin" % ver
     open(os.path.join(out, full_name), "wb").write(full)
 
+    # Each part's address carries a piece of its own hash: the site's cache (Cloudflare
+    # keeps .bin files for hours) can then never hand out an older file under it, even
+    # when a build is replaced under the same version.
+    def tagged(n):
+        return "firmware/%s?h=%s" % (n, hashlib.sha256(open(os.path.join(fw, n), "rb").read()).hexdigest()[:12])
+
     for kind, parts in (("install", OFFSETS), ("update", OFFSETS[2:])):
         manifest = {
             "name": "Squatch Mesh for ThinkNode M9 (%s)" % ("first install" if kind == "install" else "update"),
             "version": ver,
             "new_install_prompt_erase": False,
             "builds": [{"chipFamily": "ESP32-S3",
-                        "parts": [{"path": "firmware/" + n, "offset": o} for n, o in parts]}],
+                        "parts": [{"path": tagged(n), "offset": o} for n, o in parts]}],
         }
         with open(os.path.join(out, "manifest-%s.json" % kind), "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2)
