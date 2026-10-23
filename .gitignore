@@ -30,3 +30,5 @@ helpdesk/counts.jsonl
 
 # T-Deck beta installer files: made by tools/package_tdeck.py, not source
 web/tdeck/
+# ThinkNode M9 installer files: made by tools/package_m9.py (m9 branch), not source
+web/m9/

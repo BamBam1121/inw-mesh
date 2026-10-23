@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ThinkNode M9 beta &middot; Squatch Mesh</title>
+<meta name="description" content="Squatch Mesh for the Elecrow ThinkNode M9. Beta, not yet tested on hardware.">
+<!-- Not linked from the site yet: for the first testers, until it has run on real M9s. -->
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css?v=7">
+<link rel="stylesheet" href="/assets/help.css?v=6">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#070b0a">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="logo" href="/" aria-label="Squatch Mesh home"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu"><span></span></button>
+    <nav id="site-nav" class="nav-links" aria-label="Main">
+      <a class="link" href="/downloads">Downloads</a>
+      <a class="link" href="/features">Features</a>
+      <a class="link" href="/themes">Themes</a>
+      <a class="link" href="/guide">Guide</a>
+      <a class="link" href="/help">Help</a>
+      <a class="btn solid" href="/install">Install</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <div class="tag" style="margin-top:46px;color:var(--amber);border-color:var(--amber)">beta &middot; untested</div>
+  <h1>Squatch Mesh for the ThinkNode M9</h1>
+  <p class="sub">For the Elecrow <b>ThinkNode M9</b>. The T-Deck's screens, driven from the keyboard:
+  the arrow keys move, <b>Enter</b> picks and sends, <b>Back</b> or <b>Del</b> goes back, and <b>Home</b>
+  locks the screen or wakes it. Version <b>1.2.6-beta1</b>.</p>
+
+  <div class="panel warn" style="margin-top:18px">
+    <p class="sub" style="font-size:14px;margin:0"><b>Not tested on a real M9 yet.</b> It is built from
+    the M9 support of the firmwares that run on it, checked against what was learned on real units, but
+    this is its first time on hardware. If something is wrong it will not harm the M9: you can always flash
+    MeshCore or Meshtastic back (<a href="#going-back">how</a>). <b>Not for the T-Deck or the T-Lora
+    Pager</b> &mdash; they have <a href="/t-deck">their</a> <a href="/install">own</a> installers.</p>
+  </div>
+
+  <div class="panel" style="margin-top:14px">
+    <h3>The SD card some M9s came with</h3>
+    <p class="sub" style="font-size:14px;margin:8px 0 0">Some M9s shipped with a Windows virus on the
+    microSD card (<a href="https://www.elecrow.com/Thinknode-M9-Security-Advisory-SD-Card-Malware-Risk.html"
+    rel="noopener">Elecrow's notice</a>). It can't run on the M9, and Squatch Mesh deletes it from the card
+    by itself every time it starts, leaving your maps and backups alone. Until then, don't open that card on
+    a Windows computer: ask Elecrow for a replacement or format it.</p>
+  </div>
+
+  <h2 style="margin-top:34px">Before you flash</h2>
+  <div class="grid c2" style="margin-top:12px">
+    <div class="panel">
+      <h3>Coming from MeshCore</h3>
+      <p class="sub" style="font-size:14px;margin:8px 0 0">Your identity (your keys), contacts, channels and
+      radio settings should come across by themselves: the first start reads them out of MeshCore's storage
+      before setting up its own. That hasn't been tried on a real M9 yet, so make a backup first as well:
+      in the MeshCore app, export the config, copy the <b>.json</b> to the SD card's top folder, rename it
+      <b>meshcore-backup.json</b> and leave the card in. Keep that file private.</p>
+    </div>
+    <div class="panel">
+      <h3>Coming from Meshtastic</h3>
+      <p class="sub" style="font-size:14px;margin:8px 0 0">Meshtastic keys can't be carried over, so the
+      M9 starts with a new identity. Write down anything you want to keep (channel names and keys,
+      your node name) first. Flashing Meshtastic back later sets it up fresh.</p>
+    </div>
+  </div>
+
+  <section class="quickstart" id="quickstart" style="margin-top:26px">
+    <div class="qs-glow" aria-hidden="true"></div>
+    <div class="qs-inner">
+      <p class="qs-kicker">Flash the M9</p>
+      <h2 class="qs-title">Switch it on, plug it in, press start</h2>
+      <p class="qs-sub">Use a USB-C cable that carries data. It checks what's on the M9, installs or
+      updates, and waits for it to start. About two minutes. Chrome or Edge on a Mac, Windows or Linux
+      computer.</p>
+      <button class="qs-btn" id="qs-start" data-flash data-kind="auto">START</button>
+      <!-- Shown by flasher.js once the firmware this page installs can do it (data-wipe-from). -->
+      <div class="qs-opts" id="qs-opts" hidden data-wipe-from="">
+        <label class="qs-opt"><input type="checkbox" id="qs-fresh" autocomplete="off">
+          <span><b>Start fresh.</b> Clear the contacts, channels and messages. Keys, name and Wi-Fi are kept.</span></label>
+        <label class="qs-opt"><input type="checkbox" id="qs-reset" autocomplete="off">
+          <span><b>Reset everything.</b> Keys, contacts, settings, all of it. The M9 starts as new.</span></label>
+      </div>
+      <p class="qs-fine">Your browser will ask which USB device to use &mdash; pick the one that appears
+      when you plug the M9 in. It's named after its USB chip (often <b>USB Serial</b>, <b>CH340</b> or
+      <b>CP210x</b>; on a Mac, <b>cu.usbserial&hellip;</b> or <b>cu.wchusbserial&hellip;</b>).</p>
+    </div>
+  </section>
+
+  <p id="flash-unsupported" hidden class="sub" style="color:var(--amber);margin-top:14px">This browser can't
+  flash over USB. Use Chrome or Edge on a desktop computer.</p>
+
+  <div class="panel" id="flasher" hidden style="margin-top:18px"
+       data-device="M9" data-board="thinknode-m9" data-full-name="Elecrow ThinkNode M9" data-need-psram="8MB"
+       data-usb-bridge="1" data-port-name="the M9's USB serial port"
+       data-install="/m9/manifest-install.json" data-update="/m9/manifest-update.json">
+    <div class="fl-top">
+      <span class="fl-head busy">Working&hellip;</span>
+      <button type="button" class="btn small fl-again" hidden>Try again</button>
+    </div>
+    <div class="fl-bar"><span></span></div>
+    <p class="fl-note sub"></p>
+    <details class="fl-log"><summary>Show the details</summary><pre></pre></details>
+  </div>
+
+  <div class="grid c2" style="margin-top:22px">
+    <div class="panel">
+      <h3>No port shows up, or it won't connect</h3>
+      <ol class="sub" style="font-size:14px;margin:8px 0 0;padding-left:20px">
+        <li>Try another cable: charge-only cables are the usual reason.</li>
+        <li>Still nothing on Windows or a Mac? The computer may want a driver for the M9's USB chip
+        (CH340 or CP210x): install it from the chip maker, then plug the M9 in again.</li>
+        <li>The M9 has no BOOT button and doesn't need one: unplug it, slide the power switch off and on,
+        plug it back in and press start again.</li>
+        <li>If it says this isn't an M9 but you know it is, press <b>install anyway</b>.</li>
+      </ol>
+    </div>
+    <div class="panel">
+      <h3>After it starts</h3>
+      <ol class="sub" style="font-size:14px;margin:8px 0 0;padding-left:20px">
+        <li>The first start sets up storage: give it a minute.</li>
+        <li>Press <b>Enter</b> on the lock screen to unlock.</li>
+        <li><b>Tools &rsaquo; hardware check</b> shows the board version, the last key pressed, the radio and
+        the GPS. A photo of it tells us most of what we need.</li>
+        <li>Screen upside down, odd colours, keys that do nothing? Tell us (below): it's a quick fix.</li>
+      </ol>
+    </div>
+  </div>
+
+  <h2 style="margin-top:34px">Updates</h2>
+  <div class="panel">
+    <p class="sub" style="font-size:14px;margin:0">To update, come back here and press start: it keeps your
+    contacts and settings. Once the M9 build has run on real units it will update itself over Wi-Fi, like the
+    T-Deck and the pager.</p>
+  </div>
+
+  <h2 id="going-back" style="margin-top:34px">Going back</h2>
+  <div class="panel">
+    <p class="sub" style="font-size:14px;margin:0">Both of these erase the M9 and install fresh, from Chrome:
+    <a href="https://flasher.meshcore.co.uk/" rel="noopener">MeshCore web flasher</a> (pick ThinkNode M9) &middot;
+    <a href="https://flasher.meshtastic.org/" rel="noopener">Meshtastic web flasher</a> (pick ThinkNode M9).
+    Elecrow's own firmware and tools are on <a href="https://www.elecrow.com/wiki/" rel="noopener">their wiki</a>.</p>
+  </div>
+
+  <h2 id="files" style="margin-top:34px">Other ways to flash</h2>
+  <div class="panel">
+    <p class="sub" style="font-size:14px;margin:0">One file with everything, written at address
+    <b>0x0</b>: <a href="/m9/squatch-mesh-thinknode-m9-1.2.6-beta1-full.bin" download>squatch-mesh-thinknode-m9-1.2.6-beta1-full.bin</a>.
+    Use it with <a href="https://espressif.github.io/esptool-js/" rel="noopener">Espressif's web flasher</a>
+    (address 0x0, don't erase first), or esptool:</p>
+    <pre style="margin:12px 0 0;white-space:pre-wrap;font-family:var(--mono);font-size:13px">esptool.py --chip esp32s3 write_flash 0x0 squatch-mesh-thinknode-m9-1.2.6-beta1-full.bin</pre>
+  </div>
+
+  <h2 style="margin-top:34px">Tell us how it went</h2>
+  <div class="panel" style="margin-bottom:60px">
+    <p class="sub" style="font-size:14px;margin:0">Good or bad, it helps: <a href="/help">the help page</a>
+    or <a href="mailto:support@squatchmesh.com">support@squatchmesh.com</a>. A photo of the hardware check
+    screen says most of it. If it didn't start, open <b>Show the details</b> above and paste what's there.</p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="logo" href="/"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+      <p>Free, open-source MeshCore firmware for the LilyGo T-Lora Pager and the T-Deck. Made in the Inland Northwest.</p>
+    </div>
+    <nav class="footer-col" aria-label="Product"><h4>Product</h4>
+      <a href="/features">Features</a><a href="/themes">Themes</a><a href="/install">Install</a><a href="/downloads">Downloads</a><a href="/releases">Releases</a></nav>
+    <nav class="footer-col" aria-label="Learn"><h4>Learn</h4>
+      <a href="/guide">Guide</a><a href="/help">Help &amp; feedback</a><a href="mailto:support@squatchmesh.com">Email support</a><a href="/mesh">How the mesh works</a><a href="/hardware">Hardware</a></nav>
+    <nav class="footer-col" aria-label="Project"><h4>Project</h4>
+      <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a><a href="https://meshcore.io">MeshCore</a><a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a><a href="/privacy">Privacy</a></nav>
+  </div>
+  <div class="wrap footer-base">
+    <span>GPL-3.0</span>
+    <span>Independent project. Not affiliated with LilyGo, Elecrow, Meshtastic or the MeshCore project.</span>
+  </div>
+</footer>
+
+<script src="/assets/app.js?v=9" defer></script>
+<script type="module" src="/assets/flasher.js?v=26"></script>
+<script src="/assets/squatch-helper.js?v=17" defer></script>
+</body>
+</html>

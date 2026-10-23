@@ -32,7 +32,12 @@ const CFG = (panel && panel.dataset) || {};
 const DEVICE = CFG.device || "pager";
 const BOARD = CFG.board || "t-lora-pager";
 const FULL_NAME = CFG.fullName || "LilyGo T-Lora Pager";
-const BOARD_NAMES = { "t-lora-pager": "T-Lora Pager", "t-deck": "T-Deck" };
+const BOARD_NAMES = { "t-lora-pager": "T-Lora Pager", "t-deck": "T-Deck", "thinknode-m9": "ThinkNode M9" };
+// A board whose USB socket goes to a USB-serial chip (data-usb-bridge: the M9) rather
+// than the ESP32-S3's own USB: it shows up under that chip's name, never as
+// Espressif's 0x303a, and stays connected through a restart.
+const USB_BRIDGE = !!CFG.usbBridge;
+const PORT_NAME = CFG.portName || "USB JTAG/serial debug unit";
 const UPDATE_MANIFEST = CFG.update || "https://bambam1121.github.io/inw-mesh/manifest-update.json";
 const INSTALL_MANIFEST = CFG.install || "https://bambam1121.github.io/inw-mesh/manifest-install.json";
 // Built-in PSRAM the chip must report (eFuses) before anything is written: "8MB"
@@ -48,6 +53,8 @@ const REFUSE_LINK = CFG.refuseLink || "/t-deck";
 // How to put the chip into its USB loader by hand, per board.
 const LOADER_HOW = BOARD === "t-deck"
   ? "turn the T-Deck off, hold the trackball down while you switch it back on, then let go"
+  : BOARD === "thinknode-m9"
+  ? "unplug the M9, slide its power switch off and on again, and plug it back in (it has no BOOT button: its USB chip puts it in the loader by itself)"
   : "hold BOOT, tap RESET, let go of BOOT";
 const SUPPORTED = !!(navigator.serial && window.isSecureContext);
 // The messages are written about the pager; other boards swap in their own name.
@@ -324,10 +331,12 @@ if (panel) {
 
     // 1. wait (port closed) for the pager to come back on USB
     say("Waiting for the pager to restart. Don't unplug it.");
-    const back = Date.now() + 30000;
+    // (Behind a USB-serial chip it never leaves USB: nothing to wait for.)
+    const back = Date.now() + (USB_BRIDGE ? 0 : 30000);
     while (Date.now() < back && !(usb.last && usb.last !== before && same(usb.last))) await sleep(250);
     if (usb.last && same(usb.last)) port = usb.last;
-    log(usb.last !== before ? "[flasher] pager is back on USB" : "[flasher] didn't see the pager reconnect, carrying on");
+    log(USB_BRIDGE ? "[flasher] restarted (its USB chip stays connected)"
+        : usb.last !== before ? "[flasher] pager is back on USB" : "[flasher] didn't see the pager reconnect, carrying on");
 
     // 2. leave it alone while it starts
     const quietEnd = Date.now() + BOOT_QUIET_MS;
@@ -570,6 +579,19 @@ if (panel) {
         offerAnyway();
         return;
       }
+      // A board that connects through a USB-serial chip never shows up as the ESP32-S3's
+      // own USB: whatever did is some other board (a T-Deck on other firmware, say,
+      // which has the same chip and PSRAM, so nothing else here can tell).
+      if (USB_BRIDGE && !found.squatch && infoOf(port).usbVendorId === 0x303a && !anyway) {
+        log("[flasher] USB id 303a: the chip's own USB, not the " + DEVICE + "'s USB-serial chip - stopped");
+        show("That doesn't look like a " + DEVICE, "bad");
+        say("It's connected through the chip's own USB, and the " + DEVICE + " connects through a separate USB " +
+            "chip, so this is some other board. Nothing was written. If you're sure it's a " + DEVICE +
+            ", press install anyway.");
+        again.hidden = false;
+        offerAnyway();
+        return;
+      }
       let wanted = kind;
       if (kind === "auto") {
         wanted = found.squatch ? "update" : "install";
@@ -694,12 +716,12 @@ if (panel) {
         log("[flasher] failed: " + msg);
         const pi = infoOf(port);
         const stranger = !pi.usbVendorId ? "isn't a USB device"
-          : pi.usbVendorId !== 0x303a ? "looks like some other USB device (an adapter cable, perhaps)" : "";
+          : !USB_BRIDGE && pi.usbVendorId !== 0x303a ? "looks like some other USB device (an adapter cable, perhaps)" : "";
         show("Couldn't reach the pager", "bad");
         say("Nothing was written, so the pager is just as it was. " +
             (stranger
               ? "What you picked " + stranger + ". Press try again and choose the entry called " +
-                "\"USB JTAG/serial debug unit\". If there is no such entry: " + LOADER_HOW + ", and look again."
+                "\"" + PORT_NAME + "\". If there is no such entry: " + LOADER_HOW + ", and look again."
               : "It didn't answer. " + LOADER_HOW.charAt(0).toUpperCase() + LOADER_HOW.slice(1) +
                 ", then press try again and pick it when your browser asks. A cable that only charges " +
                 "does the same, so try another cable if that doesn't help."));
@@ -720,7 +742,7 @@ if (panel) {
         show("That didn't finish", "bad");
         say(msg + " — the firmware was only part written, so the pager may not start until this " +
             "finishes. Press try again: it picks up from scratch and repairs it. If it still won't take, " +
-            (BOARD === "t-deck" ? LOADER_HOW + ", and press try again."
+            (BOARD !== "t-lora-pager" ? LOADER_HOW + ", and press try again."
                            : "unplug the pager, plug it back in, and hold the BOOT button while you press try again."));
         logBox.open = true;
         again.hidden = false;
