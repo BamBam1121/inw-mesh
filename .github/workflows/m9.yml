@@ -1,0 +1,76 @@
+name: thinknode-m9
+
+# The Elecrow ThinkNode M9's firmware, built from the m9 branch, as tdeck.yml does the
+# T-Deck's.
+#   An "m9-v*" tag (e.g. m9-v1.2.6-beta1) on a commit builds the M9 firmware there and
+#   attaches it to a GitHub PRE-release, so it never counts as the pager's latest
+#   release. Then build.yml runs on main to publish the site, and signs the newest m9-v*
+#   build into firmware/thinknode-m9/ - the only folder an M9 checks for Wi-Fi updates,
+#   with a signature that names the board, so no other board can install it and an M9
+#   can't install theirs.
+# The tag must match the M9's FW_VERSION in platformio.ini, or it stops.
+on:
+  push:
+    tags: ['m9-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio/libdeps
+          key: pio-m9-${{ hashFiles('platformio.ini') }}
+
+      - name: Build
+        run: |
+          pip install platformio
+          pio run -e thinknode-m9
+
+      # The web installer's files and one full image, as tools/package_m9.py makes them
+      # for squatchmesh.com/thinknode-m9.
+      - name: Package
+        run: |
+          set -e
+          python tools/package_m9.py out
+          VER=$(python -c "import json; print(json.load(open('out/manifest-install.json'))['version'])")
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "m9-v$VER" ]]; then
+            echo "tag $GITHUB_REF_NAME doesn't match the M9's FW_VERSION $VER"; exit 1
+          fi
+          mkdir -p release
+          cp out/firmware/*.bin out/squatch-mesh-thinknode-m9-*-full.bin release/
+          # For the problem reports: a crash's addresses become file and line only with
+          # this exact build's symbols.
+          cp .pio/build/thinknode-m9/firmware.elf "release/squatch-mesh-thinknode-m9-$VER.elf"
+          ls -la release
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/m9-v') && github.repository == 'BamBam1121/inw-mesh'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${GITHUB_REF_NAME#m9-v}"
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --prerelease \
+            --title "ThinkNode M9 $V" \
+            --notes "Squatch Mesh for the Elecrow ThinkNode M9 (beta). Install from https://squatchmesh.com/thinknode-m9, or write squatch-mesh-thinknode-m9-$V-full.bin at 0x0. Not for the T-Deck or the T-Lora Pager." \
+            release/*
+
+      # Pages only deploys from main: have a main run pick this build up.
+      - name: Publish to the site
+        if: startsWith(github.ref, 'refs/tags/m9-v') && github.repository == 'BamBam1121/inw-mesh'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref main
