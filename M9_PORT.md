@@ -45,7 +45,7 @@ would, `virusfight` only plays the animation.
 
 ## First test on a real M9 (in this order)
 
-1. Flash `squatch-mesh-thinknode-m9-<version>-full.bin` at 0x0 (esptool, or the ESP web flasher). Hold BOOT while plugging in if it won't connect. **This replaces the stock firmware**; the stock MeshCore identity and contacts are read across on the first start (as on the T-Deck), but make a backup in the stock firmware first.
+1. Flash `squatch-mesh-thinknode-m9-<version>-full.bin` at 0x0 (esptool, or the ESP web flasher). There is no BOOT button: the USB bridge chip puts it into flash mode by itself, as with Elecrow's own updater. **This replaces the stock firmware**; the stock MeshCore identity and contacts are read across on the first start (as on the T-Deck), but make a backup in the stock firmware first.
 2. Screen: lit, the right way up, colours right (not inverted)?
 3. Keys: Settings > System > Hardware check shows the board version and the last key pressed.
 4. Radio: the hardware check says LR1110; send a message to a node nearby both ways.
