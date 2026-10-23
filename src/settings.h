@@ -97,6 +97,7 @@ struct UiSettings {
   bool     tapWake       = false;
   bool     squatchQuiet  = false;     // lock screen: the sasquatch's speech bubble off (it talks by default)
   uint8_t  mapNodes      = 0;         // map: 0 every node with a position, 1 only favourites, 2 none (GitHub #10)
+  uint8_t  gpsBaud       = 0;         // GPS serial speed: 0 auto, else Gps::speed(gpsBaud - 1) (GitHub #11)
 
   void load();
   void save();
