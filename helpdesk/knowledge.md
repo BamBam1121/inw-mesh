@@ -343,6 +343,33 @@ New in 1.2.3 (the release after the 1.2.2 beta; 1.2.2 was only ever a beta, 1.2.
 - Wi-Fi left on away from saved networks now tries less and less often (up to every 15 minutes with the
   screen off) instead of every 20 seconds - it used to cost a lot of battery.
 
+Elecrow ThinkNode M9 (beta, added 2026-10-23)
+- Squatch Mesh has an early beta for the Elecrow ThinkNode M9: https://squatchmesh.com/thinknode-m9 (flash
+  it from Chrome or Edge with the START button there). If someone asks whether Squatch Mesh runs on the
+  M9, say yes, as a beta, and give that link. It is not on the Downloads page yet.
+- Be plain that it hasn't been tested on a real M9: it was built from the M9 support of the firmwares that
+  run on it. It can't harm the M9; MeshCore or Meshtastic can always be flashed back (the page says how).
+  Someone trying it is helping test it: ask them to send a photo of Tools > hardware check, or what the
+  installer's "Show the details" says, through the hand-off.
+- It is the T-Deck's screens, driven from the keyboard (no touchscreen): arrow keys move, Enter picks and
+  sends (and unlocks the lock screen), Back or Del goes back, Home locks the screen or wakes it. Version
+  numbers follow the T-Deck's (the first is 1.2.6-beta1).
+- Plugging in: the M9's USB socket goes to a USB-serial chip, so in the browser's list it is named after
+  that chip (USB Serial, CH340, CP210x; on a Mac cu.usbserial or cu.wchusbserial), not "USB JTAG". Some
+  computers want that chip's driver first. It has no BOOT button and doesn't need one: if it won't connect,
+  unplug it, slide the power switch off and on, plug it back in and press start again.
+- The installer refuses a device that shows up as the ESP32's own USB ("That doesn't look like a M9"):
+  that is some other board, often a T-Deck. "Install anyway" overrides it for someone sure it's an M9.
+- Updates: on Wi-Fi it updates itself like the T-Deck (every M9 build is a beta for now, so both update
+  settings get the newest). Pressing START on the page again also updates and keeps everything.
+- The SD card: some M9s shipped with a Windows virus on the microSD card (Elecrow confirmed it, September
+  2026; an autorun.inf starting a hidden program). It can't run on the M9. Squatch Mesh deletes it by
+  itself every time it starts (only those files: an autorun.inf that starts a program, what it starts,
+  and .pif files; maps and backups are left alone) and says so on screen. Until then, tell people not to
+  open that card on a Windows computer: Elecrow replaces it free, or it can be formatted.
+- Not for the T-Deck or the pager, and their firmware won't install on an M9: each board only accepts
+  updates signed for it.
+
 T-Deck (every build since 1.2.2-beta6)
 - Screen dark on battery: only the LoRa radio runs. The GPS sleeps until the screen wakes, and Wi-Fi turns
   off a minute into the dark and comes back when the screen wakes. Plugged in, Wi-Fi stays on, so on a

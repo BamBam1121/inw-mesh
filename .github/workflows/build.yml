@@ -141,6 +141,25 @@ jobs:
               echo "T-Deck: no firmware.bin in $TDSTABLE, left out"
             fi
           fi
+
+          # ThinkNode M9: firmware/thinknode-m9/, which only M9s read. Built from the m9
+          # branch by m9.yml into an "m9-v*" pre-release, signed here for the M9 alone.
+          # Every M9 build is a beta for now: both channels get the newest.
+          M9TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName \
+                    --jq '[.[].tagName | select(startswith("m9-v"))][0] // empty' 2>/dev/null || true)
+          if [ -n "$M9TAG" ]; then
+            M="$F/thinknode-m9"
+            mkdir -p "$M"
+            # A problem here must never stop the rest of the site from publishing.
+            if gh release download "$M9TAG" --repo "$GITHUB_REPOSITORY" --dir "$M" --pattern firmware.bin --clobber; then
+              python tools/sign_ota.py "$M/firmware.bin" "$M/ota.json" "${M9TAG#m9-v}" "ThinkNode M9 ${M9TAG#m9-v}" thinknode-m9
+              cp "$M/firmware.bin" "$M/firmware-beta.bin"
+              if [ -f "$M/ota.json" ]; then cp "$M/ota.json" "$M/ota-beta.json"; fi
+              ls -la "$M"
+            else
+              echo "M9: no firmware.bin in $M9TAG, left out"
+            fi
+          fi
           ls -la "$F"
 
       - uses: actions/upload-pages-artifact@v3

@@ -35,7 +35,7 @@ def main():
     except OSError:
         pass
     print("Squatch Mesh counts%s" % (" (last %d days)" % days if days else ""))
-    for board in ("t-lora-pager", "t-deck"):
+    for board in ("t-lora-pager", "t-deck", "thinknode-m9"):
         ins = [r for r in rows if r["event"] == "install" and r["board"] == board]
         good = [r for r in ins if r.get("result") in OK]
         # Stopped before anything was written (the page's own results since 2026-10-09):

@@ -551,7 +551,7 @@ class Handler(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------- device reports
 
 REPORT_KINDS = ("crash", "log")
-REPORT_BOARDS = ("t-deck", "t-lora-pager")
+REPORT_BOARDS = ("t-deck", "t-lora-pager", "thinknode-m9")
 _HEX = re.compile(r"^[0-9a-f]{1,16}$")
 _rep = {"day": None, "site": 0, "mails": 0, "ip": {}, "dev": {}}
 
@@ -605,7 +605,8 @@ def known_builds():
 
 
 FEEDS = "https://bambam1121.github.io/inw-mesh/firmware/"
-FEED_FILES = ("firmware.bin", "firmware-beta.bin", "t-deck/firmware.bin", "t-deck/firmware-beta.bin")
+FEED_FILES = ("firmware.bin", "firmware-beta.bin", "t-deck/firmware.bin", "t-deck/firmware-beta.bin",
+              "thinknode-m9/firmware.bin", "thinknode-m9/firmware-beta.bin")
 _learn_lock = threading.Lock()
 _learned_at = 0.0
 
@@ -619,7 +620,7 @@ def image_hash(head, base=0):
 
 
 def learn_builds(min_gap=0):
-    """Adds to builds.txt the hash of every build on offer right now: the four update
+    """Adds to builds.txt the hash of every build on offer right now: the update
     feeds, and the installer's files on this machine. Runs at start, every six hours, and
     when a report names a hash not seen before, so a release needs no step for this."""
     global _learned_at
@@ -663,7 +664,7 @@ def report_noise(rep):
     """Why a device's report is kept in the log but not mailed, or "" when it should be.
 
     - A flat battery sagging until the chip resets is not a fault.
-    - A T-Deck's crash dump written by a build that is not ours: left in the shared dump
+    - A T-Deck's (or M9's) crash dump written by a build that is not ours: left in the shared dump
       partition by other firmware (a launcher, or what was on it before). Firmware from
       2026-10-08 on drops these itself; this covers the T-Decks still on older builds.
     - A "crash" with no dump and no log from before it: the reset an install ends with,
@@ -677,7 +678,7 @@ def report_noise(rep):
         return ""
     if rep.get("pc"):
         sha = (rep.get("elf_sha") or "").lower()
-        if rep["board"] == "t-deck" and sha and sha not in known_builds():
+        if rep["board"] in ("t-deck", "thinknode-m9") and sha and sha not in known_builds():
             learn_builds(min_gap=600)                    # a release from the last few hours?
             ours = known_builds()
             if ours and sha not in ours:
@@ -735,7 +736,7 @@ def allow_report_mail():
 
 
 COUNT_EVENTS = ("install", "checkin")
-COUNT_BOARDS = ("t-lora-pager", "t-deck")
+COUNT_BOARDS = ("t-lora-pager", "t-deck", "thinknode-m9")
 _cnt = {"day": None, "ip": {}}
 
 
@@ -773,7 +774,7 @@ def mail_report(rep):
         where = " in %s at %s" % (rep.get("task") or "?", rep["pc"])
     who = re.sub(r"[\r\n]", " ", rep.get("name") or "").strip()
     subject = "%s%s %s %s%s" % (who + ": " if who else "",
-                                {"t-deck": "T-Deck", "t-lora-pager": "Pager"}.get(rep["board"], rep["board"]),
+                                {"t-deck": "T-Deck", "t-lora-pager": "Pager", "thinknode-m9": "M9"}.get(rep["board"], rep["board"]),
                                 "crash" if rep["kind"] == "crash" else "report", rep["version"],
                                 where or (": " + rep["why"] if rep["why"] else ""))
     note = re.sub(r"[\r\n]", " ", rep.get("note") or "").strip()
