@@ -22,11 +22,7 @@ public:
         _uart = &uart;
         // A second's worth of NMEA (~500 bytes) must fit between two loop passes.
         _uart->setRxBufferSize(2048);
-#ifdef GPS_BAUD_ALT
-        _uart->begin(baud(), SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);   // the speed it last found
-#else
-        _uart->begin(GPS_BAUD, SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);
-#endif
+        _uart->begin(baud(), SERIAL_8N1, PIN_GPS_RX, PIN_GPS_TX);   // the speed set, or the one auto last found
         if (PIN_GPS_PPS >= 0) pinMode(PIN_GPS_PPS, INPUT);
         _started = true;
         return true;
@@ -56,16 +52,12 @@ public:
             if (_len < sizeof(_line) - 1) _line[_len++] = c;
             else _len = 0;                                 // overlong, resync
         }
-#ifdef GPS_BAUD_ALT
-        // A board whose GPS module has shipped at more than one speed: plenty of
-        // bytes but not one sentence that checks out means the wrong speed.
-        if (!goodSentences && bytesRead - _probeFrom > 1500) {
-            _alt = !_alt;
-            _uart->updateBaudRate(_alt ? GPS_BAUD_ALT : GPS_BAUD);
-            _probeFrom = bytesRead;
-            _len = 0;
+        // Speed on auto: plenty of bytes but not one sentence that checks out since the
+        // last change means the wrong speed, so on to the next. Once one is heard it stays.
+        if (!_choice && goodSentences == _goodFrom && bytesRead - _probeFrom > 1500) {
+            _try = (uint8_t)((_try + 1) % autoCount());
+            setUartSpeed();
         }
-#endif
         return parsed;
     }
 
@@ -75,10 +67,7 @@ public:
     // done once it has been heard at 38400 - the u-blox speed; the L76K some T-Deck
     // Plus batches carry (9600) doesn't know the message and simply stays on.
     bool sleepByCommand() {
-        if (!_uart || !goodSentences) return false;
-#ifdef GPS_BAUD_ALT
-        if (_alt) return false;
-#endif
+        if (!_uart || !goodSentences || baud() != 38400) return false;
         uint8_t m[8 + 16] = {0xB5, 0x62, 0x02, 0x41, 16, 0,
                              0, 0, 0, 0,          // version 0, reserved
                              0, 0, 0, 0,          // duration 0 = until woken
@@ -141,9 +130,25 @@ public:
     bool started() const { return _started; }
     uint32_t bytesRead = 0;
     uint32_t goodSentences = 0;   // with a valid checksum, of any kind
-#ifdef GPS_BAUD_ALT
-    uint32_t baud() const { return _alt ? GPS_BAUD_ALT : GPS_BAUD; }
-#endif
+
+    // The serial speed (GitHub #11: a GPS added to a T-Deck that only talks at 115200).
+    // Settings > GPS > speed: 0 is auto, which tries the board's own module's speed
+    // first, then the other common ones, and keeps the first it hears sentences at;
+    // 1..SPEED_COUNT is speed(choice - 1), fixed.
+    static constexpr uint8_t SPEED_COUNT = 7;
+    static uint32_t speed(uint8_t i) {
+        static const uint32_t S[SPEED_COUNT] = {4800, 9600, 19200, 38400, 57600, 115200, 230400};
+        return S[i < SPEED_COUNT ? i : 0];
+    }
+    void setSpeedChoice(uint8_t c) {
+        _choice = c <= SPEED_COUNT ? c : 0;
+        _try = 0;
+        if (_uart) setUartSpeed();
+    }
+    uint8_t speedChoice() const { return _choice; }
+    uint32_t baud() const { return _choice ? speed(_choice - 1) : autoSpeed(_try); }
+    // Auto, and sentences are coming in at this speed.
+    bool speedFound() const { return goodSentences != _goodFrom; }
 
     // True once the fix is fresh enough to trust. GPS keeps reporting the last
     // position after the antenna is covered, so age matters more than validity.
@@ -256,6 +261,33 @@ private:
         return true;
     }
 
+    // Auto's order: the board's module first (and the other one some batches carry),
+    // then the common speeds it hasn't tried.
+    static uint8_t autoCount() { return autoList(nullptr); }
+    static uint32_t autoSpeed(uint8_t i) { uint32_t l[8]; const uint8_t n = autoList(l); return l[i < n ? i : 0]; }
+    static uint8_t autoList(uint32_t* out) {
+        static const uint32_t ORDER[] = {GPS_BAUD,
+#ifdef GPS_BAUD_ALT
+                                         GPS_BAUD_ALT,
+#endif
+                                         9600, 38400, 115200};
+        uint32_t l[8];
+        uint8_t n = 0;
+        for (uint32_t b : ORDER) {
+            bool have = false;
+            for (uint8_t k = 0; k < n; k++) have |= l[k] == b;
+            if (!have) l[n++] = b;
+        }
+        if (out) memcpy(out, l, n * sizeof(uint32_t));
+        return n;
+    }
+    void setUartSpeed() {
+        _uart->updateBaudRate(baud());
+        _probeFrom = bytesRead;
+        _goodFrom = goodSentences;
+        _len = 0;
+    }
+
     HardwareSerial* _uart = nullptr;
     bool     _asleep = false;
     uint32_t _wokeAt = 0, _wakeFrom = 0;
@@ -267,8 +299,6 @@ private:
     Sys      _sys[4];
     bool     _timeKnown = false;
     uint8_t  _antenna = 0;
-#ifdef GPS_BAUD_ALT
-    bool     _alt = false;
-    uint32_t _probeFrom = 0;
-#endif
+    uint8_t  _choice = 0, _try = 0;
+    uint32_t _probeFrom = 0, _goodFrom = 0;
 };

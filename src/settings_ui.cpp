@@ -680,6 +680,16 @@ static void wifiMenu() {
 }
 
 // ---- gps / clock ----------------------------------------------------------------------------------------
+// The GPS's serial speed (GitHub #11): auto, which finds it, or one fixed, for a module
+// added by hand that talks at something else.
+static void gpsSpeedMenu() {
+  auto* m = new MenuView("GPS speed");
+  for (uint8_t c = 0; c <= Gps::SPEED_COUNT; c++)
+    m->toggle(c ? String(Gps::speed(c - 1)) + " baud" : String("auto"), [c] { return ui_settings.gpsBaud == c; },
+              [c] { ui_settings.gpsBaud = c; gps.setSpeedChoice(c); markUiDirty(); });
+  nav.push(m);
+}
+
 static void gpsMenu() {
   auto* m = new MenuView("GPS");
   m->toggle("gps receiver", [] { return ui_settings.gpsOn && !power::saver(); },
@@ -688,6 +698,10 @@ static void gpsMenu() {
             [] { ui_settings.gpsLivePosition = !ui_settings.gpsLivePosition; markUiDirty(); });
   m->toggle("set clock from gps", [] { return ui_settings.gpsSetsClock; },
             [] { ui_settings.gpsSetsClock = !ui_settings.gpsSetsClock; markUiDirty(); });
+  m->submenu("speed", gpsSpeedMenu, []() -> String {
+    if (ui_settings.gpsBaud) return String(gps.baud());
+    return gps.speedFound() ? "auto, " + String(gps.baud()) : String("auto");
+  });
   m->info("fix", []() -> String {
     if (gps.hasFix()) return String(gps.fix().satellites) + " sats";
     if (!ui_settings.gpsOn || power::saver()) return String("off");

@@ -2343,6 +2343,7 @@ void setup() {
   if (railsOk) expander.digitalWrite(EXP_AMP_EN, LOW);
   app::applySound();
   bootStep("audio", audioOk);
+  gps.setSpeedChoice(ui_settings.gpsBaud);       // Settings > GPS > speed (auto unless set)
   if (ui_settings.gpsOn) gps.begin();
 
   // Clock: the board RTC first, so the mesh has real time from the first packet.
@@ -2386,6 +2387,7 @@ void setup() {
       app::applySound();
       dimmer.setFull(ui_settings.brightness);
       keyboard.setBacklight(ui_settings.kbBacklight);
+      gps.setSpeedChoice(ui_settings.gpsBaud);
       logs.add(LOG_WARN, "settings were empty, restored from %s", from);
     }
     // No bootStep here: it would make the progress bar jump on the rare boot
