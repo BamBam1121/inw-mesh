@@ -451,7 +451,7 @@ if (panel) {
       const url = new URL(p.path, manifestUrl).href;
       const r = await fetch(url, { cache: "no-store" });
       if (!r.ok) throw new Error("couldn't download " + p.path + " (" + r.status + ")");
-      parts.push({ data: new Uint8Array(await r.arrayBuffer()), address: p.offset, name: p.path.split("/").pop() });
+      parts.push({ data: new Uint8Array(await r.arrayBuffer()), address: p.offset, name: p.path.split("?")[0].split("/").pop() });
     }
     return { version: manifest.version || "", parts };
   }
