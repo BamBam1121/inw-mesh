@@ -23,7 +23,7 @@ Build: `pio run -e thinknode-m9` (or `thinknode-m9-dev` for the USB test command
 | Sound | Buzzer on GPIO9, played as PWM. *Never heard.* |
 | USB | A USB-serial bridge, not the S3's own USB: the console and the installer's commands are on UART0. No user button on any GPIO (only the power slider and reset). |
 | Not used yet | PCF8563 clock, QMI8658 motion, QMC6309 compass (second I2C bus, SDA 7 / SCL 6), the message / map / triangle / Ctrl keys, the touch-only settings. |
-| Updates | Wi-Fi updates look in `firmware/thinknode-m9/` (none published yet), signed for "thinknode-m9" only. |
+| Updates | Wi-Fi updates look in `firmware/thinknode-m9/`, signed for "thinknode-m9" only. An `m9-v<FW_VERSION>` tag builds and publishes one (.github/workflows/m9.yml, then build.yml on main); every M9 build goes to both channels. |
 
 ## Format the microSD card first
 
