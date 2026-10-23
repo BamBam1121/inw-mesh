@@ -59,6 +59,8 @@ static Gestures   gestures;
 #include "bootscreen.h"
 #include "fsmigrate.h"
 #include "extport.h"
+#include "sdguard.h"
+static void playVirusFight(const sdguard::Found& f);
 #if INW_DEV
 #include <CayenneLPP.h>
 namespace ext { void drawPage(Canvas& g, int down); void fake(); }
@@ -1736,6 +1738,7 @@ static void usbCommands() {
       confirm("Update to 1.2.12?", "1.2.12 beta: the automatic backup's interval can be set, and a failed update check says so in words. takes about a minute; messages pause while it downloads.", [] {});
       continue;
     }
+#if BOARD_HAS_TOUCH
     // "touch": what the touch chip is set to report, and the fingers on it right now.
     if (!strcmp(line, "touch")) {
       bool d; int16_t x, y, x2 = -1, y2 = -1;
@@ -1746,6 +1749,7 @@ static void usbCommands() {
       if (two) Serial.printf(" (%d,%d)\n", x2, y2);
       continue;
     }
+#endif
     if (!strcmp(line, "tb")) {
       uint32_t n[4];
       tdeck_tb::counts(n);
@@ -1770,6 +1774,7 @@ static void usbCommands() {
       nav.invalidate();
       continue;
     }
+#if !INW_M9   // the M9 has a buzzer, not the codec this follows
     // "snd": a 1 s test tone, reporting each stage of the audio path.
     if (!strcmp(line, "snd")) {
       uint8_t o[2] = {0, 0}, c[2] = {0, 0};
@@ -1808,6 +1813,7 @@ static void usbCommands() {
       expander.digitalWrite(EXP_AMP_EN, LOW);
       continue;
     }
+#endif
     if (!strcmp(line, "powershow")) {
       powerOffShow();
       Serial.println("[power] show done (still on)");
@@ -2021,6 +2027,30 @@ static void usbCommands() {
       continue;
     }
     if (!strcmp(line, "ext")) { ext::report(); continue; }
+    // The SD card virus check (sdguard.h): "virusplant" leaves a harmless stand-in for the
+    // M9 card's worm on the card, "virussweep" finds and deletes it as a start would, and
+    // "virusfight" only plays Squatch's fight.
+    if (!strcmp(line, "virusplant")) {
+      bool ok = sdMount();
+      if (ok) {
+        File a = SD.open("/autorun.inf", FILE_WRITE);
+        ok = (bool)a;
+        if (a) { a.print(";kjsd\r\n[AutoRun]\r\n;wq\r\nopen=xlfqf.pif\r\nsHeLl\\oPeN\\CoMmAnD=xlfqf.pif\r\n"); a.close(); }
+        File p = SD.open("/xlfqf.pif", FILE_WRITE);
+        ok = ok && p;
+        if (p) { p.print("a test stand-in, not a program"); p.close(); }
+      }
+      Serial.printf("[sdguard] planted %s\n", ok ? "ok" : "failed");
+      continue;
+    }
+    if (!strcmp(line, "virussweep") || !strcmp(line, "virusfight")) {
+      sdguard::Found f;
+      if (line[5] == 's') { if (sdMount()) f = sdguard::sweep(); }
+      else { f.removed = 2; strlcpy(f.names, "autorun.inf, xlfqf.pif", sizeof(f.names)); }
+      Serial.printf("[sdguard] removed %u, failed %u: %s\n", f.removed, f.failed, f.names);
+      if (f.removed || f.failed) playVirusFight(f);
+      continue;
+    }
     dimmer.note();
     if (!strcmp(line, "stores")) {
       storeReport();
@@ -2122,6 +2152,26 @@ static void bootAnimStop() {                             // before anything else
 }
 
 static void drawBootLogo() { boot::drawLogo(display); }
+
+// Squatch dealing with the SD card's virus (sdguard.h), after it has been deleted. Once
+// he has won, any key moves on.
+static void playVirusFight(const sdguard::Found& f) {
+  Canvas& g = nav.canvas();
+  const uint32_t t0 = millis();
+  for (uint32_t ms = 0; ms < sdguard::FIGHT_MS; ms = millis() - t0) {
+    sdguard::drawFight(g, ms, f);
+    g.pushSprite(nav.display(), 0, 0);
+    jingle.tick();
+    bool key = rotary.takePress();
+    KeyEvent ev;
+    while (nextKey(ev)) key |= ev.pressed;
+    if (key && ms >= sdguard::SKIP_MS) break;
+    if (g_node) nodeLoop();
+    delay(8);
+  }
+  dimmer.note();
+  nav.invalidate();
+}
 
 static void powerOffShow() {
   Canvas& g = nav.canvas();
@@ -2388,6 +2438,17 @@ void setup() {
 #endif
   const bool sdOk = sdMount();
   bootStep("sd card", true, sdOk ? "mounted" : "none");   // no card is normal
+  // The worm some M9 cards shipped with (sdguard.h): looked for on every start, before
+  // anything else reads the card. Squatch shows what was done once the boot is through.
+  sdguard::Found virus;
+  if (sdOk) {
+    virus = sdguard::sweep();
+    if (virus.removed || virus.failed) {
+      Serial.printf("[sdguard] deleted %u (%s), %u wouldn't go\n", virus.removed, virus.names, virus.failed);
+      logs.add(virus.failed ? LOG_WARN : LOG_INFO, "sd card virus: deleted %s%s", virus.names,
+               virus.failed ? ", some files wouldn't go" : "");
+    }
+  }
   // NVS came up empty (wiped, or another firmware had the board): bring the
   // preferences back from the copies rather than starting at defaults.
   if (fsOk && !ui_settings.cameFromNvs()) {
@@ -2492,6 +2553,7 @@ void setup() {
     if (g_node) nodeLoop();
     delay(5);
   }
+  if (virus.removed || virus.failed) playVirusFight(virus);
   nav.invalidate();
   s_uiReady = true;                               // from here on, screen changes animate
   s_readyAt = millis();

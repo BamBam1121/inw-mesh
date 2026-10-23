@@ -17,6 +17,7 @@
 #include "regions.h"
 #include "battery.h"
 #include "serve_net.h"
+#include "sdguard.h"
 #include "scenes.h"       // where the character stands, for the taps that poke him
 // LovyanGFX's PNG writer (utility/lgfx_miniz.c), declared only in that file.
 extern "C" void* tdefl_write_image_to_png_file_in_memory_ex(const void* img, int w, int h, int chans, size_t* len, unsigned int level, int flip);
@@ -176,6 +177,22 @@ int main(int argc, char** argv) {
   populate();
   nav.begin(&display, &theme);
   static const char* THEME_NAMES[] = {"squatch", "blocks", "hero", "aurora", "halloween"};
+  // "squatch_sim OUT virus [THEME]": Squatch and the SD card's virus (sdguard.h), a
+  // frame every 40 ms (virus_000 ...).
+  if (argc > 2 && !strcmp(argv[2], "virus")) {
+    ui_settings.themeId = argc > 3 ? atoi(argv[3]) : 0;
+    app::applyTheme();
+    sdguard::Found f;
+    f.removed = 2;
+    strlcpy(f.names, "autorun.inf, xlfqf.pif", sizeof(f.names));
+    char n[32];
+    for (uint32_t ms = 0, i = 0; ms < sdguard::FIGHT_MS; ms += 40, i++) {
+      sdguard::drawFight(nav.canvas(), ms, f);
+      snprintf(n, sizeof(n), "virus_%03u", (unsigned)i);
+      savePPM(nav.canvas(), n);
+    }
+    return 0;
+  }
   // "squatch_sim OUT homes NAME": each theme's home screen, the node named NAME
   // (home_squatch, home_blocks, home_hero, home_aurora) - the README's pictures.
   if (argc > 2 && !strcmp(argv[2], "homes")) {

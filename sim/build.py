@@ -15,11 +15,13 @@ SRC = os.path.join(OUT, "src")
 OBJ = os.path.join(OUT, "obj" + ("-pager" if "--pager" in sys.argv else ""))
 GXX = os.path.expanduser(r"~\.platformio\packages\toolchain-gccmingw32\bin\g++.exe")
 LGFX = os.path.join(ROOT, ".pio", "libdeps", "t-lora-pager", "LovyanGFX", "src")
+if not os.path.exists(LGFX):   # a checkout that has only built the T-Deck (or the M9)
+    LGFX = os.path.join(ROOT, ".pio", "libdeps", "t-deck", "LovyanGFX", "src")
 
 # The firmware files the simulator runs. Everything else is stubbed in sim/.
 FIRMWARE = ["ui.cpp", "home.cpp", "quips.cpp", "regional.cpp", "settings.cpp", "history.cpp", "regions.cpp",
             "chats.cpp", "notify.cpp", "fx.cpp", "fx_squatch.cpp", "fx_blocks.cpp", "fx_hero.cpp",
-            "fx_aurora.cpp", "fx_halloween.cpp", "bootscreen.cpp", "themestore.cpp"]
+            "fx_aurora.cpp", "fx_halloween.cpp", "fx_virus.cpp", "bootscreen.cpp", "themestore.cpp"]
 SIM = ["sim_stubs.cpp", "sim_main.cpp", "serve_net.cpp"]
 # The T-Deck's own screens (src/tdeck); the pager build doesn't have them.
 BOARD_UI = [] if "--pager" in sys.argv else ["dashboard.cpp", "hwcheck.cpp"]
@@ -36,7 +38,7 @@ def fw_version():
     return m.group(1) if m else "sim"
 
 
-FLAGS = ["-std=gnu++14", "-O1", "-w", "-DARDUINO=10819", "-DLGFX_USE_V1", "-DINW_SIM=1",
+FLAGS = ["-std=gnu++14", "-O1", "-w", "-DARDUINO=10819", "-DLGFX_USE_V1", "-DINW_SIM=1", "-DBOARD_ASYNC_PUSH=0",
          '-DFW_VERSION="%s"' % fw_version(), "-DMAX_CONTACTS=2000", "-DMAX_GROUP_CHANNELS=40"]
 if "--pager" in sys.argv:
     FLAGS.append("-DSIM_PAGER=1")

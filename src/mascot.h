@@ -23,6 +23,7 @@ struct SquatchPose {
     float slump = 0;          // tired: head down, eyes half shut, 0..1 (a low battery)
     bool happy = false;       // eyes shut in a smile (the charger)
     float dizzy = -1;         // >= 0: stars circling his head, at this angle
+    float punch = 0;          // the near arm: < 0 drawn back for a swing, > 0 thrown straight out, -1..1 (sdguard.h)
 };
 
 // Halloween: what he's dressed as and where he's walking, chosen at start-up.
@@ -148,6 +149,15 @@ inline void drawSasquatch(lgfx::LovyanGFX& d, const Theme& t, int x, int groundY
             const float wob = sinf(phase * 3.1f + (nearSide ? 0 : 1.7f)) * Sf(3);
             ex = lerp(ex, nearSide ? x - Sf(2) : x + Sf(14), up); ey = lerp(ey, nearSide ? shY - Sf(6) : shY - Sf(14), up);
             hx = lerp(hx, (nearSide ? x - Sf(9) : x + Sf(24)) + wob, up); hy = lerp(hy, nearSide ? shY - Sf(24) : shY - Sf(34), up);
+        }
+        if (nearSide && pose.punch < 0) {                 // wound up: elbow back and low, fist cocked by his chin
+            const float w = -pose.punch;
+            ex = lerp(ex, x - Sf(7), w); ey = lerp(ey, shY + Sf(15), w);
+            hx = lerp(hx, x + Sf(3), w); hy = lerp(hy, shY + Sf(1), w);
+        } else if (nearSide && pose.punch > 0) {          // thrown: the whole arm out and down, at something half his height
+            const float w = pose.punch;
+            ex = lerp(ex, x + Sf(22), w); ey = lerp(ey, shY + Sf(13), w);
+            hx = lerp(hx, x + Sf(36), w); hy = lerp(hy, shY + Sf(28), w);
         }
         d.drawWedgeLine((int)shx, (int)shy, (int)ex, (int)ey, Sf(6), Sf(5), c);
         d.drawWedgeLine((int)ex, (int)ey, (int)hx, (int)hy, Sf(5), Sf(4), c);

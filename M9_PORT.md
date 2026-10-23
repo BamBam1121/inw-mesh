@@ -31,6 +31,15 @@ them to a PC. Before using it: take Elecrow's free replacement card, or format t
 card (not on a Windows PC with auto-play on, and never open `autorun.inf` or a `.pif`
 file on it). Elecrow's notice: https://www.elecrow.com/Thinknode-M9-Security-Advisory-SD-Card-Malware-Risk.html
 
+The firmware also cleans it up itself (`src/sdguard.*`): on every start it looks at the
+card's top folder and deletes an `autorun.inf` that starts a program, the programs it
+names (.exe, .pif, .scr, .com, .bat, .cmd, .vbs, .js, .wsf, .lnk) and any `.pif` file,
+taking the worm's hidden/read-only marks off first. Nothing else is touched and the card
+is never formatted. If it found anything, Squatch punches and stomps the virus on screen
+("I got ya!") and the log says what went. *Never run against the real worm*: the
+dev build's `virusplant` leaves a harmless stand-in, `virussweep` deletes it as a start
+would, `virusfight` only plays the animation.
+
 ## First test on a real M9 (in this order)
 
 1. Flash `squatch-mesh-thinknode-m9-<version>-full.bin` at 0x0 (esptool, or the ESP web flasher). Hold BOOT while plugging in if it won't connect. **This replaces the stock firmware**; the stock MeshCore identity and contacts are read across on the first start (as on the T-Deck), but make a backup in the stock firmware first.
