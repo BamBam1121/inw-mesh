@@ -11,6 +11,7 @@
 #include <Preferences.h>
 #include <soc/rtc_cntl_reg.h>
 #include "power.h"
+#include "eco_power.h"
 #include "cpu_sleep.h"
 #include "nfcapp.h"
 #include "sleep_deadline.h"
@@ -1763,6 +1764,7 @@ void setup() {
   logs.add(rr == ESP_RST_POWERON || rr == ESP_RST_SW ? LOG_INFO : LOG_WARN, "boot %s, last reset: %s",
            FW_VERSION, rr < 11 ? RESET[rr] : "?");
   ui_settings.load();
+  const bool ecoOk = power::initEco();
   themes::load();
   if (!themes::valid(ui_settings.themeId)) ui_settings.themeId = 0;   // one of the owner's that is no longer here
 
@@ -1917,6 +1919,7 @@ void setup() {
 
   nav.begin(&display, &theme);
   nav.push(makeHomeView());
+  if (!ecoOk) nav.toast("could not restore ECO setting", 4000);
   ota::announce();                                // "Updated, now on X" after an update restarted it
   if (history.rescued()) {
     char msg[48];

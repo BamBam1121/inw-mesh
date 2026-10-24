@@ -24,6 +24,7 @@ jobs:
           key: cpu-saving-pio-${{ hashFiles('platformio.ini') }}
       - name: Check CPU policy on the host
         run: |
+          python tools/test_eco_power.py
           python tools/test_cpu_power.py
           python tools/test_cpu_sleep.py
           python tools/test_motion_sleep.py
@@ -36,15 +37,15 @@ jobs:
       - name: Record the source revision
         run: |
           git rev-parse HEAD > .pio/build/t-lora-pager/source-commit.txt
-          cp .pio/build/t-lora-pager/firmware.bin .pio/build/t-lora-pager/SquatchMesh-1.2.15-cpu-test15-Pager.bin
-          python tools/merge_pager_firmware.py .pio/build/t-lora-pager .pio/build/t-lora-pager/SquatchMesh-1.2.15-cpu-test15-Pager-merged.bin
+          cp .pio/build/t-lora-pager/firmware.bin .pio/build/t-lora-pager/SquatchMesh-1.2.15-cpu-test16-Pager.bin
+          python tools/merge_pager_firmware.py .pio/build/t-lora-pager .pio/build/t-lora-pager/SquatchMesh-1.2.15-cpu-test16-Pager-merged.bin
       - uses: actions/upload-artifact@v4
         with:
-          name: pager-cpu-test15-${{ github.sha }}
+          name: pager-cpu-test16-${{ github.sha }}
           if-no-files-found: error
           path: |
-            .pio/build/t-lora-pager/SquatchMesh-1.2.15-cpu-test15-Pager.bin
-            .pio/build/t-lora-pager/SquatchMesh-1.2.15-cpu-test15-Pager-merged.bin
+            .pio/build/t-lora-pager/SquatchMesh-1.2.15-cpu-test16-Pager.bin
+            .pio/build/t-lora-pager/SquatchMesh-1.2.15-cpu-test16-Pager-merged.bin
             .pio/build/t-lora-pager/bootloader.bin
             .pio/build/t-lora-pager/partitions.bin
             .pio/build/t-lora-pager/source-commit.txt

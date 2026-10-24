@@ -1,3 +1,28 @@
+## Test16 — unified ECO menu (1.2.15)
+
+Battery now contains an ECO mode section, followed by the unchanged official
+Battery saver section. ECO controls the CPU clock reduction, light sleep,
+existing idle haptic/audio behaviour and NFC internal standby with one switch.
+It does not turn off GPS, Bluetooth or Wi-Fi; their existing sleep blockers remain.
+The green [ECO] status badge reports the selected policy, not instantaneous sleep.
+Both [ECO] and SAVER may appear together.
+
+Raise to wake is displayed OFF while ECO is selected. Pressing it shows
+“Turn off ECO to enable raise to wake.” for three seconds without changing
+its saved preference. Leaving ECO restores that preference automatically.
+Quiet when face down still uses the existing fresh pre-notification sample.
+
+Upgrade: the previous CPU + light-sleep selection determines ECO. At boot,
+the old separate NFC preference is reconciled with that selection. A fresh
+install remains OFF. These preferences still use the existing independent NVS
+keys; no settings-blob format is changed. Failed preference writes are reported.
+
+No SD power change, NFC rail cut or LCD wake change is included. The existing
+sleep-error latch is NOT fixed by this menu release; toggling ECO off and on
+remains the manual recovery. NFC operation and LCD wake still need hardware
+validation. Test both ECO states, Battery saver together with ECO, radio receive,
+notifications, face-down silence, and NFC read/write/emulation on healthy hardware.
+
 # Experimental CPU power saving (T-LoRa Pager)
 
 Settings > Battery > battery saver > **CPU : power saving** is the single

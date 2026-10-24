@@ -7,6 +7,7 @@
 #include "logstore.h"
 #include "netwifi.h"
 #include "power.h"
+#include "eco_power.h"
 #include <time.h>
 #include "emoji_data.h"
 #include "regional.h"
@@ -128,31 +129,6 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
   d.setFont(&fonts::Font2);
   d.fillRect(0, 0, L::W, 17, t.panel);
   d.drawFastHLine(0, 17, L::W, t.line);
-  d.setTextColor(t.green, t.panel);
-  // The name the owner gave this pager; "SQUATCH" until they set one (a new
-  // node is named after its key, e.g. "a1b2c3d4"). Capped so the unread badge
-  // still clears the clock.
-  int x = 6;
-  const char* name = g_node ? g_node->prefs().node_name : "";
-  char keyName[10] = "";
-  if (g_node) mesh::Utils::toHex(keyName, g_node->self_id.pub_key, 4);
-  if (name[0] && strcmp(name, keyName) && strcmp(name, "NONAME")) x = drawUtf8(d, name, 6, 1, 140);
-  else x += d.drawString("SQUATCH", 6, 1);
-  x += 8;
-  const uint16_t un = app::unread();
-  if (un) {
-    char b[12];
-    snprintf(b, sizeof(b), "%u new", un);
-    d.fillRoundRect(x, 2, d.textWidth(b) + 8, 13, 6, t.amber);
-    d.setTextColor(t.bg, t.amber);
-    d.drawString(b, x + 4, 1);
-    x += d.textWidth(b) + 14;
-  }
-  if (withClock && app::timeValid()) {
-    const char* c = clockText(app::now());
-    d.setTextColor(t.txt, t.panel);
-    d.drawString(c, (L::W - d.textWidth(c)) / 2, 1);
-  }
   // right side, laid out right to left
   int rx = battX();
   drawBatteryIcon(d, t, rx, BATT_Y);
@@ -164,6 +140,11 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
     rx -= smallW() + 5;
     s_sigX = rx;
     smallSignal(d, t, rx, 16);
+  }
+  if (power::eco()) {
+    rx -= d.textWidth("[ECO]") + 6;
+    d.setTextColor(t.green, t.panel);
+    d.drawString("[ECO]", rx, 1);
   }
   if (power::saver()) {
     rx -= 44;
@@ -193,6 +174,35 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
     rx -= 50;
     d.setTextColor(t.red, t.panel);
     d.drawString("NO RF", rx, 1);
+  }
+  d.setTextColor(t.green, t.panel);
+  // The name the owner gave this pager; "SQUATCH" until they set one (a new
+  // node is named after its key, e.g. "a1b2c3d4"). Capped so the unread badge
+  // still clears the clock and the selected power modes.
+  const char* clock = withClock && app::timeValid() ? clockText(app::now()) : nullptr;
+  const int clockW = clock ? d.textWidth(clock) : 0;
+  const int clockX = clock ? min((L::W - clockW) / 2, rx - clockW - 6) : rx;
+  const int leftEnd = clock ? clockX - 6 : rx - 6;
+  int x = 6;
+  const char* name = g_node ? g_node->prefs().node_name : "";
+  char keyName[10] = "";
+  if (g_node) mesh::Utils::toHex(keyName, g_node->self_id.pub_key, 4);
+  if (leftEnd > 6 && name[0] && strcmp(name, keyName) && strcmp(name, "NONAME")) x = drawUtf8(d, name, 6, 1, max(0, min(140, leftEnd - 6)));
+  else if (leftEnd > 6) x = drawUtf8(d, "SQUATCH", 6, 1, max(0, min(140, leftEnd - 6)));
+  x += 8;
+  const uint16_t un = app::unread();
+  if (un) {
+    char b[12];
+    snprintf(b, sizeof(b), "%u new", un);
+    if (x + d.textWidth(b) + 8 <= leftEnd) {
+      d.fillRoundRect(x, 2, d.textWidth(b) + 8, 13, 6, t.amber);
+      d.setTextColor(t.bg, t.amber);
+      d.drawString(b, x + 4, 1);
+    }
+  }
+  if (clock && clockX >= 6) {
+    d.setTextColor(t.txt, t.panel);
+    d.drawString(clock, clockX, 1);
   }
 }
 

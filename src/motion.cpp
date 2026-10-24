@@ -423,7 +423,8 @@ void setManDownMin(uint8_t m) { manMin = m; movedAt = millis(); if (m) failed = 
 bool takeRaise() {
   const bool r = raised;
   raised = false;
-  return r && raiseOn && !saverOn && !darkSaving && running();
+  return r && raiseOn && !saverOn && !darkSaving &&
+    !(power::cpuSaving() && power::lightSleep()) && running();
 }
 
 uint32_t heldFor() {

@@ -11,6 +11,7 @@
 #include "backlight.h"
 #include "netwifi.h"
 #include "power.h"
+#include "eco_power.h"
 #include "cpu_sleep.h"
 #include "battery.h"
 #include "notify.h"
@@ -703,7 +704,11 @@ static void displayMenu() {
   m->toggle("wake screen on message", [] { return ui_settings.wakeOnMessage; },
             [] { ui_settings.wakeOnMessage = !ui_settings.wakeOnMessage; markUiDirty(); });
   // Lifting it into view lights the screen on the lock face (motion.h).
-  m->toggle("raise to wake", [] { return motion::raiseToWake(); }, [] {
+  m->toggle("raise to wake", [] { return !power::eco() && motion::raiseToWake(); }, [] {
+    if (power::eco()) {
+      nav.toast("Turn off ECO to enable raise to wake.", 3000);
+      return; // Keep the user's saved preference for when ECO ends.
+    }
     motion::setRaiseToWake(!motion::raiseToWake());
     if (motion::raiseToWake() && motion::paused()) nav.toast("starts when battery saver ends", 3000);
     else if (motion::raiseToWake() && !motion::running()) nav.toast("motion sensor not responding", 3000);
@@ -1001,6 +1006,13 @@ static void batteryMenu() {
     markUiDirty(); });
   m->info("status", []() -> String { return String(power::chargeStatus()); });
   m->action("charge to 100% now", [] { power::chargeFullNow(); nav.toast("charging to full this time"); });
+  m->header("ECO mode");
+  m->toggle("ECO mode", [] { return power::eco(); }, [] {
+    if (!power::setEco(!power::eco())) nav.toast("could not save ECO setting", 3000);
+  });
+  m->info("what it does", []() -> String {
+    return String("Reduces CPU speed and sleeps idle components");
+  });
   m->header("battery saver");
   m->toggle("battery saver", [] { return power::saver(); }, [] { power::setSaver(!power::saver()); });
   m->toggle("turn on automatically", [] { return ui_settings.autoSaver; },
@@ -1008,29 +1020,6 @@ static void batteryMenu() {
   m->adjust("turn on at", []() -> String { return String(ui_settings.saverPct) + "%"; },
             [](int d) { ui_settings.saverPct = constrain(ui_settings.saverPct + d * 5, 5, 50); markUiDirty(); });
   m->info("what it does", []() -> String { return String("gps, bluetooth, wi-fi off, dim screen"); });
-  m->toggle("CPU : power saving", [] {
-    return power::cpuSaving() && power::lightSleep();
-  }, [] {
-    const bool wasCpu = power::cpuSaving(), wasSleep = power::lightSleep();
-    const bool on = !(wasCpu && wasSleep);
-    // Keep the existing preferences for compatibility; one menu action controls
-    // both. Restore the first preference if the second write is refused.
-    if (!power::setLightSleep(on)) {
-      nav.toast("could not save power setting");
-      return;
-    }
-    if (!power::setCpuSaving(on)) {
-      power::setLightSleep(wasSleep);
-      nav.toast("could not save power setting");
-    }
-  });
-  m->info("what it does", []() -> String { return String("Lowers CPU speed and enables light sleep"); });
-#if defined(INW_NFC) && INW_NFC
-  m->toggle("NFC : power saving", [] { return app::nfcPowerSaving(); }, [] {
-    if (!app::setNfcPowerSaving(!app::nfcPowerSaving())) nav.toast("could not save NFC power setting");
-  });
-  m->info("what it does", []() -> String { return String("Puts unused NFC into standby"); });
-#endif
   nav.push(m);
 }
 
