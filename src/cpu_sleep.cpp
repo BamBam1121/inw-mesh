@@ -4,13 +4,17 @@
 #include "board_pins.h"
 #include <Preferences.h>
 #include <esp_sleep.h>
+#include <esp_err.h>
 #include <esp_timer.h>
 #include <driver/gpio.h>
 
 namespace power {
 namespace {
   int8_t s_enabled = -1;
-  bool s_failed = false;
+  bool s_failed = false; // Waiting for the next attempt, never permanently latched.
+  uint32_t s_retryAt = 0, s_failures = 0, s_streak = 0, s_recoveries = 0;
+  constexpr unsigned failureSlots = 8;
+  SleepFailure s_failuresLog[failureSlots] = {};
   uint32_t s_count = 0, s_wake = 0, s_lastMs = 0, s_maxMs = 0;
   uint64_t s_micros = 0;
   const char* s_status = "not checked";
@@ -19,7 +23,7 @@ namespace {
   const char* const reasonNames[] = {
     "work: input/USB", "work: GPS", "work: Wi-Fi", "work: battery/sensors/mesh",
     "work: UI tick", "work: drawing", "work: effects", "work: storage/field", "work: scheduling",
-    "sleep", "off", "CPU saver off", "sleep error; toggle to retry", "screen on",
+    "sleep", "off", "CPU saver off", "sleep retry cooldown", "screen on",
     "boot grace (2 min)", "USB power", "sound playing", "Bluetooth on", "Wi-Fi on",
     "GPS active", "motion sensor polling", "NFC active", "background work",
     "panel not asleep", "backlight fading", "notification/overlay", "keyboard effect",
@@ -83,6 +87,28 @@ void printSleepDiagnostics() {
   }
   Serial.printf("[diag] wakes timer=%lu gpio=%lu other=%lu; first blocking reason only\r\n",
     (unsigned long)s_timerWakes, (unsigned long)s_gpioWakes, (unsigned long)s_otherWakes);
+  const unsigned retained = s_failures < failureSlots ? s_failures : failureSlots;
+  Serial.printf("[sleep-error] total=%lu consecutive=%lu recovered=%lu retry_in_ms=%lu retained=%u\r\n",
+    (unsigned long)s_failures, (unsigned long)s_streak, (unsigned long)s_recoveries,
+    (unsigned long)sleepRetryMs(), retained);
+  for (unsigned i = 0; i < retained; ++i) {
+    const SleepFailure& e = s_failuresLog[(s_failures - retained + i) % failureSlots];
+    Serial.printf("[sleep-error] seq=%lu uptime_ms=%lu code=%ld name=%s stage=%s budget_ms=%lu clock=%lu radio=%d->%d button=%d->%d elapsed_us=%llu\r\n",
+      (unsigned long)e.sequence, (unsigned long)e.uptimeMs, (long)e.code, esp_err_to_name(e.code), e.stage,
+      (unsigned long)e.budgetMs, (unsigned long)e.clockMhz, e.radioBefore, e.radioAfter,
+      e.buttonBefore, e.buttonAfter, (unsigned long long)e.elapsedUs);
+  }
+}
+uint32_t sleepFailureCount() { return s_failures; }
+uint32_t sleepRecoveryCount() { return s_recoveries; }
+uint32_t sleepRetryMs() {
+  const int32_t remaining = (int32_t)(s_retryAt - millis());
+  return s_failed && remaining > 0 ? (uint32_t)remaining : 0;
+}
+bool lastSleepFailure(SleepFailure& out) {
+  if (!s_failures) return false;
+  out = s_failuresLog[(s_failures - 1) % failureSlots];
+  return true;
 }
 bool lightSleep() {
   if (s_enabled < 0) {
@@ -120,11 +146,12 @@ bool idleLightSleep(const SleepInputs& in) {
   const uint32_t budgetMs = timer.ms();
   using R = SleepReason;
   const R reason = !lightSleep() ? R::Off : !cpuSaving() ? R::CpuOff :
-    s_failed ? R::Error : !in.screenOff ? R::ScreenOn :
+    !in.screenOff ? R::ScreenOn :
     millis() < 120000 ? R::Boot : in.usb ? R::Usb :
     in.audio ? R::Audio : in.bluetooth ? R::Bluetooth :
     in.wifi ? R::Wifi : in.gps ? R::Gps :
     in.motion ? R::Motion : in.nfc ? R::Nfc : in.background ? s_background :
+    sleepRetryMs() ? R::Error :
     budgetMs < 2 ? R::Deadline : !in.radioReady ? R::RadioNotReady : in.meshBusy ? s_mesh : R::Count;
   if (reason != R::Count) return blocked(reason, in.screenOff);
   if (digitalRead(PIN_LORA_DIO1) == HIGH) return blocked(R::RadioIrq, in.screenOff);
@@ -137,15 +164,18 @@ bool idleLightSleep(const SleepInputs& in) {
   // Sleep until an IRQ or the earliest useful deadline, up to 30 seconds.
   // Keyboard and wheel deliberately have NO wake trigger, matching SquatchMesh.
   phase(R::Sleeping, in.screenOff);
+  const char* stage = "timer wake";
+  const int radioBefore = digitalRead(PIN_LORA_DIO1), buttonBefore = digitalRead(PIN_BUTTON);
   esp_err_t err = esp_sleep_enable_timer_wakeup((uint64_t)budgetMs * 1000ULL);
   portENTER_CRITICAL(&s_mux);
-  if (err == ESP_OK) err = gpio_wakeup_enable((gpio_num_t)PIN_LORA_DIO1, GPIO_INTR_HIGH_LEVEL);
-  if (err == ESP_OK) err = gpio_wakeup_enable((gpio_num_t)PIN_BUTTON, GPIO_INTR_LOW_LEVEL);
-  if (err == ESP_OK) err = esp_sleep_enable_gpio_wakeup();
+  if (err == ESP_OK) { stage = "radio wake"; err = gpio_wakeup_enable((gpio_num_t)PIN_LORA_DIO1, GPIO_INTR_HIGH_LEVEL); }
+  if (err == ESP_OK) { stage = "button wake"; err = gpio_wakeup_enable((gpio_num_t)PIN_BUTTON, GPIO_INTR_LOW_LEVEL); }
+  if (err == ESP_OK) { stage = "GPIO wake"; err = esp_sleep_enable_gpio_wakeup(); }
   const int64_t start = esp_timer_get_time();
-  if (err == ESP_OK) err = esp_light_sleep_start();
+  if (err == ESP_OK) { stage = "enter sleep"; err = esp_light_sleep_start(); }
   const int64_t elapsed = esp_timer_get_time() - start;
   const uint32_t wake = (uint32_t)esp_sleep_get_wakeup_cause();
+  const int radioAfter = digitalRead(PIN_LORA_DIO1), buttonAfter = digitalRead(PIN_BUTTON);
   gpio_wakeup_disable((gpio_num_t)PIN_LORA_DIO1);
   gpio_set_intr_type((gpio_num_t)PIN_LORA_DIO1, GPIO_INTR_POSEDGE);
   gpio_wakeup_disable((gpio_num_t)PIN_BUTTON);
@@ -155,11 +185,22 @@ bool idleLightSleep(const SleepInputs& in) {
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
   if (err != ESP_OK) {
     s_failed = true;
+    if (s_streak != 0xffffffffUL) ++s_streak;
+    const uint32_t retryMs = s_streak >= 6 ? 30000UL : (1000UL << (s_streak - 1));
+    s_retryAt = millis() + retryMs;
+    SleepFailure& failure = s_failuresLog[s_failures % failureSlots];
+    ++s_failures;
+    failure = {s_failures, millis(), budgetMs, cpuClockMhz(), (int32_t)err, stage,
+               radioBefore, buttonBefore, radioAfter, buttonAfter,
+               elapsed > 0 ? (uint64_t)elapsed : 0};
     s_reason = R::Error; // Failed calls are not counted as sleep time.
     blocked(R::Error, in.screenOff);
-    Serial.printf("[power] light sleep failed: %d\r\n", (int)err);
+    Serial.printf("[power] sleep failed: %d (%s) stage=%s retry_ms=%lu\r\n",
+      (int)err, esp_err_to_name(err), stage, (unsigned long)retryMs);
     return false;
   }
+  if (s_streak) ++s_recoveries;
+  s_streak = 0; s_failed = false;
   phase(R::Scheduling, in.screenOff);
   if (wake == ESP_SLEEP_WAKEUP_TIMER) ++s_timerWakes;
   else if (wake == ESP_SLEEP_WAKEUP_GPIO) ++s_gpioWakes;

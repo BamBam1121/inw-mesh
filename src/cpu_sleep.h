@@ -15,6 +15,18 @@ namespace power {
   void resetSleepDiagnostics(bool screenOff);
   void printSleepDiagnostics();
   uint64_t sleepDiagnosticMicros(SleepReason reason);
+  // Volatile evidence survives option toggles and cpu reset, until reboot.
+  struct SleepFailure {
+    uint32_t sequence, uptimeMs, budgetMs, clockMhz;
+    int32_t code;
+    const char* stage;
+    int radioBefore, buttonBefore, radioAfter, buttonAfter;
+    uint64_t elapsedUs;
+  };
+  uint32_t sleepFailureCount();
+  uint32_t sleepRecoveryCount();
+  uint32_t sleepRetryMs();
+  bool lastSleepFailure(SleepFailure& out);
   bool lightSleep();
   bool setLightSleep(bool on);
   // All fields are evaluated on the main loop after synchronous background work.

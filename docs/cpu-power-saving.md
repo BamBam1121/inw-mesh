@@ -1,3 +1,27 @@
+## Test17 — retained sleep failures and automatic recovery
+
+Keeps the test16 ECO menu and all original wake/radio/peripheral policies.
+A failed sleep request no longer disables sleep until an option toggle.
+The next eligible attempt is delayed by 1, 2, 4, 8, 16, then at most 30 seconds
+for consecutive failures. The main loop remains awake at 80 MHz during that
+cooldown; radio/button handling and all existing safety guards still run.
+A successful sleep resets the delay. No new timed wake source or sleep slicing
+is introduced. Cleanup still restores the radio rising-edge interrupt and removes
+both temporary GPIO and timer wake sources on every path.
+
+`cpu` now prints [sleep-error] totals, recovery count, remaining retry delay,
+and the last eight failures (in RAM): error code/name, failed preparation stage,
+uptime, requested sleep duration, CPU clock, radio/button levels before and after,
+and elapsed time in the entry call. A pending level is evidence, not proof of a
+particular cause. Failed attempts are never included as successful sleep time.
+Records survive ECO toggles and `cpu reset`; reboot/power loss clears them.
+There are no recurring flash writes or live peripheral probes for this diagnostic.
+
+Test: enable ECO, unplug USB, leave screen off for several hours, reconnect
+without reboot, run `cpu`, and send the full output plus the battery/time reading.
+If failures recur, the retained records distinguish a pending wake, an insufficient
+sleep duration, and a preparation/configuration error without assuming a cause.
+
 ## Test16 — unified ECO menu (1.2.15)
 
 Battery now contains an ECO mode section, followed by the unchanged official

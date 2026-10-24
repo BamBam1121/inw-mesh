@@ -6,6 +6,9 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = {
+    'esp_err.h': r'''#pragma once
+inline const char* esp_err_to_name(int code) { return code ? "TEST_ERROR" : "ESP_OK"; }
+''',
     'Arduino.h': r'''#pragma once
 #include <cstdint>
 #include <cstddef>
@@ -38,12 +41,14 @@ void end() {}
 using esp_err_t=int;
 constexpr int ESP_OK=0, ESP_SLEEP_WAKEUP_GPIO=7, ESP_SLEEP_WAKEUP_TIMER=4;
 inline int calls=0, result=0, configResult=0, enabledSources=0;
+inline int gpioResult=0, badPin=-1, pinResult=0;
+inline bool radioOnEntry=false;
 inline uint64_t timerUs=0;
 inline int64_t clockUs=0;
 inline int wakeCause=ESP_SLEEP_WAKEUP_TIMER;
 inline bool injectedRadio=false, expectImu=false;
 inline int esp_sleep_enable_timer_wakeup(uint64_t us) { timerUs=us; enabledSources|=1; return configResult; }
-inline int esp_sleep_enable_gpio_wakeup() { enabledSources|=2; return 0; }
+inline int esp_sleep_enable_gpio_wakeup() { enabledSources|=2; return gpioResult; }
 int esp_light_sleep_start();
 inline int esp_sleep_get_wakeup_cause() { return wakeCause; }
 inline void esp_sleep_disable_wakeup_source(int s) { enabledSources &= s==ESP_SLEEP_WAKEUP_TIMER ? ~1 : ~2; }
@@ -54,15 +59,17 @@ inline int64_t esp_timer_get_time() { return clockUs; }
 ''',
     'driver/gpio.h': r'''#pragma once
 #include <esp_sleep.h>
+#include <Arduino.h>
 using gpio_num_t=int;
 constexpr int GPIO_INTR_DISABLE=0, GPIO_INTR_POSEDGE=1, GPIO_INTR_HIGH_LEVEL=4, GPIO_INTR_LOW_LEVEL=5;
 inline int intr[49]={};
 inline bool wakes[49]={};
-inline int gpio_wakeup_enable(int pin, int trigger) { wakes[pin]=true; intr[pin]=trigger; return 0; }
+inline int gpio_wakeup_enable(int pin, int trigger) { wakes[pin]=true; intr[pin]=trigger; return pin==badPin ? pinResult : 0; }
 inline void gpio_wakeup_disable(int pin) { wakes[pin]=false; }
 inline void gpio_set_intr_type(int pin, int trigger) { intr[pin]=trigger; }
 inline int esp_light_sleep_start() {
   ++calls;
+  if (radioOnEntry) radioLevel=1;
   assert(wakes[14] && wakes[0] && wakes[8]==expectImu);
   assert(!wakes[7] && !wakes[40] && !wakes[41] && !wakes[6]);
   clockUs+=injectedRadio ? 7000 : timerUs;
@@ -71,6 +78,7 @@ inline int esp_light_sleep_start() {
 
 ''',
     'test.cpp': r'''#include <cassert>
+#include <cstring>
 #include <initializer_list>
 #include <Preferences.h>
 #include <esp_sleep.h>
@@ -216,7 +224,69 @@ int main() {
   assert(sleepDiagnosticMicros(SleepReason::Sleeping)==0);
   const int before=calls; assert(!idleLightSleep(idle) && calls==before);
   assert(setLightSleep(true)); result=0;
-  assert(idleLightSleep(idle)); // Only the existing option clears failure.
+  assert(idleLightSleep(idle)); // Manual retry still works and retains evidence.
+  SleepFailure last{};
+  assert(lastSleepFailure(last) && last.code==99);
+  assert(sleepFailureCount()==3 && sleepRecoveryCount()==2);
+  // Each preparation stage is retained and restores the temporary wake setup.
+  for (int stage=0; stage<4; ++stage) {
+    assert(setLightSleep(true));
+    configResult=stage==0 ? 71 : 0;
+    badPin=stage==1 ? 14 : stage==2 ? 0 : -1; pinResult=72;
+    gpioResult=stage==3 ? 73 : 0;
+    const int entered=calls;
+    assert(!idleLightSleep(idle) && calls==entered);
+    assert(enabledSources==0 && !wakes[14] && !wakes[0]);
+    assert(intr[14]==GPIO_INTR_POSEDGE && intr[0]==GPIO_INTR_DISABLE);
+    assert(lastSleepFailure(last));
+    const char* stages[]={"timer wake","radio wake","button wake","GPIO wake"};
+    assert(!std::strcmp(last.stage,stages[stage]));
+  }
+  configResult=gpioResult=pinResult=0; badPin=-1;
+  assert(setLightSleep(true) && idleLightSleep(idle));
+  // A radio edge arriving after the initial gate can reject entry: retain it.
+  radioOnEntry=true; result=99;
+  const auto failuresBefore=sleepFailureCount();
+  assert(!idleLightSleep(idle));
+  assert(lastSleepFailure(last) && last.radioBefore==0 && last.radioAfter==1);
+  assert(last.budgetMs==30000 && last.clockMhz==80 && last.uptimeMs==now);
+  assert(!std::strcmp(last.stage,"enter sleep"));
+  radioOnEntry=false; radioLevel=0; result=0;
+  const int entered=calls;
+  assert(sleepRetryMs()==1000);
+  now+=999; idle.deadline=now+30000;
+  assert(!idleLightSleep(idle) && calls==entered && sleepRetryMs()==1);
+  now+=1; idle.deadline=now+30000;
+  // Even once cooldown ends, every ordinary service guard remains in force.
+  auto busy=idle; busy.usb=true;
+  assert(!idleLightSleep(busy) && calls==entered);
+  radioLevel=1; assert(!idleLightSleep(idle) && calls==entered); radioLevel=0;
+  assert(idleLightSleep(idle) && calls==entered+1 && sleepRetryMs()==0);
+  assert(sleepFailureCount()==failuresBefore+1);
+  assert(lastSleepFailure(last) && last.code==99); // success does not erase evidence
+  // Persistent errors back off without a tight retry storm or permanent latch.
+  result=99;
+  for (uint32_t wait : {1000u,2000u,4000u,8000u,16000u,30000u,30000u,30000u,30000u}) {
+    assert(!idleLightSleep(idle));
+    assert(sleepRetryMs()==wait);
+    const int n=calls;
+    for (int i=0;i<100;++i) assert(!idleLightSleep(idle) && calls==n);
+    now+=wait; idle.deadline=now+30000;
+  }
+  const auto retainedCount=sleepFailureCount();
+  resetSleepDiagnostics(true);
+  assert(sleepFailureCount()==retainedCount && lastSleepFailure(last));
+  printSleepDiagnostics(); // also exercise ring traversal after more than 8 failures
+  result=0; assert(idleLightSleep(idle));
+  // Cooldown arithmetic survives the millis rollover without opening new wakes.
+  now=0xffffff00u; idle.deadline=now+30000; result=99;
+  assert(!idleLightSleep(idle) && sleepRetryMs()==1000);
+  now+=999; idle.deadline=now+30000;
+  assert(!idleLightSleep(idle) && sleepRetryMs()==1);
+  now+=1; idle.deadline=now+30000;
+  assert(sleepRetryMs()==0); // existing boot-grace gate may still block after wrap
+  assert(setLightSleep(false) && setLightSleep(true));
+  assert(sleepFailureCount()==retainedCount+1);
 
 }
 ''',
