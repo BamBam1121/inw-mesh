@@ -13,7 +13,7 @@ Build: `pio run -e thinknode-m9` (or `thinknode-m9-dev` for the USB test command
 
 | | |
 |---|---|
-| Screen | ST7789 320x240, the T-Deck's layouts. Rotation 1, as on the T-Deck (Wadamesh: 3 was upside down on a real one). |
+| Screen | ST7789 320x240, the T-Deck's layouts. Rotation 3 (LovyanGFX numbering, as Meshtastic's M9 build). 1.2.6-beta1 used 1 and a tester's screen was upside down. |
 | Keys | An ESP32-S2 key scanner on its own I2C bus (20/21) at 0x6C (v1.0) / 0x6D (v1.1): key code from register 0x01, polled every 15 ms; key light is register 0x02. GPIO20 is also the S3's USB D+, released at start or the keyboard never answers. |
 | Moving around | Arrow keys = the T-Deck's trackball. Enter or the pad's middle key = select (and send while typing). Del and Back = back / backspace. **Home** = the home screen; on the home screen it locks and turns the screen off; with the screen dark it wakes it (the only key that does). The keys with pictures: speech bubble = chats, the small bubble = contacts, map = the map, pin = an advert to the nodes nearby (not a flood), triangle (bottom left) = quick settings. Ctrl does nothing yet. |
 | Radio | LR1110: CS 39, IRQ 42, BUSY 41, RST 45, 3.3 V TCXO, DIO5/DIO6 antenna switch (both firmwares' table). |
