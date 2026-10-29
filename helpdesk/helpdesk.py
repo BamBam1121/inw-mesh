@@ -36,7 +36,9 @@ DEFAULTS = {
     "port": 8090,
     "www": r"C:\squatchmesh\www",
     "model": "claude-sonnet-5",
-    "max_tokens": 900,
+    # The model thinks before it answers and that counts against this cap; at 900 a harder
+    # question used it all up thinking and the visitor got a cut-off or empty answer.
+    "max_tokens": 4000,
     # Per visitor (by IP) and for the whole site. The API key's own spending limit
     # in the Anthropic console is the real ceiling; these keep one visitor from using it up.
     "ip_msgs_per_hour": 30,
@@ -351,6 +353,11 @@ def ask_claude(messages):
         raise Unavailable("network")
     add_usage(data.get("usage", {}))
     text = "\n\n".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text").strip()
+    stop = data.get("stop_reason")
+    if stop not in ("end_turn", "tool_use", "stop_sequence"):
+        # Cut short (max_tokens) or refused: worth knowing, since the visitor saw less than a full answer.
+        log_line({"event": "answer_cut", "stop_reason": stop, "chars": len(text),
+                  "blocks": [b.get("type") for b in data.get("content", [])]})
     handoff = None
     for b in data.get("content", []):
         if b.get("type") == "tool_use" and b.get("name") == "hand_off_to_developer":
@@ -505,8 +512,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"reply": "", "handoff": None})
         try:
             text, handoff = ask_claude(messages)
+            if not text and not handoff:   # nothing came back: ask once more before giving up
+                text, handoff = ask_claude(messages)
         except Unavailable:
             return self.reply(503, {"error": "offline"})
+        if not text and not handoff:
+            log_line({"event": "empty_answer", "who": ip_key(ip), "question": messages[-1]["content"][:300]})
+            text = ("Sorry, I couldn't put an answer together for that one. Try asking it a different way, "
+                    "or use the message form below to reach the developer directly.")
         sent = None
         if handoff:
             # Tell the developer now; the visitor may never press the form's button.
