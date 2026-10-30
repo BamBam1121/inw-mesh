@@ -35,11 +35,13 @@ inline bool present(TwoWire& w, uint8_t addr) {
     return w.endTransmission() == 0;
 }
 
-// Everything except the radio; setup() brings EXP_LORA_EN up separately, just
-// before the radio is initialised.
+// Everything except the radio and NFC; setup() brings EXP_LORA_EN up separately,
+// just before the radio is initialised. NFC is powered only while an NFC screen
+// is open (nfcPower): left on, the idle ST25R3916 drew ~16 mA around the clock,
+// about an eighth of the pager's draw with the screen off.
 inline void powerAllRails(IoExpander& exp) {
     static const uint8_t RAILS[] = {
-        EXP_DRV_EN, EXP_AMP_EN, EXP_GPS_EN, EXP_NFC_EN, EXP_KB_EN,
+        EXP_DRV_EN, EXP_AMP_EN, EXP_GPS_EN, EXP_KB_EN,
         EXP_GPIO_EN, EXP_SD_EN,
     };
     for (uint8_t pin : RAILS) exp.enableRail(pin, 0);

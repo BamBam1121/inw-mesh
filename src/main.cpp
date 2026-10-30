@@ -609,6 +609,21 @@ void gpsPower(bool on) {
   else expander.digitalWrite(EXP_GPS_EN, LOW);
 }
 
+// The NFC chip, powered only while an NFC screen is open (nfcapp.cpp). Unpowered,
+// its select must not be driven high into it (that feeds the chip through its
+// pin), and it can't answer the bus, so the pin is let go; powered, it idles
+// high before the rail comes up, as setup() has every select on the bus.
+void nfcPower(bool on) {
+  if (on) {
+    pinMode(PIN_NFC_CS, OUTPUT); digitalWrite(PIN_NFC_CS, HIGH);
+    expander.enableRail(EXP_NFC_EN, 10);
+  } else {
+    expander.pinMode(EXP_NFC_EN, OUTPUT);   // the expander keeps the last run's state over a restart
+    expander.digitalWrite(EXP_NFC_EN, LOW);
+    pinMode(PIN_NFC_CS, INPUT);
+  }
+}
+
 // GPS draws ~25 mA, more than the rest of the pager put together once the screen
 // is off, and it used to stay on around the clock. Keep it on while the screen is
 // on; with the screen off, give it a two-minute window every half hour so the
@@ -1316,6 +1331,27 @@ static void usbCommands() {
       battery.report();
       continue;
     }
+    // Power tests with "batt hiz": what each part costs. Nothing here is saved.
+    //   pw cpu 80|160|240   pw wifi 0|1   pw ble 0|1   pw nfc|drv|sock|kb|sd 0|1 (rails)
+    if (!strncmp(line, "pw ", 3)) {
+      char what[8] = ""; int v = 0;
+      if (sscanf(line + 3, "%7s %d", what, &v) == 2) {
+        if (!strcmp(what, "cpu")) setCpuFrequencyMhz(v);
+        else if (!strcmp(what, "wifi")) wifi::setEnabled(v != 0);
+        else if (!strcmp(what, "ble")) bleSetEnabled(v != 0);
+        else if (!strcmp(what, "nfc")) nfcPower(v != 0);
+        else if (!strcmp(what, "drv")) expander.digitalWrite(EXP_DRV_EN, v ? HIGH : LOW);
+        else if (!strcmp(what, "sock")) expander.digitalWrite(EXP_GPIO_EN, v ? HIGH : LOW);
+        else if (!strcmp(what, "kb")) expander.digitalWrite(EXP_KB_EN, v ? HIGH : LOW);
+        else if (!strcmp(what, "sd")) expander.digitalWrite(EXP_SD_EN, v ? HIGH : LOW);
+        else if (!strcmp(what, "gps")) gpsPower(v != 0);
+        else if (!strcmp(what, "amp")) expander.digitalWrite(EXP_AMP_EN, v ? HIGH : LOW);
+        else if (!strcmp(what, "lora")) expander.digitalWrite(EXP_LORA_EN, v ? HIGH : LOW);
+      }
+      Serial.printf("[pw] cpu %lu MHz wifi %d ble %d (connected %d)\n", (unsigned long)getCpuFrequencyMhz(),
+                    wifi::enabled(), bleEnabled(), bleConnected());
+      continue;
+    }
 #endif
     if (!strcmp(line, "poweroff")) {        // same path as the menu; refuses with USB in
       if (!app::powerOff("usb command")) Serial.println("[power] refused: USB is plugged in");
@@ -1743,6 +1779,7 @@ void setup() {
   const bool railsOk = expander.begin(Wire);
   if (railsOk) {
     bringup::powerAllRails(expander);
+    nfcPower(false);
     expander.enableRail(EXP_LORA_EN, 20);
     if (!ui_settings.gpsOn) gpsPower(false);
   }

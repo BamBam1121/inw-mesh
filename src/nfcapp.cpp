@@ -17,6 +17,8 @@
 #include "haptic.h"
 #include "board_pins.h"
 
+void nfcPower(bool on);   // main.cpp: the chip's rail, on only while a screen uses it
+
 // ---- hardware -----------------------------------------------------------------------------
 namespace {
 
@@ -119,6 +121,8 @@ void stop() {
     s_rf->rfalFieldOff();
   }
   s_mode = Mode::Off;
+  s_ready = false;     // unpowered from here; the next start() initialises it again
+  nfcPower(false);
 }
 
 // Closed screens are deleted a loop later; by then the next NFC screen may
@@ -131,8 +135,8 @@ void stopSession(uint32_t session) { if (session == s_session) stop(); }
 bool start(Mode m) {
   s_session++;
   stop();
-  s_ready = false;
-  if (!ensureInit()) return false;
+  nfcPower(true);
+  if (!ensureInit()) { nfcPower(false); return false; }
   s_mode = m;
   s_handled = s_primed = false;
   if (m == Mode::Emulate) { configListen(); demoCeInit(s_ceNfcid2); }
