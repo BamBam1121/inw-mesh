@@ -1,4 +1,5 @@
 #include "extport.h"
+#include "sleep_deadline.h"
 #include "app.h"
 #include "board_pins.h"
 #include "bringup.h"
@@ -379,6 +380,18 @@ void begin() {
   applyPin();
   probe();
   s_readAt = millis();
+}
+
+uint32_t sleepBudgetMs(uint32_t now) {
+  SleepDeadline next(now);
+  if (!s_sensors.empty()) next.after(s_readAt, READ_MS);
+  else next.after(s_scanAt, RESCAN_MS);
+  if (ui_settings.io9Mode == 2 && s_pinHigh != (app::unread() > 0)) next.limit(250);
+  if (ui_settings.io9Mode == 1 && s_blinkFrom) {
+    const uint32_t elapsed = now - s_blinkFrom;
+    next.at(s_blinkFrom + (elapsed / 200 + 1) * 200);
+  }
+  return next.ms();
 }
 
 void tick() {

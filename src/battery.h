@@ -73,8 +73,21 @@ public:
     // Cached: the status bar asks every frame and I2C at 400 kHz is not free.
     // The bus is shared with the keyboard, expander and codec, so a read fails
     // now and then; keep the last good value instead of showing 0%.
-    void tick(uint32_t now) {
-        if (!_gauge || (now - _last < REFRESH_MS && _last)) return;
+    uint32_t sleepBudgetMs(uint32_t now, uint32_t intervalMs = REFRESH_MS) const {
+        if (!_gauge) return 30000;
+        const uint32_t elapsed = now - _last;
+        return !_last || elapsed >= intervalMs ? 0 : intervalMs - elapsed;
+    }
+    bool tick(uint32_t now, uint32_t intervalMs = REFRESH_MS) {
+        if (!_gauge || (now - _last < intervalMs && _last)) return false;
+        // The original model advances every 5 s. Run its math (not I2C reads)
+        // once per elapsed model tick, so a 30 s reading advances six ticks.
+        // Bound catch-up after unusually long stalls to keep work predictable.
+        const uint64_t modelMs = _last ? (uint64_t)(now - _last) + _modelRemainder : REFRESH_MS;
+        uint32_t modelTicks = modelMs / REFRESH_MS;
+        _modelRemainder = modelMs % REFRESH_MS;
+        if (modelTicks < 1) modelTicks = 1;
+        if (modelTicks > 100) modelTicks = 100;
         _last = now;
         if (now - _lastDump > 30000 || !_lastDump) { _lastDump = now | 1; dump(); }
         if (now > 20000) resyncFull();
@@ -97,45 +110,48 @@ public:
         // and at rest, drift gently toward what the voltage says if the two disagree
         // a lot, which mops up any error without the number ever jumping.
         const bool up = charging() || _chgDone;
-        if (_millivolts) {
-            const int drawMa = _currentMa < 0 ? -_currentMa : 0;   // cell resistance ~200 mOhm with wiring
-            const int restMv = _millivolts + (up ? 0 : drawMa * 200 / 1000);
-            _restMv = _restMv ? (_restMv * 3 + restMv) / 4 : restMv;
-            _byVolt = fromVoltage(_restMv);
-        }
-        uint16_t raw;
-        if (read16(REG_RAW_CC, raw)) {                 // mAh, up on discharge, down on charge
-            if (_ccValid) {
-                const int16_t d = (int16_t)(raw - _ccLast);
-                if (abs(d) <= 60) _mah -= d;              // more in 5 s is a reset or a bad read
+        for (uint32_t modelTick = 0; modelTick < modelTicks; ++modelTick) {
+            if (_millivolts) {
+                const int drawMa = _currentMa < 0 ? -_currentMa : 0;   // cell resistance ~200 mOhm with wiring
+                const int restMv = _millivolts + (up ? 0 : drawMa * 200 / 1000);
+                _restMv = _restMv ? (_restMv * 3 + restMv) / 4 : restMv;
+                _byVolt = fromVoltage(_restMv);
             }
-            _ccLast = raw;
-            _ccValid = true;
+            uint16_t raw;
+            if (modelTick == 0 && read16(REG_RAW_CC, raw)) {                 // mAh, up on discharge, down on charge
+                if (_ccValid) {
+                    const int16_t d = (int16_t)(raw - _ccLast);
+                    if (abs(d) <= 60) _mah -= d;              // reject a counter reset or bad read
+                }
+                _ccLast = raw;
+                _ccValid = true;
+            }
+            if (!_mahKnown && _millivolts) {               // first reading after boot
+                const float byVolt = CAP_MAH * _byVolt / 100.0f;
+                // A saved figure from before a power off or restart is better than the
+                // voltage, unless the two are far apart (charged or used while we weren't
+                // counting).
+                _mah = (_savedMah >= 0 && fabsf(_savedMah - byVolt) < CAP_MAH * 0.25f && !up) ? _savedMah : byVolt;
+                if (up && _savedMah >= 0) _mah = max(_savedMah, byVolt * 0.9f);
+                _mahKnown = true;
+            }
+            if (_chgDone) _mah = CAP_MAH;                   // the only reliable 100%
+            else if (_mahKnown && !up && abs(_currentMa) < 130) {
+                const float byVolt = CAP_MAH * _byVolt / 100.0f;
+                if (fabsf(byVolt - _mah) > CAP_MAH * 0.12f) _mah += (byVolt - _mah) * 0.02f;
+            }
+            _mah = constrain(_mah, 0.0f, (float)CAP_MAH);
+            uint8_t target = (uint8_t)(_mah * 100.0f / CAP_MAH + 0.5f);
+            if (up && !_chgDone && target > 99) target = 99; // not full until the charger says so
+            if (!up && _millivolts && _millivolts < 3480 && target > 5) target = 5;   // nearly flat whatever the count says
+            // Show it the way a phone does: charging it only counts up, otherwise it
+            // only counts down, one step at a time, so a noisy read never makes it bounce.
+            _target = target;
+            if (!_shown) { _percent = target; _shown = true; }
+            else if (up) { if (target > _percent) _percent++; }
+            else if (target < _percent) _percent--;
         }
-        if (!_mahKnown && _millivolts) {               // first reading after boot
-            const float byVolt = CAP_MAH * _byVolt / 100.0f;
-            // A saved figure from before a power off or restart is better than the
-            // voltage, unless the two are far apart (charged or used while we weren't
-            // counting).
-            _mah = (_savedMah >= 0 && fabsf(_savedMah - byVolt) < CAP_MAH * 0.25f && !up) ? _savedMah : byVolt;
-            if (up && _savedMah >= 0) _mah = max(_savedMah, byVolt * 0.9f);
-            _mahKnown = true;
-        }
-        if (_chgDone) _mah = CAP_MAH;                   // the only reliable 100%
-        else if (_mahKnown && !up && abs(_currentMa) < 130) {
-            const float byVolt = CAP_MAH * _byVolt / 100.0f;
-            if (fabsf(byVolt - _mah) > CAP_MAH * 0.12f) _mah += (byVolt - _mah) * 0.02f;
-        }
-        _mah = constrain(_mah, 0.0f, (float)CAP_MAH);
-        uint8_t target = (uint8_t)(_mah * 100.0f / CAP_MAH + 0.5f);
-        if (up && !_chgDone && target > 99) target = 99; // not full until the charger says so
-        if (!up && _millivolts && _millivolts < 3480 && target > 5) target = 5;   // nearly flat whatever the count says
-        // Show it the way a phone does: charging it only counts up, otherwise it
-        // only counts down, one step at a time, so a noisy read never makes it bounce.
-        _target = target;
-        if (!_shown) { _percent = target; _shown = true; }
-        else if (up) { if (target > _percent) _percent++; }
-        else if (target < _percent) _percent--;
+        return true;
     }
 
     // What main.cpp keeps across restarts (RTC memory) and power offs (flash).
@@ -374,5 +390,5 @@ private:
     bool     _mahKnown = false, _ccValid = false;
     uint16_t _ccLast = 0;
     int      _restMv = 0;
-    uint32_t _last = 0, _lastDump = 0;
+    uint32_t _last = 0, _lastDump = 0, _modelRemainder = 0;
 };

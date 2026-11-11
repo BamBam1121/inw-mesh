@@ -11,6 +11,8 @@
 #include "backlight.h"
 #include "netwifi.h"
 #include "power.h"
+#include "eco_power.h"
+#include "cpu_sleep.h"
 #include "battery.h"
 #include "notify.h"
 #include "ota.h"
@@ -19,6 +21,7 @@
 #include "regional.h"
 #include "regions.h"
 #include "motion.h"
+#include "nfcapp.h"
 #include <algorithm>
 #include <SPIFFS.h>
 #include <SD.h>
@@ -701,7 +704,11 @@ static void displayMenu() {
   m->toggle("wake screen on message", [] { return ui_settings.wakeOnMessage; },
             [] { ui_settings.wakeOnMessage = !ui_settings.wakeOnMessage; markUiDirty(); });
   // Lifting it into view lights the screen on the lock face (motion.h).
-  m->toggle("raise to wake", [] { return motion::raiseToWake(); }, [] {
+  m->toggle("raise to wake", [] { return !power::eco() && motion::raiseToWake(); }, [] {
+    if (power::eco()) {
+      nav.toast("Turn off ECO to enable raise to wake.", 3000);
+      return; // Keep the user's saved preference for when ECO ends.
+    }
     motion::setRaiseToWake(!motion::raiseToWake());
     if (motion::raiseToWake() && motion::paused()) nav.toast("starts when battery saver ends", 3000);
     else if (motion::raiseToWake() && !motion::running()) nav.toast("motion sensor not responding", 3000);
@@ -976,6 +983,7 @@ extern Battery battery;
 
 static void batteryMenu() {
   auto* m = new MenuView("Battery");
+  m->header("battery");
   m->info("charge", []() -> String {
     String s = String(app::batteryPct()) + "%  " + String(app::batteryMv()) + " mV";
     if (power::holding()) s += "  held";
@@ -998,6 +1006,13 @@ static void batteryMenu() {
     markUiDirty(); });
   m->info("status", []() -> String { return String(power::chargeStatus()); });
   m->action("charge to 100% now", [] { power::chargeFullNow(); nav.toast("charging to full this time"); });
+  m->header("ECO mode");
+  m->toggle("ECO mode", [] { return power::eco(); }, [] {
+    if (!power::setEco(!power::eco())) nav.toast("could not save ECO setting", 3000);
+  });
+  m->info("what it does", []() -> String {
+    return String("Reduces CPU speed and sleeps idle components");
+  });
   m->header("battery saver");
   m->toggle("battery saver", [] { return power::saver(); }, [] { power::setSaver(!power::saver()); });
   m->toggle("turn on automatically", [] { return ui_settings.autoSaver; },

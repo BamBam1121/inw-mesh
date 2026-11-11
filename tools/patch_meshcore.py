@@ -323,6 +323,19 @@ bool inwStoreFlush(uint32_t ms) {
   }
 }
 
+// Hold the queue mutex across CPU light sleep so the background writer cannot
+// start flash/cache work on the other core between the idle check and sleep.
+bool inwStoreBeginSleep() {
+  if (!inw_mx) return true;
+  if (xSemaphoreTake(inw_mx, 0) != pdTRUE) return false;
+  bool idle = !inw_busy && !inw_app_len;
+  for (auto& q : inw_q) if (q.buf) idle = false;
+  if (inw_blobs) for (int i = 0; i < INW_BLOBS; i++) if (inw_blobs[i].used) idle = false;
+  if (!idle) xSemaphoreGive(inw_mx);
+  return idle;
+}
+void inwStoreEndSleep() { if (inw_mx) xSemaphoreGive(inw_mx); }
+
 // Called from the loop: reports saves the task has finished.
 void inwStoreTick() {
   if (!inw_mx || !inw_done_n) return;
@@ -478,6 +491,19 @@ def patch_datastore(src):
     return src
 
 
+def patch_sleep_deadline(src):
+    # Keep hasPendingWork's existing meaning for every official caller. Publish
+    # its private contacts deadline to the app on the same main-loop thread.
+    old = ("bool MyMesh::hasPendingWork() const {\n"
+           "  return _mgr->getOutboundTotal() > 0 || dirty_contacts_expiry != 0;\n}")
+    new = ("bool MyMesh::hasPendingWork() const {\n"
+           "  inwNoteContactSaveDeadline(dirty_contacts_expiry);\n"
+           "  return _mgr->getOutboundTotal() > 0 || dirty_contacts_expiry != 0;\n}")
+    if src.count(old) != 1:
+        raise SystemExit("patch_meshcore.py: contacts sleep deadline hook did not apply")
+    return src.replace(old, new)
+
+
 def patch_mymesh(src):
     # Two kinds of contact change. Routine churn - a known node's advert, a new
     # path to someone, a sync_since bump - happens every few seconds on a busy
@@ -571,8 +597,9 @@ def patch_mymesh(src):
     if not src.startswith(old):
         raise SystemExit("patch_meshcore.py: MyMesh.cpp includes changed upstream, patch did not apply")
     src = old + ("void inwAppFrame(bool on);   // INW: src/node.cpp\n"
+                 "void inwNoteContactSaveDeadline(unsigned long at);   // INW: sleep scheduler\n"
                  "double inwLocLat(); double inwLocLon();   // INW: src/main.cpp, rounded position\n") + src[len(old):]
-    return src
+    return patch_sleep_deadline(src)
 
 
 def make_middleware(fname, fn):

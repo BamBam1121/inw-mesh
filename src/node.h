@@ -63,9 +63,15 @@ struct PendingDM {
 };
 
 class InwNode : public MyMesh {
+  int _idlePacketCount = 0;     // free pool at construction, before any RX/TX
+
 public:
   InwNode(mesh::Radio& radio, mesh::RNG& rng, mesh::RTCClock& rtc,
           SimpleMeshTables& tables, DataStore& store);
+
+  uint32_t sleepBudgetMs(uint32_t now) const; // DM retries and login timeout
+  uint8_t radioSleepBlock() const; // 0 idle, 1 invalid pool, 2 TX queue, 3 allocated packet
+  bool radioWorkPending() const; // includes delayed RX / held packets in the pool
 
   void (*onEvent)(NodeEvent e, const void* arg) = nullptr;
 
@@ -249,4 +255,5 @@ void nodeLoop();
 bool bleEnabled();
 void bleSetEnabled(bool on);
 bool bleConnected();
+bool blePrepareLightSleep(); // only when Bluetooth is OFF; resume before next enable
 uint32_t blePin();

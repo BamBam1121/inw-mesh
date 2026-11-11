@@ -1,0 +1,52 @@
+name: CPU power saving test build
+
+on:
+  push:
+    branches: [feature/cpu-power-saving]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio/libdeps
+          key: cpu-saving-pio-${{ hashFiles('platformio.ini') }}
+      - name: Check CPU policy on the host
+        run: |
+          python tools/test_eco_power.py
+          python tools/test_cpu_power.py
+          python tools/test_cpu_sleep.py
+          python tools/test_motion_sleep.py
+          python tools/test_sleep_integration.py
+          python tools/test_peripheral_power.py
+      - name: Build full Pager firmware (with NFC)
+        run: |
+          pip install platformio cryptography
+          pio run -e t-lora-pager
+      - name: Record the source revision
+        run: |
+          git rev-parse HEAD > .pio/build/t-lora-pager/source-commit.txt
+          cp .pio/build/t-lora-pager/firmware.bin .pio/build/t-lora-pager/SquatchMesh-1.2.15-cpu-test17-Pager.bin
+          python tools/merge_pager_firmware.py .pio/build/t-lora-pager .pio/build/t-lora-pager/SquatchMesh-1.2.15-cpu-test17-Pager-merged.bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pager-cpu-test17-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            .pio/build/t-lora-pager/SquatchMesh-1.2.15-cpu-test17-Pager.bin
+            .pio/build/t-lora-pager/SquatchMesh-1.2.15-cpu-test17-Pager-merged.bin
+            .pio/build/t-lora-pager/bootloader.bin
+            .pio/build/t-lora-pager/partitions.bin
+            .pio/build/t-lora-pager/source-commit.txt
+            docs/cpu-power-saving.md

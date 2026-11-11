@@ -11,6 +11,11 @@
 #include <Preferences.h>
 #include <soc/rtc_cntl_reg.h>
 #include "power.h"
+#include "eco_power.h"
+#include "cpu_sleep.h"
+#include "nfcapp.h"
+#include "sleep_deadline.h"
+#include "battery_schedule.h"
 #include "notify.h"
 #include "statusbar.h"
 #include "ota.h"
@@ -115,6 +120,7 @@ uint32_t g_shotAt = 0;
 extern char g_screenTitle[32];   // ui.cpp: the last header drawn
 static uint32_t s_prefsDirtyAt = 0, s_uiDirtyAt = 0;
 static uint32_t s_kbFlashUntil = 0;
+static uint32_t s_battFlashAt = 0;
 static bool s_radioOk = false;
 #if INW_DEV
 static regions::Scan s_usbScan;    // USB "regions scan"
@@ -227,6 +233,8 @@ void app::applyTheme() {
 // these wait for it, and report what it finished.
 bool inwStoreFlush(uint32_t ms);
 void inwStoreTick();
+bool inwStoreBeginSleep();
+void inwStoreEndSleep();
 void inwSetUserBusy(bool busy);
 
 static uint32_t s_hizUntil = 0;   // "batt hiz" test running until then
@@ -534,6 +542,7 @@ bool app::animationsOk() { return s_uiReady && !dimmer.asleep() && !s_panelOff; 
 // The side button waking the screen: the theme's turn-on animation, revealing
 // whatever is on top (usually the lock screen), then back to normal drawing.
 static void screenWakeAnimated() {
+  dimmer.wake();                    // logical wake restores the CPU before rendering
   panelWake();
   nav.cancelTransition();                        // the wake animation is the transition
   nav.tick();                                    // let the top view catch up (the clock, say)
@@ -614,14 +623,12 @@ void gpsPower(bool on) {
 // on; with the screen off, give it a two-minute window every half hour so the
 // clock and the advert position stay fresh.
 static void gpsSchedule() {
-  // Range test, SOS and the trail need a live position whatever the settings say.
-  // When the last of them stops, hand the rail back to the normal rules.
-  static bool fieldHad = false;
-  if (field::wantsGps()) { fieldHad = true; gpsPower(true); return; }
-  if (fieldHad) { fieldHad = false; if (!ui_settings.gpsOn || power::saver()) gpsPower(false); }
-  if (!ui_settings.gpsOn || power::saver()) return;   // those paths switch it themselves
+  // Reconcile the rail every loop, including after settings are restored.
+  // Field tools preserve their original override of the ordinary GPS setting.
   const bool window = millis() % 1800000UL < 120000UL;
-  gpsPower(!dimmer.asleep() || window);
+  const bool want = field::wantsGps() ||
+    (ui_settings.gpsOn && !power::saver() && (!dimmer.asleep() || window));
+  gpsPower(want);
 }
 
 // ---- alerts ------------------------------------------------------------------------------------
@@ -642,6 +649,7 @@ static void alert(const char* title, const char* text, AlertKind kind, bool sile
   const Jingle* sound = kind == AlertKind::Dm ? th.dm : kind == AlertKind::Mention ? th.mention : th.msg;
   const VibePattern& vibe = kind == AlertKind::Dm ? th.vibeDm : kind == AlertKind::Mention ? th.vibeMention : th.vibeMsg;
   // Face down on a table (with that setting on): no light, no sound, no buzz.
+  motion::refreshForAlert(dimmer.asleep());
   const bool faceDown = motion::faceDown();
   if (ui_settings.wakeOnMessage && !silent && !faceDown) dimmer.wake();
   nav.banner(title, text);
@@ -750,6 +758,7 @@ static void takeScreenshot() {
 //   key C       press a key (\n for enter)
 //   home, lock, wheel +N / -N, press
 //   ext         what is plugged into the top header, and what IO9 is doing
+//   cpu         CPU saver state and actual clock (does not wake the screen)
 //   dfu         restart into the ROM's USB download mode, ready for esptool or
 //               the web installer (flash with --before no_reset)
 
@@ -858,6 +867,31 @@ static void usbCommands() {
       Serial.printf("[status] fw=%s radio=%s radio_ok=%d contacts=%d\n",
                     FW_VERSION, radio_chip, s_radioOk ? 1 : 0,
                     g_node ? g_node->getNumContacts() : -1);
+      continue;
+    }
+    if (!strcmp(line, "cpu reset")) {
+      power::resetSleepDiagnostics(dimmer.asleep());
+      Serial.printf("[diag] counters reset; unplug USB, test, reconnect without reboot, then cpu\r\n");
+      continue;
+    }
+    if (!strcmp(line, "cpu")) {
+      Serial.printf("[cpu] saving=%d clock=%lu MHz screen=%s\r\n", power::cpuSaving() ? 1 : 0,
+                    (unsigned long)power::cpuClockMhz(), dimmer.asleep() ? "off" : "on");
+      Serial.printf("[sleep] enabled=%d state=%s cycles=%lu elapsed_ms=%llu wake=%lu\r\n",
+                    power::lightSleep() ? 1 : 0, power::lightSleepStatus(),
+                    (unsigned long)power::lightSleepCount(),
+                    (unsigned long long)(power::lightSleepMicros() / 1000),
+                    (unsigned long)power::lightSleepWakeCause());
+      Serial.printf("[sleep] last_ms=%lu max_ms=%lu\r\n",
+                    (unsigned long)power::lightSleepLastMs(), (unsigned long)power::lightSleepMaxMs());
+      motion::debugPrint();
+      power::printSleepDiagnostics();
+      app::nfcPowerDebug();
+      uint8_t railOut[2] = {}, railCfg[2] = {};
+      const bool railsRead = expander.regs(railOut, railCfg);
+      Serial.printf("[peripherals] gps_setting=%d gps_rail_requested=%d nfc_rail_requested=%d haptic_standby=%d codec_sleep=%d expander_ok=%d out=%02X%02X cfg=%02X%02X\r\n",
+        ui_settings.gpsOn, s_gpsRail, app::nfcRailRequested(), haptic.standby(), codec.sleeping(),
+        railsRead, railOut[1], railOut[0], railCfg[1], railCfg[0]);
       continue;
     }
     // The browser installer sends this before it resets the pager, so nothing
@@ -1730,6 +1764,7 @@ void setup() {
   logs.add(rr == ESP_RST_POWERON || rr == ESP_RST_SW ? LOG_INFO : LOG_WARN, "boot %s, last reset: %s",
            FW_VERSION, rr < 11 ? RESET[rr] : "?");
   ui_settings.load();
+  const bool ecoOk = power::initEco();
   themes::load();
   if (!themes::valid(ui_settings.themeId)) ui_settings.themeId = 0;   // one of the owner's that is no longer here
 
@@ -1769,6 +1804,7 @@ void setup() {
   bootAnimStart();
   backlight.begin(PIN_TFT_BL);
   dimmer.begin(&backlight, ui_settings.brightness, 3, ui_settings.dimSecs * 1000UL, ui_settings.sleepSecs * 1000UL);
+  dimmer.onScreenState(power::updateCpu);
 
   bootStep("power rails", railsOk);
   haptic.begin(Wire);
@@ -1819,6 +1855,7 @@ void setup() {
       app::applyTheme();
       app::applyDisplay();
       app::applySound();
+      gpsPower(ui_settings.gpsOn && !power::saver());
       dimmer.setFull(ui_settings.brightness);
       keyboard.setBacklight(ui_settings.kbBacklight);
       logs.add(LOG_WARN, "settings were empty, restored from %s", from);
@@ -1882,6 +1919,7 @@ void setup() {
 
   nav.begin(&display, &theme);
   nav.push(makeHomeView());
+  if (!ecoOk) nav.toast("could not restore ECO setting", 4000);
   ota::announce();                                // "Updated, now on X" after an update restarted it
   if (history.rescued()) {
     char msg[48];
@@ -1954,24 +1992,28 @@ static void gpsTick() {
   }
 }
 
+static uint32_t s_bootAdvert = 8000, s_lastAdvert = 0;
 static void autoAdvertTick() {
-  static uint32_t bootAdvert = 8000, last = 0;
   if (!g_node) return;
-  if (bootAdvert && millis() > bootAdvert) { bootAdvert = 0; g_node->advertZeroHop(); last = millis(); }
-  if (ui_settings.autoAdvertHours && millis() - last > ui_settings.autoAdvertHours * 3600000UL) {
-    last = millis();
+  if (s_bootAdvert && millis() > s_bootAdvert) { s_bootAdvert = 0; g_node->advertZeroHop(); s_lastAdvert = millis(); }
+  if (ui_settings.autoAdvertHours && millis() - s_lastAdvert > ui_settings.autoAdvertHours * 3600000UL) {
+    s_lastAdvert = millis();
     g_node->advertFlood();
     logs.add(LOG_INFO, "auto flood advert");
   }
 }
 
 void loop() {
+  power::sleepDiagnosticPhase(power::SleepReason::Input, dimmer.asleep());
   // Anything that holds the loop long enough to feel like a freeze gets logged
   // with where the time went.
   const uint32_t tLoop = millis();
   uint32_t lapAt = tLoop;
   uint16_t laps[8] = {};
-  auto lap = [&](uint8_t i) { const uint32_t now = millis(); laps[i] = now - lapAt; lapAt = now; };
+  auto lap = [&](uint8_t i) {
+    const uint32_t now = millis(); laps[i] = now - lapAt; lapAt = now;
+    power::sleepDiagnosticPhase(static_cast<power::SleepReason>(i + 1), dimmer.asleep());
+  };
   const int8_t detents = rotary.takeDetents();
   const bool press = rotary.takePress();
   bool backspace = false, anyKey = false;
@@ -2019,7 +2061,10 @@ void loop() {
   // Any input means someone is there (the man-down alarm's clock), even keys
   // pressed with the screen off.
   if (detents || press || anyKey || btnDown) motion::noteActivity();
-  const bool raised = motion::takeRaise();       // taken every pass, so it can't go stale
+  // Consume old raises even on the first dark loop, before motion::tick()
+  // observes the screen transition. Saving must never wake from a stale gesture.
+  const bool raised = motion::takeRaise() &&
+    !(dimmer.asleep() && power::lightSleep() && power::cpuSaving());
 
   if (dimmer.asleep()) {
     // Screen off: only the side button wakes it, or lifting the pager into view.
@@ -2107,18 +2152,19 @@ void loop() {
     }
   }
   lap(2);
-  battery.tick(millis());
-  {   // keep the battery count through restarts (RTC, every 5 s) and power loss (flash, every 30 min)
-    static uint32_t rtcAt = 0, flashAt = 0;
-    if (millis() - rtcAt > 5000) { rtcAt = millis(); battSave(false); }
-    if (millis() - flashAt > 30UL * 60UL * 1000UL) { flashAt = millis(); battSave(true); }
+  const uint32_t batteryInterval = batteryIntervalMs(
+    power::lightSleep() && power::cpuSaving(), dimmer.asleep());
+  const bool batteryUpdated = battery.tick(millis(), batteryInterval);
+  {   // RTC checkpoint shares the battery reading; flash still every 30 min.
+    if (batteryUpdated) battSave(false);
+    if (millis() - s_battFlashAt > 30UL * 60UL * 1000UL) { s_battFlashAt = millis(); battSave(true); }
   }
   if (s_hizUntil && (int32_t)(millis() - s_hizUntil) > 0) { s_hizUntil = 0; battery.setHiZ(false); Serial.println("[batt] charger input back on"); }
-  power::tick();
+  power::tick(batteryUpdated);
   ota::tick();
   report::tick();
   ext::tick();
-  motion::tick();
+  motion::tick(dimmer.asleep());
   nodeLoop();
   lap(3);
   nav.tick();
@@ -2221,5 +2267,60 @@ void loop() {
   // the screen dark. The radio holds a received packet until it's read, so 30 ms
   // loses nothing and the CPU idles in between. A connected phone keeps the fast
   // pace so syncing stays quick.
-  delay(dimmer.asleep() && !jingle.playing() && !bleConnected() ? 30 : 2);
+  // Screen state is the only CPU policy input. Notifications, sound and radio
+  // work all stay at 80 MHz while the screen is off, when saving is enabled.
+  power::updateCpu(dimmer.asleep());
+  // Keep the original screen-wake policy above: no keyboard/wheel wake here.
+  // Motion only blocks sleep during sampling bursts or its explicit fallback.
+  const bool peripheralSaving = power::lightSleep() && power::cpuSaving() && dimmer.asleep();
+  haptic.idlePower(peripheralSaving);
+  app::nfcIdlePower();
+  const uint32_t now = millis();
+  SleepDeadline deadline(now);
+  deadline.limit(battery.sleepBudgetMs(now, batteryIntervalMs(
+    power::lightSleep() && power::cpuSaving(), dimmer.asleep())));
+  deadline.limit(ext::sleepBudgetMs(now));
+  deadline.after(s_battFlashAt, 30UL * 60UL * 1000UL + 1);
+  if (g_node) deadline.limit(g_node->sleepBudgetMs(now));
+  if (s_bootAdvert) deadline.at(s_bootAdvert + 1);
+  if (ui_settings.autoAdvertHours)
+    deadline.after(s_lastAdvert, ui_settings.autoAdvertHours * 3600000UL + 1);
+  if (ui_settings.gpsOn && !power::saver() && !s_gpsRail)
+    deadline.limit(1800000UL - now % 1800000UL); // next GPS window
+  if (s_hizUntil) deadline.at(s_hizUntil + 1);
+  if (g_shotAt) deadline.at(g_shotAt);
+  using SleepReason = power::SleepReason;
+  const SleepReason foregroundReason = !s_panelOff ? SleepReason::Panel :
+    backlight.fading() ? SleepReason::Fade : nav.overlayActive() ? SleepReason::Overlay :
+    s_kbFlashUntil ? SleepReason::KeyboardEffect : s_prefsDirtyAt ? SleepReason::PrefsSave :
+    s_uiDirtyAt ? SleepReason::UiSave : field::wantsGps() ? SleepReason::Field : SleepReason::Background;
+  const bool foreground = !s_panelOff || backlight.fading() || nav.overlayActive() ||
+    s_kbFlashUntil || s_prefsDirtyAt || s_uiDirtyAt || field::wantsGps();
+  power::sleepDiagnosticContext(foregroundReason);
+  const uint8_t meshBlock = g_node ? g_node->radioSleepBlock() : 0;
+  const bool radioReceiving = radio_driver.isInRecvMode();
+  power::sleepDiagnosticMeshContext(meshBlock == 1 ? SleepReason::MeshPoolInvalid :
+    meshBlock == 2 ? SleepReason::MeshTxQueue : meshBlock == 3 ? SleepReason::MeshAllocated :
+    SleepReason::RadioNotRx);
+  power::SleepInputs idle{dimmer.asleep(), jingle.playing(), battery.pluggedIn(),
+    bleEnabled(), wifi::enabled(), s_gpsRail,
+    g_node && (meshBlock != 0 || !radioReceiving), s_radioOk,
+    motion::needsFastPolling(), foreground, app::nfcActive(), motion::irqWatch(), now + deadline.ms()};
+  const bool candidate = power::lightSleep() && power::cpuSaving() && idle.screenOff &&
+    !idle.audio && !idle.bluetooth && !idle.wifi && !idle.gps && idle.radioReady &&
+    !idle.meshBusy && !idle.motion && !idle.background && !idle.nfc && deadline.ms() >= 2 && now >= 120000;
+  bool storeHeld = false;
+  if (candidate) {
+    idle.usb = battery.pollVbus() || (bool)Serial;
+    if (!idle.usb) {
+      idle.bluetooth = !blePrepareLightSleep();
+      if (!idle.bluetooth) {
+        storeHeld = inwStoreBeginSleep(); idle.background = !storeHeld;
+        if (!storeHeld) power::sleepDiagnosticContext(SleepReason::StoreQueue);
+      }
+    }
+  }
+  const bool slept = power::idleLightSleep(idle);
+  if (storeHeld) inwStoreEndSleep();
+  if (!slept) delay(dimmer.asleep() && !jingle.playing() && !bleConnected() ? 30 : 2);
 }

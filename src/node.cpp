@@ -1,6 +1,9 @@
 #include "node.h"
 #include "history.h"
+#include "sleep_deadline.h"
 #include <SPIFFS.h>
+#include <esp_bt.h>
+#include <esp_bt_main.h>
 #include <esp_heap_caps.h>
 #include <new>
 #include <array>
@@ -22,6 +25,10 @@
 #define CTL_DISCOVER_RESP 0x90
 
 InwNode* g_node = nullptr;
+// MyMesh publishes its private deadline when queried on the main-loop thread.
+// Refresh it immediately before building the sleep budget; never use stale data.
+static uint32_t s_contactSaveAt = 0;
+void inwNoteContactSaveDeadline(unsigned long at) { s_contactSaveAt = (uint32_t)at; }
 DataStore g_store(SPIFFS, rtc_clock);
 MultiSerialInterface g_ifaces;
 static SerialBLEInterface g_ble;
@@ -37,6 +44,7 @@ extern bool inwBleWanted();
 InwNode::InwNode(mesh::Radio& radio, mesh::RNG& rng, mesh::RTCClock& rtc,
                  SimpleMeshTables& tables, DataStore& store)
     : MyMesh(radio, rng, rtc, tables, store, nullptr), _ds(store) {
+  _idlePacketCount = _mgr->getFreeCount();
   memset(_echo, 0, sizeof(_echo));
   memset(discovered, 0, sizeof(discovered));
   memset(pktLog, 0, sizeof(pktLog));
@@ -145,6 +153,28 @@ bool InwNode::sendDM(const uint8_t* pub, const char* text, uint32_t histId) {
 
 bool InwNode::resendDM(const uint8_t* pub, const char* text, uint32_t histId) {
   return sendDM(pub, text, histId);
+}
+
+uint8_t InwNode::radioSleepBlock() const {
+  if (_idlePacketCount <= 0) return 1;
+  if (_mgr->getOutboundTotal() > 0) return 2;
+  if (_mgr->getFreeCount() < _idlePacketCount) return 3;
+  return 0;
+}
+
+bool InwNode::radioWorkPending() const {
+  // Only real packets block sleep. A future contacts save is a wake deadline.
+  // Allocated slots still cover delayed RX and in-flight TX, not just queues.
+  return radioSleepBlock() != 0;
+}
+
+uint32_t InwNode::sleepBudgetMs(uint32_t now) const {
+  SleepDeadline next(now);
+  (void)MyMesh::hasPendingWork(); // synchronously refresh s_contactSaveAt
+  if (s_contactSaveAt) next.at(s_contactSaveAt);
+  for (const auto& p : _pending) if (p.used) next.at(p.deadline);
+  if (_loginState == 1) next.at(_loginDeadline);
+  return next.ms();
 }
 
 void InwNode::tick() {
@@ -876,6 +906,31 @@ void nodeLoop() {
 }
 
 bool bleEnabled()   { return g_ifaces.isBluetoothEnabled(); }
-void bleSetEnabled(bool on) { if (on) g_ifaces.enableBluetooth(); else g_ifaces.disableBluetooth(); }
+// The normal Bluetooth toggle only stops services/advertising. Manual light
+// sleep also needs the idle host/controller stopped. Keep BLE allocations and
+// bonds, and resume the same stack when the user enables Bluetooth again.
+bool blePrepareLightSleep() {
+  if (bleEnabled() || bleConnected()) return false;
+  if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_ENABLED &&
+      esp_bluedroid_disable() != ESP_OK) return false;
+  if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_ENABLED &&
+      esp_bt_controller_disable() != ESP_OK) {
+    esp_bluedroid_enable();
+    return false;
+  }
+  return esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_ENABLED;
+}
+void bleSetEnabled(bool on) {
+  if (!on) { g_ifaces.disableBluetooth(); return; }
+  if (esp_bt_controller_get_status() == ESP_BT_CONTROLLER_STATUS_INITED &&
+      esp_bt_controller_enable(ESP_BT_MODE_BLE) != ESP_OK) {
+    Serial.println("[power] Bluetooth controller resume failed"); return;
+  }
+  if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_INITIALIZED &&
+      esp_bluedroid_enable() != ESP_OK) {
+    Serial.println("[power] Bluetooth host resume failed"); return;
+  }
+  g_ifaces.enableBluetooth();
+}
 bool bleConnected() { return g_ifaces.isConnected(); }
 uint32_t blePin()   { return g_node ? g_node->getBLEPin() : 0; }

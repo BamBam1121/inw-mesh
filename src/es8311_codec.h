@@ -34,13 +34,15 @@ public:
     ok &= wr(0x44, 0x58);                           // internal reference
     ok &= wr(0x31, 0x60);                           // DAC muted, and nothing else left over from before a reset
     _ok = ok;
-    return ok;
+    stop(); // Also enter the established low-power state if no boot sound plays.
+    return _ok && _sleepOk;
   }
   bool ok() const { return _ok; }
+  bool sleeping() const { return _sleepOk && !_i2sInstalled; }
 
   // Install I2S and power the DAC path. Pair with stop().
   bool start() {
-    if (!_ok) return false;
+    if (!_ok || _i2sInstalled) return false;
     i2s_config_t cfg = {};
     cfg.mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX);
     cfg.sample_rate = SAMPLE_RATE;
@@ -50,31 +52,42 @@ public:
     cfg.dma_buf_count = QUEUE_BUFS;
     cfg.dma_buf_len = QUEUE_LEN;
     cfg.tx_desc_auto_clear = true;
-    if (i2s_driver_install(PORT, &cfg, 0, nullptr) != ESP_OK) return false;
+    if (i2s_driver_install(PORT, &cfg, 0, nullptr) != ESP_OK) { stop(); return false; }
+    _i2sInstalled = true;
+    _sleepOk = false;
     i2s_pin_config_t pins = {};
     pins.mck_io_num = PIN_I2S_MCLK;
     pins.bck_io_num = PIN_I2S_BCK;
     pins.ws_io_num = PIN_I2S_WS;
     pins.data_out_num = PIN_I2S_DOUT;
     pins.data_in_num = I2S_PIN_NO_CHANGE;
-    if (i2s_set_pin(PORT, &pins) != ESP_OK) { i2s_driver_uninstall(PORT); return false; }
-    wr(0x00, 0x80); wr(0x01, 0x3F);
-    wr(0x09, 0x0C); wr(0x0A, 0x0C);                 // I2S, 16-bit
-    wr(0x02, 0x00); wr(0x05, 0x00); wr(0x03, 0x10);
-    wr(0x04, 0x20);                                 // DAC OSR for 16 kHz
-    wr(0x07, 0x00); wr(0x08, 0xFF); wr(0x06, 0x03);
-    wr(0x17, 0xBF); wr(0x0E, 0x02); wr(0x12, 0x00); wr(0x14, 0x1A);
-    wr(0x0D, 0x01); wr(0x15, 0x40); wr(0x37, 0x08); wr(0x45, 0x00);
+    if (i2s_set_pin(PORT, &pins) != ESP_OK) { stop(); return false; }
+    bool ok = true;
+    ok &= wr(0x00, 0x80); ok &= wr(0x01, 0x3F);
+    ok &= wr(0x09, 0x0C); ok &= wr(0x0A, 0x0C);                 // I2S, 16-bit
+    ok &= wr(0x02, 0x00); ok &= wr(0x05, 0x00); ok &= wr(0x03, 0x10);
+    ok &= wr(0x04, 0x20);                                 // DAC OSR for 16 kHz
+    ok &= wr(0x07, 0x00); ok &= wr(0x08, 0xFF); ok &= wr(0x06, 0x03);
+    ok &= wr(0x17, 0xBF); ok &= wr(0x0E, 0x02); ok &= wr(0x12, 0x00); ok &= wr(0x14, 0x1A);
+    ok &= wr(0x0D, 0x01); ok &= wr(0x15, 0x40); ok &= wr(0x37, 0x08); ok &= wr(0x45, 0x00);
+    if (!ok) { stop(); return false; }
     return true;
   }
 
   void stop() {
-    setMute(true);
-    wr(0x32, 0x00); wr(0x17, 0x00); wr(0x0E, 0xFF); wr(0x12, 0x02); wr(0x14, 0x00);
-    wr(0x0D, 0xFA); wr(0x15, 0x00); wr(0x02, 0x10); wr(0x00, 0x00); wr(0x00, 0x1F);
-    wr(0x01, 0x30); wr(0x01, 0x00); wr(0x45, 0x00); wr(0x0D, 0xFC); wr(0x02, 0x00);
-    i2s_zero_dma_buffer(PORT);
-    i2s_driver_uninstall(PORT);
+    if (_w && (!_sleepOk || _i2sInstalled)) {
+      bool ok = true;
+      ok &= wr(0x31, 0x60);
+      ok &= wr(0x32, 0x00); ok &= wr(0x17, 0x00); ok &= wr(0x0E, 0xFF); ok &= wr(0x12, 0x02); ok &= wr(0x14, 0x00);
+      ok &= wr(0x0D, 0xFA); ok &= wr(0x15, 0x00); ok &= wr(0x02, 0x10); ok &= wr(0x00, 0x00); ok &= wr(0x00, 0x1F);
+      ok &= wr(0x01, 0x30); ok &= wr(0x01, 0x00); ok &= wr(0x45, 0x00); ok &= wr(0x0D, 0xFC); ok &= wr(0x02, 0x00);
+      _sleepOk = ok;
+    }
+    if (_i2sInstalled) {
+      i2s_zero_dma_buffer(PORT);
+      i2s_driver_uninstall(PORT);
+      _i2sInstalled = false;
+    }
   }
 
   // Written outright, never read-modify-write: the other bits of 0x31 should be 0,
@@ -110,5 +123,5 @@ private:
     return _w->read();
   }
   TwoWire* _w = nullptr;
-  bool _ok = false;
+  bool _ok = false, _i2sInstalled = false, _sleepOk = false;
 };

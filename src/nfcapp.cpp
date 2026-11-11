@@ -11,7 +11,9 @@
 #include <rfal_nfc.h>
 #include <ndef_class.h>
 #include <demo_ce.h>
+#include <Preferences.h>
 #include "app.h"
+#include "nfcapp.h"
 #include "node.h"
 #include "netwifi.h"
 #include "haptic.h"
@@ -26,6 +28,9 @@ RfalRfST25R3916Class* s_rf = nullptr;
 RfalNfcClass* s_nfc = nullptr;
 NdefClass* s_ndef = nullptr;
 bool s_ready = false, s_failed = false;
+int8_t s_saving = -1;
+bool s_standby = false, s_idleFailed = false;
+uint8_t s_idleOp = 0xFF, s_idleIo = 0xFF;
 Mode s_mode = Mode::Off;
 uint32_t s_session = 0;         // which screen's start() is live
 rfalNfcDiscoverParam s_disc;
@@ -59,6 +64,7 @@ uint16_t s_ceReads = 0;
 // one bad moment on the shared bus doesn't leave NFC dead until a restart.
 bool ensureInit() {
   if (s_ready) return true;
+  s_standby = false;
   if (!s_rf) {
     s_rf = new RfalRfST25R3916Class(&inw_spi, PIN_NFC_CS, PIN_NFC_INT);
     s_nfc = new RfalNfcClass(s_rf);
@@ -131,6 +137,7 @@ void stopSession(uint32_t session) { if (session == s_session) stop(); }
 bool start(Mode m) {
   s_session++;
   stop();
+  s_idleFailed = false; // Explicit use retries an earlier idle/init failure.
   s_ready = false;
   if (!ensureInit()) return false;
   s_mode = m;
@@ -434,6 +441,69 @@ String channelLink(int idx) {
 }
 
 }  // namespace
+
+bool app::nfcActive() { return s_mode != Mode::Off; }
+bool app::nfcRailRequested() { return true; } // Rail and CS stay driven at all times.
+bool app::nfcPowerSaving() {
+  if (s_saving < 0) {
+    s_saving = 0; // Separate opt-in; independent of the CPU option.
+    Preferences p;
+    if (p.begin("inw-nfc", true)) {
+      s_saving = p.getBool("saving", false) ? 1 : 0;
+      p.end();
+    }
+  }
+  return s_saving == 1;
+}
+bool app::setNfcPowerSaving(bool on) {
+  Preferences p;
+  if (!p.begin("inw-nfc", false)) return false;
+  const bool saved = p.putBool("saving", on) == sizeof(bool);
+  p.end();
+  if (!saved) return false;
+  s_saving = on ? 1 : 0;
+  s_idleFailed = false;
+  return true;
+}
+void app::nfcPowerDebug() {
+  Serial.printf("[nfc] saving=%d standby=%d state=%s op=%02X io=%02X\r\n",
+    nfcPowerSaving(), s_standby, nfcActive() ? "active" : s_idleFailed ? "idle failed; toggle or open NFC to retry" :
+    s_standby ? "power-down verified" : "normal", s_idleOp, s_idleIo);
+}
+void app::nfcIdlePower() {
+  if (s_mode != Mode::Off) return; // Preserve read/write/emulate, even under lock.
+  if (s_idleFailed) return; // No polling, recurring retries or new wake deadline.
+  if (!nfcPowerSaving()) {
+    if (s_rf && !s_ready && !ensureInit()) s_idleFailed = true;
+    return;
+  }
+  if (s_standby) return;
+  if (!ensureInit()) {
+    if (s_rf) s_rf->rfalDeinitialize();
+    s_idleFailed = true;
+    return;
+  }
+  // RFAL deinit masks IRQs and detaches the ISR, but keeps OSC on. Finish the
+  // chip's actual Power-down sequence, keeping the shared SPI rail/CS stable.
+  s_rf->rfalDeinitialize();
+  s_ready = false;
+  const uint8_t clockMask = ST25R3916_REG_IO_CONF1_out_cl_mask | ST25R3916_REG_IO_CONF1_lf_clk_off;
+  const uint8_t clocksOff = ST25R3916_REG_IO_CONF1_out_cl_disabled | ST25R3916_REG_IO_CONF1_lf_clk_off;
+  const uint8_t off = 0;
+  bool ok = s_rf->rfalChipChangeRegBits(ST25R3916_REG_IO_CONF1, clockMask, clocksOff) == ST_ERR_NONE;
+  ok &= s_rf->rfalChipWriteReg(ST25R3916_REG_OP_CONTROL, &off, 1) == ST_ERR_NONE;
+  uint8_t id = 0;
+  s_idleOp = s_idleIo = 0xFF;
+  ok &= s_rf->rfalChipReadReg(ST25R3916_REG_OP_CONTROL, &s_idleOp, 1) == ST_ERR_NONE;
+  ok &= s_rf->rfalChipReadReg(ST25R3916_REG_IO_CONF1, &s_idleIo, 1) == ST_ERR_NONE;
+  ok &= s_rf->rfalChipReadReg(ST25R3916_REG_IC_IDENTITY, &id, 1) == ST_ERR_NONE;
+  const uint8_t type = id & ST25R3916_REG_IC_IDENTITY_ic_type_mask;
+  ok &= type == ST25R3916_REG_IC_IDENTITY_ic_type_st25r3916 ||
+        type == ST25R3916_REG_IC_IDENTITY_ic_type_st25r3916b;
+  s_standby = ok && s_idleOp == 0 && (s_idleIo & clockMask) == clocksOff;
+  s_idleFailed = !s_standby;
+  Serial.printf("[nfc] idle power-down=%d op=%02X io=%02X id=%02X\r\n", s_standby, s_idleOp, s_idleIo, id);
+}
 
 // ---- screens ------------------------------------------------------------------------------------
 class NfcReadView : public View {

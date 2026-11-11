@@ -1,4 +1,5 @@
 #include "power.h"
+#include "battery_schedule.h"
 #include <math.h>
 #include "app.h"
 #include "battery.h"
@@ -192,24 +193,22 @@ static void lowBatterySave() {
 // (which over-discharge it). A minute of readings must agree, so a radio burst
 // sagging the voltage can't do it.
 static void criticalPowerOff() {
-  static uint8_t lowRuns = 0;
-  if (battery.pluggedIn()) { lowRuns = 0; return; }
+  static LowBatteryWindow low;
+  if (battery.pluggedIn()) { low.update(false, millis()); return; }
   const uint16_t mv = battery.millivolts();
   const bool flat = battery.percent() <= 1 && mv && mv < 3400;
-  lowRuns = flat ? (uint8_t)min(lowRuns + 1, 250) : 0;
-  if (lowRuns >= 12) app::powerOff("battery empty");     // 12 x 5 s
+  if (low.update(flat, millis())) app::powerOff("battery empty");
 }
 
-void tick() {
-  static uint32_t last = 0, lastPoll = 0;
+void tick(bool batteryUpdated) {
+  static uint32_t lastPoll = 0;
   if (!battery.present() || !battery.hasReading() || millis() < 15000) return;
   bool changed = false;
   if (millis() - lastPoll > 500) {
     lastPoll = millis();
     changed = battery.pollVbus() != s_plugged;
   }
-  if (!changed && millis() - last < 5000) return;
-  last = millis();
+  if (!changed && !batteryUpdated) return;
   chargeTick();
   saverTick();
   lowBatterySave();

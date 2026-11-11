@@ -10,6 +10,7 @@ class CayenneLPP;
 namespace ext {
 
 void begin();                    // after the power rails are up
+uint32_t sleepBudgetMs(uint32_t now); // sensor readings and alert output edges
 void tick();                     // from loop()
 void alert();                    // a message alert went off (quiet hours already checked)
 void applyPin();                 // after ui_settings.io9Mode changes
