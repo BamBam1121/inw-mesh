@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Restore a repeater identity &middot; Squatch Mesh</title>
+<meta name="description" content="Put a saved MeshCore private key back on a repeater over USB.">
+<!-- Hidden on purpose: not in the menus or sitemap, shared by link only. -->
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css?v=7">
+<link rel="stylesheet" href="/assets/help.css?v=6">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#070b0a">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="logo" href="/" aria-label="Squatch Mesh home"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu"><span></span></button>
+    <nav id="site-nav" class="nav-links" aria-label="Main">
+      <a class="link" href="/features">Features</a>
+      <a class="link" href="/themes">Themes</a>
+      <a class="link" href="/guide">Guide</a>
+      <a class="link" href="/help">Help</a>
+      <a class="btn solid" href="/downloads">Install</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <div class="tag" style="margin-top:46px;color:var(--amber);border-color:var(--amber)">tool</div>
+  <h1>Restore a repeater's identity</h1>
+  <p class="sub">Puts a saved private key on a MeshCore repeater over USB, so it comes back as the same node
+  (same name in everyone's contacts, same admin logins). Chrome or Edge on a computer.</p>
+
+  <div class="panel warn" style="margin-top:18px">
+    <p class="sub" style="font-size:14px;margin:0"><b>Your key stays on your computer.</b> The file is read
+    in this browser and sent only to the board over USB; nothing goes to our site. Only one board may use a key
+    at a time: turn the old one off, or give it a new key, before this one goes on the air.</p>
+  </div>
+
+  <h2 style="margin-top:34px">1. Load the key</h2>
+  <div class="panel">
+    <p class="sub" style="font-size:14px;margin:0 0 12px">The repeater's config export from config.meshcore.io
+    (a <code>config-repeater-....json</code> with the key in it), or paste the 128-character private key.</p>
+    <p style="margin:0"><input type="file" id="id-file" accept=".json,application/json"></p>
+    <p style="margin:12px 0 0"><input type="password" id="id-paste" autocomplete="off" spellcheck="false"
+    placeholder="or paste the private key" style="width:100%;max-width:560px;font-family:var(--mono)"></p>
+    <p class="sub" id="id-key-state" style="font-size:13px;margin:10px 0 0">No key loaded.</p>
+  </div>
+
+  <h2 style="margin-top:34px">2. Put it on the repeater</h2>
+  <div class="panel" style="margin-bottom:60px">
+    <p class="sub" style="font-size:14px;margin:0 0 12px">Plug the repeater in, close config.meshcore.io and
+    any other tab using it, then pick its port. It sets the key, restarts the board and checks which node it
+    is afterwards.</p>
+    <p style="margin:0"><button class="btn solid" type="button" id="id-go" disabled>Put the key on the repeater</button></p>
+    <pre id="id-log" style="margin:14px 0 0;white-space:pre-wrap;font-family:var(--mono);font-size:13px;min-height:2.6em" aria-live="polite"></pre>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="logo" href="/"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+      <p>Free, open-source MeshCore firmware for the LilyGo T-Lora Pager and the T-Deck. Made in the Inland Northwest.</p>
+    </div>
+    <nav class="footer-col" aria-label="Product"><h4>Product</h4>
+      <a href="/features">Features</a><a href="/themes">Themes</a><a href="/install">Install</a><a href="/downloads">Downloads</a><a href="/releases">Releases</a></nav>
+    <nav class="footer-col" aria-label="Learn"><h4>Learn</h4>
+      <a href="/guide">Guide</a><a href="/help">Help &amp; feedback</a><a href="mailto:support@squatchmesh.com">Email support</a><a href="/mesh">How the mesh works</a><a href="/hardware">Hardware</a></nav>
+    <nav class="footer-col" aria-label="Project"><h4>Project</h4>
+      <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a><a href="https://meshcore.io">MeshCore</a><a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a><a href="/privacy">Privacy</a></nav>
+  </div>
+  <div class="wrap footer-base">
+    <span>GPL-3.0</span>
+    <span>Independent project. Not affiliated with LilyGo, Elecrow, Meshtastic or the MeshCore project.</span>
+  </div>
+</footer>
+<script type="module" src="/assets/identity-tool.js?v=1"></script>
+<script src="/assets/app.js?v=9" defer></script>
+</body>
+</html>
