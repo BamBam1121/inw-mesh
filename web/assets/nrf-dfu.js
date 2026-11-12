@@ -152,7 +152,7 @@ export class NrfDfu {
         if (f.length >= 1 && ((f[0] >> 3) & 0x07) === want) return;
       }
     }
-    throw new Error('the board stopped answering (no acknowledgement). Is it in update mode on this port?');
+    throw new Error('the board did not answer on this port. It must be in update mode: use the first button, then pick the NEW port, or double-tap its reset button.');
   }
 
   // progress(fraction 0..1)
