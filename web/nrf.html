@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nRF52 repeaters &middot; Squatch Mesh</title>
+<meta name="description" content="Filtered MeshCore repeater firmware for the Seeed XIAO nRF52840 (nRF Seed) and the RAK3401 1W, with an installer that runs in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css?v=7">
+<link rel="stylesheet" href="/assets/help.css?v=6">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#070b0a">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="logo" href="/" aria-label="Squatch Mesh home"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu"><span></span></button>
+    <nav id="site-nav" class="nav-links" aria-label="Main">
+      <a class="link" href="/features">Features</a>
+      <a class="link" href="/themes">Themes</a>
+      <a class="link" href="/guide">Guide</a>
+      <a class="link" href="/help">Help</a>
+      <a class="btn solid" href="/downloads">Install</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <div class="tag" style="margin-top:46px;color:var(--amber);border-color:var(--amber)">repeaters</div>
+  <h1>Filtered repeaters for nRF52 boards</h1>
+  <p class="sub">MeshCore v1.18 repeater firmware with our traffic filter, on EasySky's PowerSaving base. The
+  filter stops repeating far-away overhead (requests, replies and channels nobody here uses), and the radio
+  naps between checks for packets. Less airtime, longer battery.</p>
+
+  <h2 style="margin-top:34px">1. Pick your board</h2>
+  <div class="grid c2" id="nrf-builds">
+    <label class="panel" style="cursor:pointer">
+      <input type="radio" name="build" value="seed" checked>
+      <span class="tag" style="margin-left:6px">new</span>
+      <h3 style="margin-top:12px">nRF Seed</h3>
+      <p class="sub" style="font-size:14px;margin:8px 0 0">For the <b>Seeed XIAO nRF52840</b> with the
+      <b>Wio-SX1262</b> radio (Seeed's MeshCore / Meshtastic kit). Tested on a XIAO repeater: it starts with
+      its settings kept, hears and repeats traffic, and the filter runs.</p>
+      <p class="sub" style="font-size:13px;margin:12px 0 0">Files:
+      <a href="/nrf-fw/squatch-nrf-seed-xiao-nrf52840-1.18-filter-easysky.uf2" download>.uf2</a> &middot;
+      <a href="/nrf-fw/squatch-nrf-seed-xiao-nrf52840-1.18-filter-easysky.zip" download>.zip</a></p>
+    </label>
+    <label class="panel" style="cursor:pointer">
+      <input type="radio" name="build" value="rak">
+      <h3 style="margin-top:12px">RAK 1W PowerSaving</h3>
+      <p class="sub" style="font-size:14px;margin:8px 0 0">For the <b>RAK3401</b> with the <b>RAK13302 1W</b>
+      radio only, not a RAK4631. The Filter + EasySky build running on our 1W repeaters.</p>
+      <p class="sub" style="font-size:13px;margin:12px 0 0">Files:
+      <a href="/rak1w-fw/squatch-repeater-rak3401-1w-1.18-filter-easysky.uf2" download>.uf2</a> &middot;
+      <a href="/rak1w-fw/squatch-repeater-rak3401-1w-1.18-filter-easysky.zip" download>.zip</a> &middot;
+      <a href="/rak-1w">more about it</a></p>
+    </label>
+  </div>
+
+  <h2 style="margin-top:34px">2. Install in your browser</h2>
+  <div class="panel" id="nrf-flasher">
+    <p class="sub" style="font-size:14px;margin:0 0 14px">Chrome or Edge on a computer. Plug the board in with
+    a USB data cable, then:</p>
+    <p style="display:flex;gap:10px;flex-wrap:wrap;margin:0">
+      <button class="btn solid" type="button" id="nrf-touch">Put the board in update mode</button>
+      <button class="btn" type="button" id="nrf-flash">Pick the update port and install</button>
+    </p>
+    <ol class="sub" style="font-size:14px;margin:14px 0 0;padding-left:20px">
+      <li>The first button asks for the board's port, then restarts the board into update mode.</li>
+      <li>The second button asks for a port again: pick the <b>new</b> one that just appeared (on Windows it
+      usually has a different COM number). Then it installs, in about half a minute.</li>
+    </ol>
+    <p class="sub" style="font-size:13px;margin:10px 0 0">Board doesn't answer? Double-tap its reset button
+    instead, then use only the second button.</p>
+    <div style="margin-top:16px;height:10px;border-radius:6px;background:var(--line,#1c2624);overflow:hidden">
+      <div id="nrf-bar" style="height:100%;width:0;background:var(--green,#3ddc84);transition:width .2s"></div>
+    </div>
+    <pre id="nrf-log" style="margin:12px 0 0;white-space:pre-wrap;font-family:var(--mono);font-size:13px;min-height:2.6em" aria-live="polite">Ready.</pre>
+  </div>
+
+  <h2 style="margin-top:34px">Or flash the file yourself</h2>
+  <div class="panel">
+    <ol class="sub" style="font-size:14px;margin:0;padding-left:20px">
+      <li><b>Drag and drop:</b> double-tap the reset button so a drive appears (<b>XIAO-SENSE</b> or
+      <b>RAK...</b>), then drag the board's <b>.uf2</b> onto it. It restarts by itself when done.</li>
+      <li><b>Bluetooth:</b> send the repeater <code>start ota</code> as admin, then give the <b>.zip</b> to the
+      <b>nRF Device Firmware Update</b> app. Stay close: a failed update needs USB to recover.</li>
+    </ol>
+  </div>
+
+  <h2 style="margin-top:34px">After installing</h2>
+  <div class="panel">
+    <p class="sub" style="font-size:14px;margin:0"><b>Updating a MeshCore repeater:</b> your identity and
+    settings stay. <b>New board or coming from other firmware:</b> set your radio frequency and name first,
+    and <b>change the admin password right away</b>. The default is <code>password</code>.</p>
+    <pre style="margin:12px 0 0;white-space:pre-wrap;font-family:var(--mono);font-size:13px">ver                  check the version
+tf                   filter status and counts
+tf off | tf on       filter off or on
+tf hops 10           change the far limit (default 8 hops)
+tf allow #name       let a far channel through
+get radio.rxps       radio naps (set radio.rxps off to listen all the time)</pre>
+    <p class="sub" style="font-size:14px;margin:12px 0 0">How the filter decides: <a href="/rak-1w">RAK 1W page</a>.</p>
+  </div>
+
+  <h2 style="margin-top:34px">Going back</h2>
+  <div class="panel" style="margin-bottom:60px">
+    <p class="sub" style="font-size:14px;margin:0">Flash the standard repeater for your board from the
+    <a href="https://flasher.meshcore.io" rel="noopener">MeshCore flasher</a>. Problems:
+    <a href="mailto:support@squatchmesh.com">support@squatchmesh.com</a>.</p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <a class="logo" href="/"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
+      <p>Free, open-source MeshCore firmware for the LilyGo T-Lora Pager and the T-Deck. Made in the Inland Northwest.</p>
+    </div>
+    <nav class="footer-col" aria-label="Product"><h4>Product</h4>
+      <a href="/features">Features</a><a href="/themes">Themes</a><a href="/install">Install</a><a href="/downloads">Downloads</a><a href="/releases">Releases</a></nav>
+    <nav class="footer-col" aria-label="Learn"><h4>Learn</h4>
+      <a href="/guide">Guide</a><a href="/help">Help &amp; feedback</a><a href="mailto:support@squatchmesh.com">Email support</a><a href="/mesh">How the mesh works</a><a href="/hardware">Hardware</a></nav>
+    <nav class="footer-col" aria-label="Project"><h4>Project</h4>
+      <a href="https://github.com/BamBam1121/inw-mesh">GitHub</a><a href="https://meshcore.io">MeshCore</a><a href="https://bambam1121.github.io/inw-mesh/">Plain installer</a><a href="/privacy">Privacy</a></nav>
+  </div>
+  <div class="wrap footer-base">
+    <span>GPL-3.0</span>
+    <span>Independent project. Not affiliated with LilyGo, Elecrow, Meshtastic or the MeshCore project.</span>
+  </div>
+</footer>
+<script type="module" src="/assets/nrf-flasher.js?v=1"></script>
+<script src="/assets/app.js?v=9" defer></script>
+<script src="/assets/squatch-helper.js?v=17" defer></script>
+</body>
+</html>
