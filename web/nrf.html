@@ -83,6 +83,23 @@
     <pre id="nrf-log" style="margin:12px 0 0;white-space:pre-wrap;font-family:var(--mono);font-size:13px;min-height:2.6em" aria-live="polite">Ready.</pre>
   </div>
 
+  <h2 style="margin-top:34px">3. Set it up</h2>
+  <div class="panel">
+    <p class="sub" style="font-size:14px;margin:0">Once it's installed, give your repeater its settings with
+    MeshCore's own setup page, over the same USB cable. Nothing to install.</p>
+    <p style="display:flex;gap:10px;flex-wrap:wrap;margin:16px 0 0">
+      <a class="btn solid" href="https://config.meshcore.io/" target="_blank" rel="noopener">Open MeshCore setup</a>
+    </p>
+    <ol class="sub" style="font-size:14px;margin:14px 0 0;padding-left:20px">
+      <li>Close this page's connection first: only one page can use the board at a time.</li>
+      <li>On the setup page, connect and pick the board's normal port (not the update port).</li>
+      <li>Set the <b>radio frequency</b> your area uses, a <b>name</b>, and your <b>location</b> if you want it on the map.</li>
+      <li><b>Change the admin password</b> from <code>password</code>, then save.</li>
+    </ol>
+    <p class="sub" style="font-size:13px;margin:12px 0 0">Updating a repeater that was already set up? Its
+    settings stay, so you can skip this.</p>
+  </div>
+
   <h2 style="margin-top:34px">Or flash the file yourself</h2>
   <div class="panel">
     <ol class="sub" style="font-size:14px;margin:0;padding-left:20px">
@@ -133,7 +150,7 @@ get radio.rxps       radio naps (set radio.rxps off to listen all the time)</pre
     <span>Independent project. Not affiliated with LilyGo, Elecrow, Meshtastic or the MeshCore project.</span>
   </div>
 </footer>
-<script type="module" src="/assets/nrf-flasher.js?v=1"></script>
+<script type="module" src="/assets/nrf-flasher.js?v=2"></script>
 <script src="/assets/app.js?v=9" defer></script>
 <script src="/assets/squatch-helper.js?v=17" defer></script>
 </body>

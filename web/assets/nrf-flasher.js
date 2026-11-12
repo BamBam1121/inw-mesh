@@ -74,5 +74,5 @@ $('nrf-flash').addEventListener('click', () => run(async () => {
     await io.close();
     try { await port.close(); } catch (e) { /* the board restarted */ }
   }
-  log('Installed ' + b.name + '. The board restarts by itself. Connect to it and send "ver" and "tf" to check.');
+  log("Installed " + b.name + ". The board restarts by itself. Next: step 3, set it up.");
 }));
