@@ -45,7 +45,8 @@
       <h3 style="margin-top:12px">nRF Seed</h3>
       <p class="sub" style="font-size:14px;margin:8px 0 0">For the <b>Seeed XIAO nRF52840</b> with the
       <b>Wio-SX1262</b> radio (Seeed's MeshCore / Meshtastic kit). Tested on a XIAO repeater: it starts with
-      its settings kept, hears and repeats traffic, and the filter runs.</p>
+      its settings kept, hears and repeats traffic, and the filter runs. <b>Not for the MeshSmith Photon</b>:
+      it wires the radio differently.</p>
       <p class="sub" style="font-size:13px;margin:12px 0 0">Files:
       <a href="/nrf-fw/squatch-nrf-seed-xiao-nrf52840-1.18-filter-easysky.uf2" download>.uf2</a> &middot;
       <a href="/nrf-fw/squatch-nrf-seed-xiao-nrf52840-1.18-filter-easysky.zip" download>.zip</a></p>
@@ -60,7 +61,21 @@
       <a href="/rak1w-fw/squatch-repeater-rak3401-1w-1.18-filter-easysky.zip" download>.zip</a> &middot;
       <a href="/rak-1w">more about it</a></p>
     </label>
+    <label class="panel" style="cursor:pointer">
+      <input type="radio" name="build" value="photon">
+      <span class="tag" style="margin-left:6px;color:var(--amber);border-color:var(--amber)">untested</span>
+      <h3 style="margin-top:12px">Photon PowerSaving</h3>
+      <p class="sub" style="font-size:14px;margin:8px 0 0">For the <b>MeshSmith Photon</b> with a <b>XIAO
+      nRF52840</b> (Ebyte E22P 1W radio, GPS). Built from MeshSmith's own Photon board setup plus our filter
+      and power saving. It hasn't run on a Photon yet: tell us how it goes.</p>
+      <p class="sub" style="font-size:13px;margin:12px 0 0">Files:
+      <a href="/nrf-fw/squatch-photon-nrf52-1.18-filter-easysky.uf2" download>.uf2</a> &middot;
+      <a href="/nrf-fw/squatch-photon-nrf52-1.18-filter-easysky.zip" download>.zip</a></p>
+    </label>
   </div>
+  <p class="sub" style="font-size:13px;margin:12px 0 0"><b>nRF Seed and Photon both use a XIAO</b>, so the
+  installer can't tell them apart: pick the one that matches your radio board. With the wrong one the radio
+  simply doesn't start (nothing is sent), and installing the right one fixes it.</p>
 
   <h2 style="margin-top:34px">2. Install in your browser</h2>
   <div class="panel" id="nrf-flasher">
@@ -150,7 +165,7 @@ get radio.rxps       radio naps (set radio.rxps off to listen all the time)</pre
     <span>Independent project. Not affiliated with LilyGo, Elecrow, Meshtastic or the MeshCore project.</span>
   </div>
 </footer>
-<script type="module" src="/assets/nrf-flasher.js?v=2"></script>
+<script type="module" src="/assets/nrf-flasher.js?v=3"></script>
 <script src="/assets/app.js?v=9" defer></script>
 <script src="/assets/squatch-helper.js?v=17" defer></script>
 </body>

@@ -5,6 +5,8 @@ import { loadDfuZip, NrfDfu, touchReset, webSerialIo } from './nrf-dfu.js?v=1';
 const BUILDS = {
   seed: { name: 'nRF Seed (XIAO nRF52840)', zip: '/nrf-fw/squatch-nrf-seed-xiao-nrf52840-1.18-filter-easysky.zip',
     vendors: [0x2886] },
+  photon: { name: 'Photon PowerSaving (MeshSmith Photon nRF52)',
+    zip: '/nrf-fw/squatch-photon-nrf52-1.18-filter-easysky.zip', vendors: [0x2886] },
   rak: { name: 'RAK 1W PowerSaving (RAK3401)', zip: '/rak1w-fw/squatch-repeater-rak3401-1w-1.18-filter-easysky.zip',
     vendors: [0x239a] },
 };
