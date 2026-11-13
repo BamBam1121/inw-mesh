@@ -37,6 +37,11 @@ static constexpr uint32_t MAGIC = 0x52505431;       // "RPT1"
 static constexpr uint8_t  LINES = 40, W = 52;
 struct Mirror { uint32_t magic; uint8_t head, count; char line[LINES][W]; };
 RTC_NOINIT_ATTR static Mirror s_m;
+// Set while the core dump is being read at boot. If it is still set at the next boot,
+// reading that dump crashed the device (ESP-IDF's parser falls over on a dump another
+// firmware left that still passes its checksum): throw the dump away, don't read it again.
+static constexpr uint32_t READING = 0x52445250;     // "PRDR"
+RTC_NOINIT_ATTR static uint32_t s_reading;
 
 static String s_prev;          // the last run's lines, oldest first, read at capture()
 static int8_t s_on = -1;
@@ -230,10 +235,18 @@ void begin() {
   const bool crashed = rr == ESP_RST_PANIC || rr == ESP_RST_INT_WDT || rr == ESP_RST_TASK_WDT ||
                        rr == ESP_RST_WDT || rr == ESP_RST_BROWNOUT;
   bool dump = esp_core_dump_image_check() == ESP_OK;
+  // A dump with no crash behind this restart isn't from the last run (we file and erase
+  // our own at the first boot after the crash): it was left by another firmware, often
+  // a launcher handing over with a software reset. Don't parse it - that can crash.
+  // The same goes for a dump whose reading crashed the last boot.
+  if (dump && (!crashed || s_reading == READING)) { esp_core_dump_image_erase(); dump = false; }
+  s_reading = 0;
   if (!crashed && !dump) return;
   if (!enabled()) { if (dump) esp_core_dump_image_erase(); return; }
   esp_core_dump_summary_t* s = dump ? (esp_core_dump_summary_t*)calloc(1, sizeof(esp_core_dump_summary_t)) : nullptr;
+  s_reading = READING;
   const bool read = s && esp_core_dump_get_summary(s) == ESP_OK;
+  s_reading = 0;
   // Whose crash is it? The dump sits in a partition every firmware on the device
   // shares, so one left by another firmware (a multi-boot launcher, or whatever was on
   // here before this was installed) was being reported as ours, under our version,
