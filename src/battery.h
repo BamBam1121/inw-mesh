@@ -9,6 +9,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Wire.h>
+#include <Preferences.h>
 #include "board_pins.h"
 
 class Battery {
@@ -27,6 +28,12 @@ public:
             if (read16(REG_DESIGN_CAP, design)) _designNow = design;
         }
         setupCharger();
+        Preferences p;
+        if (p.begin("inw-batt", true)) {
+            _capMah = p.getFloat("capmah", 0);
+            _capRuns = p.getUChar("capruns", 0);
+            p.end();
+        }
         return true;
     }
 
@@ -107,11 +114,15 @@ public:
         if (read16(REG_RAW_CC, raw)) {                 // mAh, up on discharge, down on charge
             if (_ccValid) {
                 const int16_t d = (int16_t)(raw - _ccLast);
-                if (abs(d) <= 60) _mah -= d;              // more in 5 s is a reset or a bad read
+                if (abs(d) <= 60) {                       // more in 5 s is a reset or a bad read
+                    _mah -= d;
+                    if (_cycStart >= 0 && d < 0) _cycIn -= d;
+                }
             }
             _ccLast = raw;
             _ccValid = true;
         }
+        measureCapacity(up);
         if (!_mahKnown && _millivolts) {               // first reading after boot
             const float byVolt = CAP_MAH * _byVolt / 100.0f;
             // A saved figure from before a power off or restart is better than the
@@ -137,6 +148,45 @@ public:
         else if (up) { if (target > _percent) _percent++; }
         else if (target < _percent) _percent--;
     }
+
+    // ---- battery health, measured by us ------------------------------------------
+    // The gauge's own full-charge figure (FCC) is no use for health: its model is
+    // TI's generic one and it never saw a full charge, so it "learned" this pack
+    // down to ~850 mAh and health read ~57% on cells that are fine. Instead: a
+    // charge that starts below 60% (by resting voltage, read before plugging in)
+    // and runs until the charger says done counts every mAh that went in (the
+    // gauge's coulomb counter is exact). Capacity = mAh in / the share that was
+    // empty. Kept in flash, averaged over charges. Unplugging or an 80% hold
+    // before the end just drops that charge.
+    void measureCapacity(bool up) {
+        if (!up) {
+            if (_millivolts) _restPct = _byVolt;
+            _cycStart = -1;                                  // stopped before full: not a measurement
+            _wasUp = false;
+            return;
+        }
+        if (_cycStart < 0 && !_wasUp && !_chgDone && _restPct >= 0 && _restPct <= 60) {
+            _cycStart = _restPct;
+            _cycIn = 0;
+            Serial.printf("[health] measuring this charge from %d%%\n", _cycStart);
+        }
+        _wasUp = true;
+        if (_chgDone && _cycStart >= 0) {
+            const float cap = _cycIn * 100.0f / (100 - _cycStart);
+            Serial.printf("[health] charge from %d%% took %.0f mAh: capacity %.0f mAh\n", _cycStart, _cycIn, cap);
+            if (cap > 300 && cap < 2500) {
+                _capMah = _capMah > 0 ? _capMah * 0.6f + cap * 0.4f : cap;
+                if (_capRuns < 255) _capRuns++;
+                Preferences p;
+                if (p.begin("inw-batt", false)) { p.putFloat("capmah", _capMah); p.putUChar("capruns", _capRuns); p.end(); }
+            }
+            _cycStart = -1;
+        }
+    }
+    // Measured capacity in mAh (0 until one full charge from below 60% has been seen)
+    uint16_t measuredMah() const { return _capMah > 0 ? (uint16_t)(_capMah + 0.5f) : 0; }
+    uint8_t  measuredRuns() const { return _capRuns; }
+    bool     measuringNow() const { return _cycStart >= 0; }
 
     // What main.cpp keeps across restarts (RTC memory) and power offs (flash).
     float remainingMah() const { return _mahKnown ? _mah : -1; }
@@ -218,7 +268,12 @@ public:
 
     // Throw away what the gauge has learned and start from the pack's rating.
     // It re-learns over the next full charge and discharge.
-    bool relearn() { return setCapacity(DESIGN_MAH); }
+    bool relearn() {
+        _capMah = 0; _capRuns = 0; _cycStart = -1;
+        Preferences p;
+        if (p.begin("inw-batt", false)) { p.remove("capmah"); p.remove("capruns"); p.end(); }
+        return setCapacity(DESIGN_MAH);
+    }
 
     // Power off: the charger disconnects the battery from everything (BATFET_DIS,
     // ship mode, ~26 uA). It only takes hold with USB unplugged. The PWR button
@@ -371,6 +426,10 @@ private:
     bool     _shown = false, _chgDone = false;
     uint8_t  _target = 0, _byVolt = 0;
     float    _mah = 0, _savedMah = -1;          // our count of what's left
+    float    _capMah = 0, _cycIn = 0;           // measured capacity; mAh in during this charge
+    uint8_t  _capRuns = 0;
+    int      _cycStart = -1, _restPct = -1;     // % this charge started at; last resting %
+    bool     _wasUp = false;
     bool     _mahKnown = false, _ccValid = false;
     uint16_t _ccLast = 0;
     int      _restMv = 0;

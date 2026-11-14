@@ -984,9 +984,12 @@ static void batteryMenu() {
     return s; });
   // "82% health" first: "1244 of 1500 mAh (82%)" reads like a charge level.
   m->info("battery health", []() -> String {
-    const uint16_t f = battery.fullChargeMah();
-    return f ? String(min(100, f * 100 / Battery::DESIGN_MAH)) + "% health  (holds " + String(f) +
-               " of " + String(Battery::DESIGN_MAH) + " mAh when new)" : String("--"); });
+    // Our own measurement, not the gauge's full-charge figure (wrong on these packs: battery.h)
+    const uint16_t f = battery.measuredMah();
+    if (!f) return String(battery.measuringNow() ? "measuring this charge - let it reach full"
+                                                 : "not measured yet - charge from under 60% to full once");
+    return String(min(100, f * 100 / Battery::DESIGN_MAH)) + "% health  (holds " + String(f) + " of " +
+           String(Battery::DESIGN_MAH) + " mAh when new)"; });
   m->action("reset battery learning", [] {
     confirm("Reset the gauge's learning?", "use this if health looks wrong on a new battery. it re-learns over the next full charge and discharge.",
             [] { nav.toast(battery.relearn() ? "reset - charge to full, then run it low" : "the gauge refused", 4000); });
