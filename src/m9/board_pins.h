@@ -40,6 +40,9 @@
 // Keys only, no trackball click: Enter presses on the home and lock screens too, and
 // the keyboard's Home key does what the T-Deck's long trackball press does (main.cpp).
 #define BOARD_KEYS_ONLY        1
+// Under Launcher (multi-boot) installed from firmware.bin alone there is no storage partition:
+// keep the store on the SD card then (dataio.h storeOnSd), not lose everything at every start.
+#define BOARD_STORE_SD_FALLBACK 1
 
 // Wi-Fi updates come from firmware/thinknode-m9/ and must carry a signature naming
 // "thinknode-m9" (ota.cpp): pager or T-Deck firmware can never be installed on it this way.

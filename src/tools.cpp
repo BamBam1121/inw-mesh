@@ -272,7 +272,8 @@ void deviceInfoPage() {
     }
     snprintf(b, sizeof(b), "messages     %u stored", history.size()); out.push_back(b);
     snprintf(b, sizeof(b), "heap         %u kB free   psram %u kB free", (unsigned)(ESP.getFreeHeap() / 1024), (unsigned)(ESP.getFreePsram() / 1024)); out.push_back(b);
-    snprintf(b, sizeof(b), "flash store  %u / %u kB", (unsigned)(SPIFFS.usedBytes() / 1024), (unsigned)(SPIFFS.totalBytes() / 1024)); out.push_back(b);
+    if (storeOnSdNow()) out.push_back("store        on the sd card (no storage partition)");
+    else { snprintf(b, sizeof(b), "flash store  %u / %u kB", (unsigned)(SPIFFS.usedBytes() / 1024), (unsigned)(SPIFFS.totalBytes() / 1024)); out.push_back(b); }
     if (sdMounted()) { snprintf(b, sizeof(b), "sd card      %llu MB free", (unsigned long long)(sdFreeBytes() / 1048576ULL)); out.push_back(b); }
     else out.push_back(sdState() == SD_UNREADABLE ? "sd card      can't be read: Settings > Backups" : "sd card      none");
 #if BOARD_BATT_UNSEEN_ON_USB

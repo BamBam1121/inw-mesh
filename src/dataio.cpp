@@ -8,6 +8,7 @@ extern "C" {
 #include <functional>
 #include <esp_rom_crc.h>
 #include <SPIFFS.h>
+#include <FSImpl.h>       // storeOnSd: the mount point SPIFFS opens files under
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <algorithm>
@@ -112,6 +113,32 @@ bool sdMount() {
 }
 bool sdMounted() { return s_sd; }
 uint64_t sdFreeBytes() { return s_sd ? SD.totalBytes() - SD.usedBytes() : 0; }
+
+// The store on the card. SPIFFS is a VFS file system like SD: every open() is its
+// mount point + the path, handed to the C library. With no SPIFFS partition the mount
+// never happened, so the mount point is set to a folder on the mounted card instead and
+// all the code that saves through SPIFFS (the node's store, settings, history, regions)
+// keeps working unchanged. Only the flash-only calls (format, sizes) answer "nothing".
+// The card shares the SPI bus with the panel and radio, but every card access already
+// takes inw_spi's transaction (ui.cpp pushTask), so this adds no new kind of bus use.
+static bool s_storeSd = false;
+bool storeOnSdNow() { return s_storeSd; }
+bool storeOnSd() {
+  if (s_storeSd) return true;
+  if (!sdMount()) return false;
+  if (!SD.exists(STORE_SD_DIR) && !SD.mkdir(STORE_SD_DIR)) return false;
+  if (!SD.exists(STORE_SD_DIR "/identity")) SD.mkdir(STORE_SD_DIR "/identity");   // MeshCore's key file lives in it
+  if (!SD.exists(STORE_SD_DIR "/bl")) SD.mkdir(STORE_SD_DIR "/bl");
+  struct Peek : fs::FS {                       // FS keeps its implementation protected
+    static fs::FSImplPtr& of(fs::FS& f) { return static_cast<Peek&>(f)._impl; }
+  };
+  fs::FSImplPtr& impl = Peek::of(SPIFFS);
+  if (!impl) return false;
+  impl->mountpoint("/sd" STORE_SD_DIR);
+  s_storeSd = true;
+  logs.add(LOG_WARN, "no storage partition: the store is on the sd card (" STORE_SD_DIR ")");
+  return true;
+}
 
 SdState sdState() {
   if (s_sd) return SD_MOUNTED;

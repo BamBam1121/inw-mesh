@@ -52,6 +52,7 @@ static Gestures   gestures;
 #include "node.h"
 #include "history.h"
 #include "dataio.h"
+#include <esp_partition.h>
 #include "fieldtools.h"
 #include "netwifi.h"
 #include "fx.h"
@@ -2242,6 +2243,9 @@ static void bootNote(const char* msg) {      // a long step the user should know
 #ifndef BOARD_FLAT_HOLD
 #define BOARD_FLAT_HOLD 1
 #endif
+#ifndef BOARD_STORE_SD_FALLBACK
+#define BOARD_STORE_SD_FALLBACK 0   // board_pins.h: the store on the SD card when there is no partition (the M9)
+#endif
 #ifndef BOARD_KEYS_ONLY
 #define BOARD_KEYS_ONLY 0      // board_pins.h: no trackball click, only keys (the M9)
 #endif
@@ -2421,6 +2425,19 @@ void setup() {
 
   bool fsOk = SPIFFS.begin(false);
   int carried = 0;                  // files brought across from MeshCore's store
+  const char* storeWhere = nullptr;
+#if BOARD_STORE_SD_FALLBACK
+  // No storage partition at all: started by a multi-boot launcher whose layout has none
+  // (Launcher makes one only when the full image is installed). Formatting can't help;
+  // the store goes on the SD card instead (dataio.h), or nothing would be kept and every
+  // start would be a first start.
+  if (!fsOk && !esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, nullptr)) {
+    fsOk = storeOnSd();
+    storeWhere = fsOk ? "on the sd card" : "no partition, no sd card";
+    bootNote(fsOk ? "no storage partition: keeping your data on the sd card"
+                  : "no storage partition: put in an sd card, or install the full image");
+  } else
+#endif
   if (!fsOk) {
     // First boot on this partition table: the store has to be formatted once.
     // If MeshCore had this board, its store is still in flash until that format:
@@ -2433,7 +2450,8 @@ void setup() {
     BootBusLock lock;
     display.fillRect(0, boot::ERR_Y0 - 2, L::W, 28, theme.bg);
   }
-  bootStep("storage", fsOk);
+  if (storeWhere) bootStep("storage", fsOk, storeWhere);
+  else bootStep("storage", fsOk);
 #if BOARD_HAS_REPORTS
   if (fsOk) report::begin();       // restarted from a crash: file what happened
 #endif

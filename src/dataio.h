@@ -17,6 +17,14 @@ enum SdState : uint8_t { SD_NONE, SD_UNREADABLE, SD_MOUNTED };
 SdState sdState();
 // Formats a card that does NOT mount as FAT32; refuses one that mounts. Erases the card.
 const char* sdFormat();
+
+// No storage partition at all (a multi-boot launcher's layout: Launcher only makes one
+// when the full image is installed, not firmware.bin alone): the store - every
+// SPIFFS.open() in the firmware - is pointed at a folder on the SD card instead.
+// True when that worked; storeOnSdNow() says whether it is in use.
+bool storeOnSd();
+bool storeOnSdNow();
+#define STORE_SD_DIR "/squatch-store"
 #if INW_DEV
 const char* sdTest(const char* what);   // developer build: info | ls | keep | gpt | back | format
 #endif
