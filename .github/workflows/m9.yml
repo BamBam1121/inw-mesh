@@ -65,7 +65,7 @@ jobs:
           V="${GITHUB_REF_NAME#m9-v}"
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --prerelease \
             --title "ThinkNode M9 $V" \
-            --notes "Squatch Mesh for the Elecrow ThinkNode M9 (beta). Install from https://squatchmesh.com/thinknode-m9, or write squatch-mesh-thinknode-m9-$V-full.bin at 0x0. Not for the T-Deck or the T-Lora Pager." \
+            --notes "Squatch Mesh for the Elecrow ThinkNode M9. Install from https://squatchmesh.com/thinknode-m9, or write squatch-mesh-thinknode-m9-$V-full.bin at 0x0. Not for the T-Deck or the T-Lora Pager." \
             release/*
 
       # Pages only deploys from main: have a main run pick this build up.
