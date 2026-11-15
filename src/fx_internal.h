@@ -224,5 +224,8 @@ bool auroraWake(Canvas& to);    bool auroraSleep(Canvas& from);
 // screen changes, and its own wake / sleep / power-down frames (kind as fx::render).
 bool halloweenTransition(Trans kind, Canvas& from, Canvas& to);
 void halloweenRender(uint8_t kind, Canvas& frame, lgfx::LovyanGFX& dst, float p);
+// Squatchmas, the same way (fx_squatchmas.cpp).
+bool squatchmasTransition(Trans kind, Canvas& from, Canvas& to);
+void squatchmasRender(uint8_t kind, Canvas& frame, lgfx::LovyanGFX& dst, float p);
 
 }  // namespace fx

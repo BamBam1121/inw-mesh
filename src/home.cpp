@@ -12,6 +12,14 @@
 #include "squatch_talk.h"
 #include "regional.h"
 
+#ifndef BOARD_SCENE_STEP_MS
+#define BOARD_SCENE_STEP_MS 0   // board_pins.h: move the lock scene by time at the pager's pace (ms a step)
+#endif
+#if BOARD_SCENE_STEP_MS
+// The pager's real ms per lock step; "scenestep N" over USB (dev builds) changes it live.
+uint32_t g_sceneStepMs = BOARD_SCENE_STEP_MS;
+#endif
+
 static Carousel s_carousel;
 
 static const char* subChats() {
@@ -159,7 +167,12 @@ public:
   void tick() override {
     // Animate only while someone is looking at it: not dimmed, not off.
     if (dimmer.asleep() || dimmer.dimmed()) return;
+#if BOARD_SCENE_STEP_MS
+    if (millis() - _step < 42) return;
+#else
     if (millis() - _step < 33) return;
+#endif
+    const uint32_t was = _step;
     _step = millis();
     // How long the lock face had been dark (or dim): across lock screens, since a new
     // one is made each time it locks again.
@@ -171,8 +184,18 @@ public:
       _blinkAt = _step + (random(5) == 0 ? 250 : 2000 + random(4000));
     // A low battery shows: he trudges along at a tired pace.
     const float pace = tired() ? 0.6f : 1.0f;
-    _phase += 0.32f * pace;
-    _scroll += 2.0f * pace;
+#if BOARD_SCENE_STEP_MS
+    // The pager moves the scene one step per lock frame, about every 42 ms, and that is
+    // the pace it should have everywhere. A board that draws faster would walk faster
+    // (the T-Deck at 33 ms: 27% quicker) and unevenly whenever a frame runs long, so here
+    // it moves on by the time that passed, at the pager's rate. Capped, so coming back
+    // from a pause doesn't jump.
+    const float steps = was ? fminf(2.0f, (float)(_step - was) / g_sceneStepMs) : 1.0f;
+#else
+    const float steps = 1.0f;                // the pager: one step a frame (the reference)
+#endif
+    _phase += 0.32f * pace * steps;
+    _scroll += 2.0f * pace * steps;
     if (_scroll > 10000.0f) _scroll = 0;
     // The scene leans with the pager (motion.h), eased so 25 samples a second draw
     // smoothly at 30 frames.

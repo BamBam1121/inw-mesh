@@ -278,6 +278,7 @@ inline void aurora(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll
 }
 
 #include "scene_halloween.h"
+#include "scene_squatchmas.h"
 
 // The lock screen's scene for a theme style, leaning lx, ly.
 inline void lockScene(lgfx::LovyanGFX& d, const Theme& t, uint8_t style, float phase, float scroll, bool unread,
@@ -285,6 +286,11 @@ inline void lockScene(lgfx::LovyanGFX& d, const Theme& t, uint8_t style, float p
   if (t.scene == SCENE_HALLOWEEN) {
     halloween(d, t, SpookyFrame{480, GROUND, 250, false, slideX(lx, SKY), slideY(ly, SKY), slideX(lx, FAR), slideY(ly, FAR)},
               phase, scroll, unread);
+    return;
+  }
+  if (t.scene == SCENE_SQUATCHMAS) {
+    squatchmas(d, t, SpookyFrame{480, GROUND, 250, false, slideX(lx, SKY), slideY(ly, SKY), slideX(lx, FAR), slideY(ly, FAR)},
+               phase, scroll, unread);
     return;
   }
   switch (style) {

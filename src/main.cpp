@@ -2115,7 +2115,7 @@ void loop() {
   // Screen went dark: next wake lands on the lock face.
   static bool wasAsleep = false;
   if (dimmer.asleep() && !wasAsleep && ui_settings.lockOnSleep) app::lock();
-  if (dimmer.asleep() && !wasAsleep) spooky::next();   // Halloween: another costume and place each time the screen goes dark
+  if (dimmer.asleep() && !wasAsleep) { spooky::next(); jolly::next(); }   // Halloween: another costume and place each time the screen goes dark
   wasAsleep = dimmer.asleep();
 
   lap(0);
