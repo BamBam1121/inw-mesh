@@ -13,6 +13,7 @@
 #include "gps.h"
 #include "netwifi.h"
 #include "regional.h"
+#include "notify.h"
 
 namespace {
 
@@ -257,20 +258,24 @@ private:
       drawAvatar(g, CARD_X + 20, y + ROW_H / 2, 12, e.name, e.kind);
       const char* ago = e.lastTs ? timeAgo(e.lastTs) : "";
       const int agoW = g.textWidth(ago);
-      g.setTextColor(e.unread ? t.green : t.txt, bg);
+      // Muted chats still count unread, but quietly (as the Messages list draws them).
+      const bool muted = notifyMode(e.key) == NM_MUTED;
+      const bool loud = e.unread && !muted;
+      g.setTextColor(loud ? t.green : t.txt, bg);
       drawUtf8(g, e.name, CARD_X + 40, y + 1, CARD_W - 52 - agoW - 28);
       g.setTextColor(t.dim, bg);
       g.drawString(ago, CARD_X + CARD_W - 10 - agoW, y + 1);
       char pv[80];
       strlcpy(pv, e.preview, sizeof(pv));
-      g.setTextColor(e.unread ? t.txt : t.dim, bg);
+      g.setTextColor(loud ? t.txt : t.dim, bg);
       drawUtf8(g, pv, CARD_X + 40, y + 17, CARD_W - 52 - (e.unread ? 22 : 0));
       if (e.unread) {
         char n[6];
         snprintf(n, sizeof(n), "%u", e.unread);
         const int w = max(16, (int)g.textWidth(n) + 8);
-        g.fillRoundRect(CARD_X + CARD_W - 10 - w, y + 17, w, 15, 7, e.mention ? t.amber : t.green);
-        g.setTextColor(t.bg, e.mention ? t.amber : t.green);
+        const uint16_t pill = muted ? t.line : e.mention ? t.amber : t.green;
+        g.fillRoundRect(CARD_X + CARD_W - 10 - w, y + 17, w, 15, 7, pill);
+        g.setTextColor(muted ? t.dim : t.bg, pill);
         g.drawString(n, CARD_X + CARD_W - 10 - w + (w - g.textWidth(n)) / 2, y + 17);
       }
     }

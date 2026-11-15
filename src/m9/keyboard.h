@@ -13,8 +13,8 @@
 // and the two traps below, come from.
 //
 // The arrows don't type anything: they are this board's trackball (rotary.h takes
-// them from here). Home goes home, and from there locks; it also wakes the screen
-// (main.cpp, BOARD_KEYS_ONLY). The keys with pictures open what is on them (main.cpp):
+// them from here). Home goes home, and from there locks; it and the centre key (Enter,
+// as on Wadamesh) wake the screen (main.cpp, BOARD_KEYS_ONLY). The keys with pictures open what is on them (main.cpp):
 // speech bubble the chats, the small one contacts, map the map, the pin sends an advert
 // to the nodes nearby, the triangle the quick settings. Ctrl does nothing yet.
 
@@ -37,7 +37,7 @@ struct KeyEvent {
 
 namespace m9kb {
 // The arrows and Home, for rotary.h and main.cpp.
-struct Nav { int8_t dx = 0, dy = 0; bool home = false; uint8_t action = 0; };
+struct Nav { int8_t dx = 0, dy = 0; bool home = false; bool enter = false; uint8_t action = 0; };
 inline Nav& nav() { static Nav n; return n; }
 // The keys with a picture on them, for main.cpp: what they open.
 enum : uint8_t { NONE = 0, CHATS, CONTACTS, MAP, ADVERT, QUICK };
@@ -88,7 +88,7 @@ public:
             case 0x84: m9kb::nav().action = m9kb::ADVERT; return false;    // the pin under it
             case 0x88: m9kb::nav().action = m9kb::QUICK; return false;     // the triangle, bottom left
             case 0x08: case 0x86: ev.index = KEY_IDX_BACKSPACE; return true;   // Del, and Back
-            case 0x0D: ev.ch = '\n'; return true;
+            case 0x0D: m9kb::nav().enter = true; ev.ch = '\n'; return true;   // also wakes (main.cpp)
             default:
                 if (c >= 0x20 && c < 0x7F) { ev.ch = (char)c; return true; }
                 return false;                                // messages, map, Ctrl...: not used yet

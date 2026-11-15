@@ -115,10 +115,12 @@
 #define PIN_M9_BUZZER     9
 
 // ---- GPS, UART ---------------------------------------------------------------------
-// Receives on 3 (MeshCore's M9 build; Wadamesh confirmed it with the raw sentences on
-// a real one - Meshtastic's 2 is the other end).
-#define PIN_GPS_RX     3    // ESP32 receives here
-#define PIN_GPS_TX     2
+// Receives on 2: measured on a real v1.1 M9 (Zack, 2026-11-14: NMEA at 115200 on pin 2,
+// not a byte on 3 at any speed). MeshCore's build and Wadamesh's notes say 3, so a v1.0
+// may differ: GPS_PINS_UNSURE makes gps.h try the other line after 6 s of silence.
+#define PIN_GPS_RX     2    // ESP32 receives here
+#define PIN_GPS_TX     3
+#define GPS_PINS_UNSURE 1
 #define PIN_GPS_PPS    4
 #define PIN_GPS_EN     11   // active LOW on v1.0, HIGH on v1.1 (io_expander.h picks)
 #define PIN_GPS_RST    5    // through a transistor: HIGH holds it in reset (io_expander.h)

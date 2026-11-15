@@ -2760,6 +2760,12 @@ void loop() {
   if (dimmer.asleep() && btnTap) { btnPress = true; btnTap = false; }
 #endif
 #if INW_M9
+  // The centre key wakes it too, as on Wadamesh (testers kept thinking it had hung).
+  // Only waking: the Enter itself is dropped with the other keys while dark.
+  if (m9kb::nav().enter) {
+    m9kb::nav().enter = false;
+    if (dimmer.asleep()) btnPress = true;
+  }
   // Awake, Home goes to the home screen, like a phone's; on the home screen or the lock
   // face it locks and turns the screen off as above. The keys with pictures on them are
   // read here and acted on below (keyboard.h).
