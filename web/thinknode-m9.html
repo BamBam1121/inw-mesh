@@ -159,6 +159,15 @@
     <pre style="margin:12px 0 0;white-space:pre-wrap;font-family:var(--mono);font-size:13px">esptool.py --chip esp32s3 write_flash 0x0 squatch-mesh-thinknode-m9-1.2.6-full.bin</pre>
   </div>
 
+  <h2 id="launcher" style="margin-top:34px">With Launcher (multi-boot)</h2>
+  <div class="panel">
+    <p class="sub" style="font-size:14px;margin:0">Running Squatch Mesh next to other firmware from
+    <a href="https://github.com/bmorcelli/Launcher" rel="noopener">Launcher</a>? Install the
+    <b>-full.bin</b> above, not firmware.bin on its own: only the full image tells Launcher to make the
+    storage space Squatch Mesh keeps your keys, contacts and settings in. Installed from firmware.bin alone,
+    it has nowhere to save and starts as new every time.</p>
+  </div>
+
   <h2 style="margin-top:34px">Tell us how it went</h2>
   <div class="panel" style="margin-bottom:60px">
     <p class="sub" style="font-size:14px;margin:0">Good or bad, it helps: <a href="/help">the help page</a>
