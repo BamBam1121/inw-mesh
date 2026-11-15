@@ -409,6 +409,7 @@ int shakeX() {
 void render(uint8_t kind, Canvas& f, lgfx::LovyanGFX& d, float p) {
   p = clamp01(p);
   if (T().scene == SCENE_HALLOWEEN) { halloweenRender(kind, f, d, p); return; }
+  if (T().scene == SCENE_SQUATCHMAS) { squatchmasRender(kind, f, d, p); return; }
   switch (style()) {
   case STYLE_BLOCKS: kind == 0 ? blocksOn(f, d, p) : blocksOff(f, d, p, kind == 2); break;
   case STYLE_HERO:   kind == 0 ? heroOn(f, d, p)   : heroOff(f, d, p, kind == 2);   break;
@@ -483,7 +484,7 @@ namespace k {
 // sprite and a clock that ticks 16 ms per frame, and stops at a chosen moment.
 lgfx::LovyanGFX* s_target = nullptr;
 bool s_test = false, s_stopped = false;
-uint32_t s_vclock = 0, s_stopMs = 0, s_frames = 0;
+uint32_t s_vclock = 0, s_stopMs = 0, s_frames = 0, s_vstep = 16;
 lgfx::LovyanGFX* P() { return s_target ? s_target : (lgfx::LovyanGFX*)nav.display(); }
 // A board can ask for its screen changes to run faster (BOARD_FX_SPEED_PCT, the
 // T-Deck: 250): every one of them is timed on this clock, so they all shorten together
@@ -499,9 +500,22 @@ uint32_t tnow() {
 }
 bool testStop(uint32_t t0) {
   s_frames++;
-  if (!s_test) { app::keysPump(); return false; }   // once a frame: keys typed during the animation are kept
+  if (!s_test) {
+    app::keysPump();                                 // once a frame: keys typed during the animation are kept
+#ifdef BOARD_FX_FRAME_MS
+    // The pager draws a frame of a screen change about every 24 ms, evenly. A board
+    // that can go faster drew them as quick as it could, unevenly, and the same
+    // time-based motion looked rushed and jerky next to the pager: hold each frame to
+    // the pager's rhythm.
+    static uint32_t s_last = 0;
+    const uint32_t gap = millis() - s_last;
+    if (gap < BOARD_FX_FRAME_MS) delay(BOARD_FX_FRAME_MS - gap);
+    s_last = millis();
+#endif
+    return false;
+  }
   if (!s_test) return false;
-  s_vclock += 16;
+  s_vclock += s_vstep;
   if (s_vclock - t0 > s_stopMs) s_stopped = true;
   return s_stopped;
 }
@@ -601,6 +615,7 @@ __attribute__((weak)) bool auroraSleep(Canvas&) { return false; }
 namespace {
 bool themeTransition(Trans kind, Canvas& from, Canvas& to) {
   if (T().scene == SCENE_HALLOWEEN) return halloweenTransition(kind, from, to);
+  if (T().scene == SCENE_SQUATCHMAS) return squatchmasTransition(kind, from, to);
   switch (style()) {
   case STYLE_BLOCKS: return blocksTransition(kind, from, to);
   case STYLE_HERO:   return heroTransition(kind, from, to);
@@ -642,6 +657,14 @@ void playTo(uint8_t kind, Canvas& frame, uint16_t ms) {
 
 void transition(Trans kind, Canvas& from, Canvas& to) {
   if (kind == Trans::None) { to.pushSprite(P(), 0, 0); return; }
+#if INW_DEV
+  // How long it really took and in how many frames, to compare with the pager.
+  struct Timed {
+    Trans k; uint32_t t0, f0;
+    explicit Timed(Trans kk) : k(kk), t0(millis()), f0(s_frames) {}
+    ~Timed() { if (!s_test) Serial.printf("[fxtime] kind %d: %lu frames in %lu ms\n", (int)k, (unsigned long)(s_frames - f0), (unsigned long)(millis() - t0)); }
+  } timed(kind);
+#endif
   if (kind == Trans::Wake)  { screenOn(to); return; }
   if (kind == Trans::Sleep) { screenOff(from); return; }
   // Every theme draws its own (fx_<theme>.cpp); anything one doesn't handle cuts.
@@ -652,8 +675,8 @@ void transition(Trans kind, Canvas& from, Canvas& to) {
 // One moment of a screen change, for checking it over USB: dst starts as `from`
 // (as the panel would), the transition runs on a 16 ms-a-frame clock, and stops
 // once atMs has passed.
-void transitionFrame(Trans kind, Canvas& from, Canvas& to, lgfx::LovyanGFX& dst, uint32_t atMs) {
-  s_target = &dst; s_test = true; s_stopped = false; s_vclock = 0; s_stopMs = atMs;
+void transitionFrame(Trans kind, Canvas& from, Canvas& to, lgfx::LovyanGFX& dst, uint32_t atMs, uint32_t stepMs) {
+  s_target = &dst; s_test = true; s_stopped = false; s_vclock = 0; s_stopMs = atMs; s_vstep = stepMs ? stepMs : 16;
   if (kind == Trans::Wake) dst.fillScreen(TFT_BLACK);      // waking starts from dark
   else from.pushSprite(&dst, 0, 0);
   transition(kind, from, to);
@@ -662,9 +685,12 @@ void transitionFrame(Trans kind, Canvas& from, Canvas& to, lgfx::LovyanGFX& dst,
 
 uint32_t framesDrawn() { return s_frames; }
 
-// Halloween's lightning and melt want a little longer than the others' wake and sleep.
-void screenOn(Canvas& frame)  { if (!themeWake(frame)) playTo(0, frame, T().scene == SCENE_HALLOWEEN ? 520 : 320); }
-void screenOff(Canvas& frame) { if (!themeSleep(frame)) playTo(1, frame, T().scene == SCENE_HALLOWEEN ? 440 : 280); }
+// Halloween's lightning and melt, and Squatchmas's lights and star, want a little longer
+// than the others' wake and sleep.
+static uint16_t wakeMs()  { return T().scene == SCENE_HALLOWEEN ? 520 : T().scene == SCENE_SQUATCHMAS ? 640 : 320; }
+static uint16_t sleepMs() { return T().scene == SCENE_HALLOWEEN ? 440 : T().scene == SCENE_SQUATCHMAS ? 520 : 280; }
+void screenOn(Canvas& frame)  { if (!themeWake(frame)) playTo(0, frame, wakeMs()); }
+void screenOff(Canvas& frame) { if (!themeSleep(frame)) playTo(1, frame, sleepMs()); }
 void powerDown(Canvas& frame) { playTo(2, frame, 1150); }
 
 }  // namespace fx

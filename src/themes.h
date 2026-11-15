@@ -67,6 +67,17 @@ namespace tunes {
                                       {587, 80}, {0, 50}, {494, 360}};
   static const ToneStep HAL_CHG[]  = {{220, 300, 660}, {0, 50}, {660, 90}, {0, 40}, {784, 200}};
 
+  // Squatchmas: old carols everyone knows (all long out of copyright), on a music box,
+  // and sleigh bells. Start-up is the "Jingle Bells" chorus; a message is two shakes of
+  // the sleigh bells; a direct message opens "We Wish You a Merry Christmas"; a mention
+  // is "Deck the Halls" (fa-la-la-la-la); the charger is a quick run up the bells.
+  static const ToneStep SQM_BOOT[] = {{659, 190}, {659, 190}, {659, 380}, {659, 190}, {659, 190}, {659, 380},
+                                      {659, 190}, {784, 190}, {523, 285}, {587, 95}, {659, 620}};
+  static const ToneStep SQM_MSG[]  = {{1320, 230}, {0, 70}, {1480, 320}};
+  static const ToneStep SQM_DM[]   = {{587, 190}, {784, 190}, {784, 95}, {880, 95}, {784, 95}, {740, 95}, {659, 190}, {659, 300}};
+  static const ToneStep SQM_MEN[]  = {{587, 330}, {523, 110}, {494, 220}, {440, 220}, {392, 460}};
+  static const ToneStep SQM_CHG[]  = {{1047, 90}, {1319, 90}, {1568, 90}, {2093, 360}};
+
   #define J(name, steps, wave, bell) static const Jingle name = {#name, steps, sizeof(steps) / sizeof(steps[0]), wave, bell}
   J(INW_BOOT_J, INW_BOOT, WAVE_SINE, false);
   J(INW_MSG_J,  INW_MSG,  WAVE_SINE, false);
@@ -93,6 +104,11 @@ namespace tunes {
   J(HAL_DM_J,   HAL_DM,   WAVE_TRIANGLE, false);
   J(HAL_MEN_J,  HAL_MEN,  WAVE_TRIANGLE, false);
   J(HAL_CHG_J,  HAL_CHG,  WAVE_TRIANGLE, false);
+  J(SQM_BOOT_J, SQM_BOOT, WAVE_CHIME, true);
+  J(SQM_MSG_J,  SQM_MSG,  WAVE_JINGLE, false);
+  J(SQM_DM_J,   SQM_DM,   WAVE_CHIME, true);
+  J(SQM_MEN_J,  SQM_MEN,  WAVE_CHIME, true);
+  J(SQM_CHG_J,  SQM_CHG,  WAVE_CHIME, true);
   #undef J
 }
 
@@ -145,5 +161,18 @@ static const ThemeSpec THEMES[] = {
     {{14, 0x80 | 14, 14, 0x80 | 45, 14, 0x80 | 14, 14}, 7},
     {{14, 0x80 | 10, 14, 0x80 | 10, 14, 0x80 | 30, 14}, 7},
     7, 0x40, &tunes::HAL_CHG_J, SCENE_HALLOWEEN },
+  // Squatchmas: the Squatch look again, with its own snowy lock scene (the sasquatch in
+  // his holiday outfits, somewhere new every time the screen comes on), its own screen
+  // changes (fx_squatchmas.cpp) and carols. Gold accent on pine green, cranberry for
+  // what's unread.
+  { "Squatchmas", "snow, lights, and a new holiday outfit every time it wakes",
+    { 0x07110c, 0x0d1a13, 0x1e3a2a, 0xffcf5a, 0x8d5b3a, 0xf4ede0, 0x8ea595, 0xff6b6b,
+      0xff4d4d, 0xfffaf0, 0x13231a, 0x4a1416, 0x9ad7ff, 0x1b3024, 0x3a1418 },
+    STYLE_INW, &tunes::SQM_BOOT_J, &tunes::SQM_MSG_J, &tunes::SQM_DM_J, &tunes::SQM_MEN_J,
+    // Sleigh bells: quick shakes.
+    {{47, 0x80 | 6, 47, 0x80 | 6, 47}, 5},
+    {{14, 0x80 | 10, 47, 0x80 | 6, 47, 0x80 | 6, 47}, 7},
+    {{14, 0x80 | 12, 14, 0x80 | 12, 14, 0x80 | 20, 47}, 7},
+    7, 0x40, &tunes::SQM_CHG_J, SCENE_SQUATCHMAS },
 };
 static constexpr uint8_t THEME_COUNT = sizeof(THEMES) / sizeof(THEMES[0]);

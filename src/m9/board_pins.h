@@ -43,6 +43,10 @@
 // Under Launcher (multi-boot) installed from firmware.bin alone there is no storage partition:
 // keep the store on the SD card then (dataio.h storeOnSd), not lose everything at every start.
 #define BOARD_STORE_SD_FALLBACK 1
+// The lock scene at the pager's pace (96 ms a step, matched side by side on a T-Deck) and screen
+// changes at its 24 ms frame rhythm (home.cpp, fx.cpp).
+#define BOARD_SCENE_STEP_MS     96
+#define BOARD_FX_FRAME_MS       24
 
 // Wi-Fi updates come from firmware/thinknode-m9/ and must carry a signature naming
 // "thinknode-m9" (ota.cpp): pager or T-Deck firmware can never be installed on it this way.

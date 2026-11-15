@@ -42,7 +42,8 @@ void powerDown(Canvas& frame);
 enum class Trans : uint8_t { None, Forward, Back, Unlock, Lock, Wake, Sleep };
 void transition(Trans kind, Canvas& from, Canvas& to);
 // The same, stopped atMs in and drawn into dst instead of the panel (USB checks).
-void transitionFrame(Trans kind, Canvas& from, Canvas& to, lgfx::LovyanGFX& dst, uint32_t atMs);
+// stepMs: the test clock's tick per frame (16 by default); the frame shown is the last at or before atMs.
+void transitionFrame(Trans kind, Canvas& from, Canvas& to, lgfx::LovyanGFX& dst, uint32_t atMs, uint32_t stepMs = 16);
 uint32_t framesDrawn();               // frames any transition has drawn since boot (frame-rate checks)
 
 // For checking frames over USB: one moment of a transition, drawn into dst.

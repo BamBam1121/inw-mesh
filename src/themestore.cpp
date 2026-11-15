@@ -64,11 +64,12 @@ namespace themes {
 void load() {
   Preferences p;
   if (!p.begin(NS, false)) return;
-  // Halloween: every start moves on to the next costume and the next place. The very
+  // Halloween and Squatchmas: every start moves on to the next costume and the next place. The very
   // first start begins somewhere at random, so not everyone meets the same one.
   const uint32_t starts = p.getUInt("starts", esp_random() % (spooky::COSTUMES * spooky::PLACES)) + 1;
   p.putUInt("starts", starts);
   spooky::pick(starts);
+  jolly::pick(starts);
   for (uint8_t i = 0; i < CUSTOM_MAX; i++) {
     char k[3];
     key(i, k);

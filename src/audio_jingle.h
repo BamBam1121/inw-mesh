@@ -6,7 +6,10 @@
 #include <math.h>
 #include "es8311_codec.h"
 
-enum : uint8_t { WAVE_SINE = 0, WAVE_SQUARE, WAVE_TRIANGLE };
+// WAVE_CHIME: a music box / celesta (the note with its octave and twelfth over it).
+// WAVE_JINGLE: sleigh bells - a metal bell's out-of-tune overtones and a hiss, shaken
+// fourteen times a second, each shake ringing out before the next.
+enum : uint8_t { WAVE_SINE = 0, WAVE_SQUARE, WAVE_TRIANGLE, WAVE_CHIME, WAVE_JINGLE };
 
 // freq 0 is a rest. slideTo, when set, glides the pitch there over the step.
 struct ToneStep {
@@ -72,6 +75,7 @@ private:
     switch (_j->wave) {
       case WAVE_SQUARE:   return phase < PI ? 0.45f : -0.45f;   // squares are loud; tame them
       case WAVE_TRIANGLE: return phase < PI ? (2.0f * phase / PI - 1.0f) : (3.0f - 2.0f * phase / PI);
+      case WAVE_CHIME:    return 0.62f * sinf(phase) + 0.26f * sinf(2 * phase) + 0.12f * sinf(3 * phase);
       default:            return sinf(phase);
     }
   }
@@ -90,6 +94,16 @@ private:
           const float f = s.slideTo ? s.freq + (s.slideTo - s.freq) * (float)done / total : s.freq;
           _phase += 2.0f * PI * f / sr;
           if (_phase > 2.0f * PI) _phase -= 2.0f * PI;
+          float v;
+          if (_j->wave == WAVE_JINGLE) {                // its overtones don't line up, so each keeps its own phase
+            _phase2 += 2.0f * PI * f * 2.76f / sr; if (_phase2 > 2.0f * PI) _phase2 -= 2.0f * PI;
+            _phase3 += 2.0f * PI * f * 5.40f / sr; if (_phase3 > 2.0f * PI) _phase3 -= 2.0f * PI;
+            const float hit = fmodf((float)done / sr, 1.0f / 14.0f);       // since the last shake
+            const float ring = expf(-hit * 45.0f);
+            _noise = _noise * 1664525u + 1013904223u;
+            const float hiss = (float)(int32_t)(_noise >> 8 << 8) / 2147483648.0f;
+            v = (0.45f * sinf(_phase) + 0.3f * sinf(_phase2) + 0.15f * sinf(_phase3)) * (0.35f + 0.65f * ring) + hiss * 0.28f * ring;
+          } else v = sample(_phase);
           if (_j->bell) {
             const float t = (float)done / sr;
             amp = 22000.0f * min(1.0f, t * 400.0f) * expf(-t * 6.0f);   // 2.5 ms attack, ring out
@@ -99,7 +113,7 @@ private:
             if (done < fade) amp *= (float)done / fade;
             else if (done > total - fade) amp *= (float)(total - done) / fade;
           }
-          buf[n] = (int16_t)(sample(_phase) * amp);
+          buf[n] = (int16_t)(v * amp);
         } else {
           buf[n] = 0;
         }
@@ -117,6 +131,7 @@ private:
   const Jingle* _j = nullptr;
   volatile bool _busy = false;
   uint8_t _vol = 60;
-  float _phase = 0;
+  float _phase = 0, _phase2 = 0, _phase3 = 0;
+  uint32_t _noise = 12345;
   uint32_t _fed = 0, _late = 0;
 };

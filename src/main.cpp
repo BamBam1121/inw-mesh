@@ -1544,6 +1544,15 @@ static void usbCommands() {
                     (unsigned long)hi, 1e6f / hi, (unsigned long)(hi - lo));
       continue;
     }
+#if BOARD_SCENE_STEP_MS
+    // "scenestep N": the lock scene's ms per step (the sasquatch's walking pace), live.
+    if (!strncmp(line, "scenestep", 9)) {
+      extern uint32_t g_sceneStepMs;
+      if (line[9]) g_sceneStepMs = max(10, atoi(line + 9));
+      Serial.printf("[scenestep] %lu ms a step\n", (unsigned long)g_sceneStepMs);
+      continue;
+    }
+#endif
     // "loopcad": how even the real loop's drawn frames have been since the last call
     // (this reflects the frame pacing; "cadence" above measures raw cost without it).
     if (!strcmp(line, "loopcad")) {
@@ -2862,7 +2871,7 @@ void loop() {
   // Screen went dark: next wake lands on the lock face.
   static bool wasAsleep = false;
   if (dimmer.asleep() && !wasAsleep && ui_settings.lockOnSleep) app::lock();
-  if (dimmer.asleep() && !wasAsleep) spooky::next();   // Halloween: another costume and place each time the screen goes dark
+  if (dimmer.asleep() && !wasAsleep) { spooky::next(); jolly::next(); }   // Halloween: another costume and place each time the screen goes dark
   wasAsleep = dimmer.asleep();
 
   lap(0);
