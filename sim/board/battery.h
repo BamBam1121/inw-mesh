@@ -26,6 +26,11 @@ public:
   bool chargeHeld() const { return false; }
   void report() {}
   void configReport() {}
+  // Time to full / time left (the T-Deck's battery_est.h): not known in the simulator.
+  int minutesToFull() const { return -1; }
+  int minutesLeft() const { return -1; }
+  bool guessing() const { return false; }
+  bool leftKnown() const { return false; }
   uint8_t pct = 87;
   bool plugged = false;
 };

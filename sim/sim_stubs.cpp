@@ -181,6 +181,7 @@ void openMap(double, double, const char*) {}
 void openSettings() {}
 void openContacts() {}
 void openContactDetail(const uint8_t*) {}
+void openQuickSettings() {}
 #endif
 void openUnread() {}
 static uint8_t s_simNight = 0, s_simNFrom = 21, s_simNTo = 7;
@@ -210,7 +211,7 @@ bool holding() { return false; }
 namespace wifi {
 bool enabled() { return true; }
 bool connected() { return sim::wifiOn; }
-void setEnabled(bool) {}
+void setEnabled(bool, bool) {}
 const char* statusText() { return "Trailhead 192.168.1.40 -61 dBm"; }
 const char* shortStatus() { return sim::wifiOn ? "Trailhead" : "off"; }
 uint8_t savedCount() { return 1; }
@@ -249,7 +250,7 @@ namespace report {
 static bool s_on = true;
 bool enabled() { return s_on; }
 void setEnabled(bool on) { s_on = on; }
-bool sendLog(const char*) { return true; }
+bool sendLog(const char*, const String&) { return true; }
 }
 #include "dataio.h"
 SdState sdState() { return SD_MOUNTED; }
@@ -272,3 +273,21 @@ bool sim::wifiOn = true;
 bool inwQueueAppend(const char*, const uint8_t*, size_t) { return true; }
 bool inwQueueReplace(const char*, const uint8_t*, size_t) { return true; }
 void inwDropPath(const char*) {}
+
+// Added since October (the simulator only draws screens; none of these do anything here).
+namespace app {
+static uint8_t s_locPrec = 0;
+uint8_t locPrecision() { return s_locPrec; }
+void setLocPrecision(uint8_t p) { s_locPrec = p; }
+}
+void History::requestRescue() {}
+uint16_t History::rescue(bool) { return 0; }
+void History::noteCleared(const ConvKey*, uint32_t) {}
+#include "archive.h"
+namespace archive {
+void push(const HistMsg&) {}
+bool has(const ConvKey&) { return false; }
+void read(const ConvKey&, std::vector<String>&, int, int) {}
+void forget(const ConvKey&) {}
+void forgetAll() {}
+}

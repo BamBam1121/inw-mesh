@@ -294,4 +294,11 @@ inline void halloween(lgfx::LovyanGFX& d, const Theme& t, float phase, float scr
   halloween(d, t, SpookyFrame{W, GROUND, MASCOT_X, NARROW, 0, 0, 0, 0}, phase, scroll, unread);
 }
 
+#include "scene_squatchmas.h"
+
+// The Squatchmas theme's scene, laid out for this screen.
+inline void squatchmas(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll, bool unread) {
+  squatchmas(d, t, SpookyFrame{W, GROUND, MASCOT_X, NARROW, 0, 0, 0, 0}, phase, scroll, unread);
+}
+
 }  // namespace scenes

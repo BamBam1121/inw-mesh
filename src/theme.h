@@ -5,8 +5,9 @@
 
 enum : uint8_t { STYLE_INW = 0, STYLE_BLOCKS, STYLE_HERO, STYLE_AURORA };
 // What the lock screen shows, when it isn't the style's own scene. Halloween has the
-// Squatch look (cards, screen changes) with its own streets and a dressed-up sasquatch.
-enum : uint8_t { SCENE_STYLE = 0, SCENE_HALLOWEEN };
+// Squatch look (cards, screen changes) with its own streets and a dressed-up sasquatch;
+// Squatchmas the same with snow, lights and his holiday outfits.
+enum : uint8_t { SCENE_STYLE = 0, SCENE_HALLOWEEN, SCENE_SQUATCHMAS };
 
 struct Palette {
     uint32_t bg, panel, line, green, greenDim, txt, dim, amber;

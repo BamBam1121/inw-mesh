@@ -47,6 +47,25 @@ inline const char* placeName(uint8_t p) {
 }
 }  // namespace spooky
 
+// Squatchmas: what he's wearing and where he's out walking in the snow. Moves on the
+// same way as Halloween's: every start, and every time the screen goes dark.
+namespace jolly {
+enum : uint8_t { SANTA = 0, ELF, REINDEER, SWEATER, SNOWMAN, NUTCRACKER, WOOLIES, OUTFITS };
+enum : uint8_t { CABIN = 0, TREEFARM, LAKE, TOWER, PLACES };
+inline uint8_t& outfit() { static uint8_t v = SANTA; return v; }
+inline uint8_t& place() { static uint8_t v = CABIN; return v; }
+inline void pick(uint32_t n) { outfit() = n % OUTFITS; place() = n % PLACES; }
+inline void next() { outfit() = (outfit() + 1) % OUTFITS; place() = (place() + 1) % PLACES; }
+inline const char* outfitName(uint8_t c) {
+    static const char* const N[OUTFITS] = {"santa", "elf", "reindeer", "sweater", "snowman", "nutcracker", "woolies"};
+    return N[c % OUTFITS];
+}
+inline const char* placeName(uint8_t p) {
+    static const char* const N[PLACES] = {"cabin", "treefarm", "lake", "tower"};
+    return N[p % PLACES];
+}
+}  // namespace jolly
+
 namespace mascot {
 
 inline uint16_t rgb(uint32_t hex) { return lgfx::color565(hex >> 16, (hex >> 8) & 0xFF, hex & 0xFF); }
@@ -92,6 +111,20 @@ inline void drawSasquatch(lgfx::LovyanGFX& d, const Theme& t, int x, int groundY
     const bool mummy = dress == spooky::MUMMY;
     const uint16_t sheet = rgb(0xe6eaf2), sheetShade = rgb(0xb4bccd), bone = rgb(0xf2efe2), wrap = rgb(0x9c9072);
 
+    // Dressed for Squatchmas, or 255: himself.
+    const uint8_t outfit = t.scene == SCENE_SQUATCHMAS ? jolly::outfit() : 255;
+    const uint16_t xRed = rgb(0xd62f2f), xRedDark = rgb(0x8f1b1b), xFur = rgb(0xf4f1ea), xFurShade = rgb(0xc9c3b6);
+    const uint16_t xGold = rgb(0xffcf4a), xGreen = rgb(0x2f9a4c), xGreenDark = rgb(0x1c5e2f), xBlack = rgb(0x18161c);
+    // Sleeves cover his arms to the wrist (the mitts stay his own); trousers his legs.
+    bool sleeved = true;
+    uint16_t sleeveNear = xRed, sleeveFar = xRedDark;
+    switch (outfit) {
+        case jolly::SANTA: case jolly::SWEATER: case jolly::NUTCRACKER: break;
+        case jolly::ELF:     sleeveNear = xGreen; sleeveFar = xGreenDark; break;
+        case jolly::SNOWMAN: sleeveNear = xFur; sleeveFar = xFurShade; break;
+        default:             sleeved = false; break;
+    }
+
     const uint16_t body = zombie ? rgb(0x6f9a52) : bones ? rgb(0x2b2535) : mummy ? rgb(0xd8ceb0) : t.greenDim;
     uint16_t nearC = mix(body, 0xFFFF, 0.2f);            // near limbs catch the light
     uint16_t farC = mix(body, t.bg, 0.45f);              // far limbs in shadow
@@ -99,6 +132,11 @@ inline void drawSasquatch(lgfx::LovyanGFX& d, const Theme& t, int x, int groundY
     const uint16_t shade = mix(body, t.bg, 0.3f);        // fur strokes
     const uint16_t face = mix(body, t.txt, 0.42f);       // bare face and palms
     const uint16_t dark = mix(body, t.bg, 0.75f);        // brow shadow, nose, mouth
+    // Squatchmas trousers and stockings: Santa's red, the nutcracker's navy, the elf's white.
+    const uint16_t navy = rgb(0x26336e);
+    const uint16_t legNearC = outfit == jolly::SANTA ? xRed : outfit == jolly::NUTCRACKER ? navy : outfit == jolly::ELF ? xFur : nearC;
+    const uint16_t legFarC = outfit == jolly::SANTA ? xRedDark : outfit == jolly::NUTCRACKER ? mix(navy, t.bg, 0.4f)
+                           : outfit == jolly::ELF ? xFurShade : farC;
 
     // The stride. Each leg swings with cos; the one moving forward is in the air (its
     // foot lifts), the other is planted as the ground scrolls under it. The body rides
@@ -127,6 +165,26 @@ inline void drawSasquatch(lgfx::LovyanGFX& d, const Theme& t, int x, int groundY
                 const float f = k / 4.0f, wx = lerp(kx, fx, f), wy = lerp(ky, fy, f);
                 d.drawLine((int)(wx - Sf(3)), (int)(wy - Sf(1)), (int)(wx + Sf(3)), (int)(wy + Sf(1)), wrap);
             }
+        const bool farLeg = c == legFarC;
+        if (outfit == jolly::ELF) {                       // striped stockings and curly-toed shoes
+            const uint16_t stripe = farLeg ? xRedDark : xRed;
+            for (int k = 0; k < 5; k++) {
+                const float f = k < 2 ? 0.35f + k * 0.35f : (k - 1) * 0.27f;
+                const float sx = k < 2 ? lerp(x - Sf(4), kx, f) : lerp(kx, fx, f);
+                const float sy = k < 2 ? lerp(hipY + Sf(2), ky, f) : lerp(ky, fy, f);
+                d.drawWideLine((int)(sx - Sf(3)), (int)sy, (int)(sx + Sf(3)), (int)(sy + Sf(0.6f)), Sf(1.5f), stripe);
+            }
+            const float tx = fx + Sf(8), ty = fy + Sf(1) + lift * 0.35f;
+            d.drawWideLine((int)(fx - Sf(4)), (int)(fy + Sf(1)), (int)tx, (int)ty, Sf(3.4f), farLeg ? xGreenDark : xGreen);
+            d.drawWideLine((int)tx, (int)ty, (int)(tx + Sf(3)), (int)(ty - Sf(3)), Sf(1.6f), farLeg ? xGreenDark : xGreen);
+            d.fillCircle((int)(tx + Sf(3)), (int)(ty - Sf(3)), max(1, S(1.3f)), xGold);
+        }
+        if (outfit == jolly::SANTA || outfit == jolly::NUTCRACKER) {   // black boots to mid-shin
+            const float bx = lerp(kx, fx, 0.5f), by = lerp(ky, fy, 0.5f);
+            d.drawWideLine((int)bx, (int)by, (int)fx, (int)fy, Sf(6), xBlack);
+            d.drawWideLine((int)(fx - Sf(4)), (int)(fy + Sf(1)), (int)(fx + Sf(8)), (int)(fy + Sf(1) + lift * 0.35f), Sf(3.8f), xBlack);
+            if (outfit == jolly::SANTA) d.drawWideLine((int)(bx - Sf(3.5f)), (int)by, (int)(bx + Sf(3.5f)), (int)(by + Sf(0.5f)), Sf(2.2f), xFur);
+        }
     };
     // Arm from the shoulder: hanging and swinging, or raised (wave / armsUp).
     const float shx = x + Sf(7), shy = shY + Sf(5);
@@ -149,15 +207,22 @@ inline void drawSasquatch(lgfx::LovyanGFX& d, const Theme& t, int x, int groundY
             ex = lerp(ex, nearSide ? x - Sf(2) : x + Sf(14), up); ey = lerp(ey, nearSide ? shY - Sf(6) : shY - Sf(14), up);
             hx = lerp(hx, (nearSide ? x - Sf(9) : x + Sf(24)) + wob, up); hy = lerp(hy, nearSide ? shY - Sf(24) : shY - Sf(34), up);
         }
-        d.drawWedgeLine((int)shx, (int)shy, (int)ex, (int)ey, Sf(6), Sf(5), c);
-        d.drawWedgeLine((int)ex, (int)ey, (int)hx, (int)hy, Sf(5), Sf(4), c);
+        const uint16_t armC = sleeved ? (nearSide ? sleeveNear : sleeveFar) : c;
+        d.drawWedgeLine((int)shx, (int)shy, (int)ex, (int)ey, Sf(6), Sf(5), armC);
+        d.drawWedgeLine((int)ex, (int)ey, (int)hx, (int)hy, Sf(5), Sf(4), armC);
         d.fillCircle((int)hx, (int)hy, S(3.6f), c);       // a big mitt of a hand
-        // Long hair hanging off the forearm.
-        const float mx = (ex + hx) * 0.5f, my = (ey + hy) * 0.5f;
-        const float fdx = hx - ex, fdy = hy - ey, fl = sqrtf(fdx * fdx + fdy * fdy) + 0.01f;
-        const float side = fdx >= 0 ? -1.0f : 1.0f;       // the underside of the forearm
-        tuft(d, mx - fdy / fl * Sf(3) * side, my + fdx / fl * Sf(3) * side, -fdy / fl * side - 0.3f, fdx / fl * side + 0.9f, Sf(4.5f), Sf(1.8f), c);
-        tuft(d, ex, ey + Sf(2), -0.5f, 1.0f, Sf(4.5f), Sf(2), c);
+        if (sleeved) {                                    // a cuff at the wrist
+            const uint16_t cuff = outfit == jolly::SANTA ? xFur : outfit == jolly::SWEATER ? xGreen
+                                : outfit == jolly::NUTCRACKER ? xGold : outfit == jolly::ELF ? xRed : xFurShade;
+            d.drawWideLine((int)lerp(ex, hx, 0.66f), (int)lerp(ey, hy, 0.66f), (int)lerp(ex, hx, 0.8f), (int)lerp(ey, hy, 0.8f), Sf(5.2f), cuff);
+        } else {
+            // Long hair hanging off the forearm.
+            const float mx = (ex + hx) * 0.5f, my = (ey + hy) * 0.5f;
+            const float fdx = hx - ex, fdy = hy - ey, fl = sqrtf(fdx * fdx + fdy * fdy) + 0.01f;
+            const float side = fdx >= 0 ? -1.0f : 1.0f;   // the underside of the forearm
+            tuft(d, mx - fdy / fl * Sf(3) * side, my + fdx / fl * Sf(3) * side, -fdy / fl * side - 0.3f, fdx / fl * side + 0.9f, Sf(4.5f), Sf(1.8f), c);
+            tuft(d, ex, ey + Sf(2), -0.5f, 1.0f, Sf(4.5f), Sf(2), c);
+        }
         if (bones) {
             d.drawWideLine((int)shx, (int)shy, (int)ex, (int)ey, Sf(1.3f), bone);
             d.drawWideLine((int)ex, (int)ey, (int)hx, (int)hy, Sf(1.3f), bone);
@@ -182,13 +247,50 @@ inline void drawSasquatch(lgfx::LovyanGFX& d, const Theme& t, int x, int groundY
             d.fillRect(px - S(3), py, max(1, S(1.5f)), max(1, S(1.5f)), rgb(0x2a1206));
             d.fillRect(px + S(2), py, max(1, S(1.5f)), max(1, S(1.5f)), rgb(0x2a1206));
         }
+        // Squatchmas: what he carries in the near hand while it's down.
+        if (outfit != 255 && nearSide && wave <= 0 && up <= 0) {
+            const int px = (int)hx, py = (int)hy;
+            if (outfit == jolly::SANTA || outfit == jolly::SWEATER) {      // a present, hanging by its ribbon
+                const uint16_t box = outfit == jolly::SANTA ? xGreen : xGold, rib = outfit == jolly::SANTA ? xGold : xRed;
+                const int bw = max(6, S(10)), bh = max(5, S(8)), bx = px - bw / 2, by = py + S(4);
+                d.drawLine(px, py, px, by, rib);
+                d.fillRect(bx, by, bw, bh, box);
+                d.fillRect(px - max(1, S(1)), by, max(2, S(2)), bh, rib);
+                d.fillRect(bx, by + bh / 2 - max(1, S(0.8f)), bw, max(1, S(1.6f)), rib);
+                d.fillCircle(px - max(1, S(2)), by - max(1, S(1)), max(1, S(1.7f)), rib);
+                d.fillCircle(px + max(1, S(2)), by - max(1, S(1)), max(1, S(1.7f)), rib);
+            } else if (outfit == jolly::ELF) {                             // a candy cane, as a walking stick
+                const float bx = hx + Sf(3), by = gy - Sf(4);
+                d.drawWideLine(px, py, (int)bx, (int)by, Sf(2.4f), xFur);
+                for (int k = 1; k <= 4; k++) {
+                    const float f = k / 5.0f, sx = lerp(hx, bx, f), sy = lerp(hy, by, f);
+                    d.drawWideLine((int)(sx - Sf(1.2f)), (int)(sy - Sf(1)), (int)(sx + Sf(1.2f)), (int)(sy + Sf(1)), Sf(1.4f), xRed);
+                }
+                d.drawWideLine(px, py, (int)(hx - Sf(1)), (int)(hy - Sf(4)), Sf(2.4f), xFur);
+                d.drawWideLine((int)(hx - Sf(1)), (int)(hy - Sf(4)), (int)(hx - Sf(4)), (int)(hy - Sf(5.5f)), Sf(2.4f), xRed);
+                d.drawWideLine((int)(hx - Sf(4)), (int)(hy - Sf(5.5f)), (int)(hx - Sf(6.5f)), (int)(hy - Sf(3)), Sf(2.4f), xFur);
+                d.fillCircle(px, py, S(3.6f), c);                         // his hand round it
+            } else if (outfit == jolly::WOOLIES) {                         // a mug of cocoa, steaming
+                const int mw = max(4, S(6)), mh = max(4, S(6)), mx0 = px + S(1), my0 = py - mh / 2;
+                d.fillRect(mx0, my0, mw, mh, xRed);
+                d.drawCircle(mx0 + mw + max(1, S(1)), my0 + mh / 2, max(1, S(2)), xRed);
+                d.drawFastHLine(mx0, my0, mw, rgb(0x6b3a1e));
+                const uint16_t steam = mix(t.bg, xFur, 0.55f);
+                for (int k = 0; k < 2; k++)
+                    for (int j = 0; j < 4; j++) {
+                        const float sy0 = my0 - Sf(2 + j * 2.5f), sx0 = mx0 + Sf(1.5f + k * 2.5f) + sinf(phase * 1.6f + j * 1.1f + k) * Sf(1.2f);
+                        d.drawPixel((int)sx0, (int)sy0, steam);
+                    }
+                d.fillCircle(px, py, S(3.6f), c);
+            }
+        }
     };
 
     // Far side first: arm and leg in shadow, behind the body.
     const float armFar = a, armNear = -a;                 // arms swing against the legs
     if (!ghost || pose.armsUp > 0) arm(armFar, 0, pose.armsUp, false, ghost ? sheetShade : farC);   // under the sheet otherwise
-    leg(-a, fmaxf(0, sn) * Sf(6), farC);
-    leg(a, fmaxf(0, -sn) * Sf(6), nearC);
+    leg(-a, fmaxf(0, sn) * Sf(6), legFarC);
+    leg(a, fmaxf(0, -sn) * Sf(6), legNearC);
     const float capeSway = sinf(phase * 0.5f) * Sf(3);
     if (dress == spooky::VAMPIRE) {                       // the cape, behind him: dark outside, red inside
         const int ax = (int)(x + Sf(4)), ay = (int)(shY - Sf(3));
@@ -381,6 +483,172 @@ inline void drawSasquatch(lgfx::LovyanGFX& d, const Theme& t, int x, int groundY
             d.drawPixel(e1 + 1, eyY, eyeColor); d.drawPixel(e2 + 1, eyY, eyeColor);
         }
         d.fillEllipse((int)(hx + Sf(5)), (int)(hy + Sf(6)), max(1, S(2)), pose.mouth ? max(2, S(3)) : max(1, S(1.5f)), ink);
+    }
+
+    // ---- Squatchmas ----
+    // A coat or tunic over his chest and belly, leaving a little fur showing round it.
+    auto coat = [&](uint16_t c) {
+        d.fillTriangle((int)(x - Sf(15)), (int)(shY + Sf(4)), (int)(x + Sf(16)), (int)(shY + Sf(5)), (int)(x - Sf(14)), (int)(hipY + Sf(8)), c);
+        d.fillTriangle((int)(x + Sf(16)), (int)(shY + Sf(5)), (int)(x - Sf(14)), (int)(hipY + Sf(8)), (int)(x + Sf(12)), (int)(hipY + Sf(7)), c);
+        d.fillCircle((int)(x + Sf(8)), (int)(shY + Sf(9)), S(9), c);      // chest
+        d.fillCircle((int)(x - Sf(8)), (int)(shY + Sf(7)), S(10), c);     // over the hump
+        d.fillCircle((int)(x - Sf(3)), (int)(hipY - Sf(1)), S(10.5f), c); // belly and hips
+    };
+    if (outfit == jolly::SANTA) {
+        // His sack over his back, the red coat with white trim and a black belt.
+        const uint16_t sack = rgb(0x8a5a2b), sackDark = rgb(0x5e3b1a);
+        d.fillEllipse((int)(x - Sf(18)), (int)(shY - Sf(1)), S(12), S(11), sack);
+        d.drawLine((int)(x - Sf(24)), (int)(shY - Sf(6)), (int)(x - Sf(19)), (int)(shY + Sf(6)), sackDark);
+        d.drawWideLine((int)(x - Sf(9)), (int)(shY - Sf(7)), (int)(x + Sf(3)), (int)(shY + Sf(2)), Sf(2.6f), sackDark);
+        coat(xRed);
+        d.drawWideLine((int)(x - Sf(15)), (int)(hipY + Sf(8)), (int)(x + Sf(12)), (int)(hipY + Sf(7)), Sf(3.2f), xFur);   // hem
+        d.drawWideLine((int)(x + Sf(15)), (int)(shY + Sf(6)), (int)(x + Sf(11)), (int)(hipY + Sf(6)), Sf(2.4f), xFur);    // down the front
+        d.drawWideLine((int)(x - Sf(16)), (int)(hipY - Sf(3)), (int)(x + Sf(14)), (int)(hipY - Sf(4)), Sf(3.2f), xBlack); // belt
+        d.fillRect((int)(x + Sf(6)), (int)(hipY - Sf(6.5f)), max(3, S(5)), max(3, S(5)), xGold);
+        d.fillRect((int)(x + Sf(7.3f)), (int)(hipY - Sf(5.2f)), max(1, S(2.4f)), max(1, S(2.4f)), xBlack);
+        d.drawWideLine((int)(x - Sf(9)), (int)(shY + Sf(1)), (int)(x + Sf(13)), (int)(shY + Sf(3)), Sf(3.4f), xFur);     // fur collar
+        // A full white beard and moustache (the mouth opens in it), and the hat, its tip flopping back.
+        d.fillEllipse((int)(hx + Sf(6)), (int)(hy + Sf(9)), S(6), S(5), xFur);
+        d.fillCircle((int)(hx + Sf(2)), (int)(hy + Sf(6)), S(4), xFur);
+        d.fillCircle((int)(hx + Sf(8)), (int)(hy + Sf(13)), max(2, S(3)), xFurShade);
+        d.fillEllipse((int)(hx + Sf(9)), (int)(hy + Sf(5.5f)), max(2, S(3.5f)), max(1, S(1.6f)), xFur);
+        if (pose.mouth) d.fillEllipse(mx, my + S(1), max(1, S(1.8f)), max(1, S(pose.mouth == 2 ? 2.4f : 1.3f)), dark);
+        const float by = hy - Sf(6), flop = sinf(phase * 0.5f) * Sf(1.5f);
+        d.fillTriangle((int)(hx - Sf(10)), (int)by, (int)(hx + Sf(9)), (int)(by - Sf(1)), (int)(hx - Sf(2)), (int)(by - Sf(15)), xRed);
+        d.fillTriangle((int)(hx - Sf(6)), (int)(by - Sf(10)), (int)(hx + Sf(1)), (int)(by - Sf(14)), (int)(hx - Sf(16) + flop), (int)(by - Sf(9)), xRed);
+        d.drawWideLine((int)(hx - Sf(11)), (int)(by + Sf(0.5f)), (int)(hx + Sf(9)), (int)(by - Sf(1)), Sf(3.6f), xFur);
+        d.fillCircle((int)(hx - Sf(17) + flop), (int)(by - Sf(8)), max(2, S(3.2f)), xFur);
+    }
+    if (outfit == jolly::ELF) {
+        // A green tunic with a zigzag hem and red collar points, a long green hat with a bell.
+        coat(xGreen);
+        for (int k = 0; k < 5; k++) {
+            const float bx = x - Sf(15) + k * Sf(5.6f);
+            d.fillTriangle((int)bx, (int)(hipY + Sf(6)), (int)(bx + Sf(5.6f)), (int)(hipY + Sf(6)), (int)(bx + Sf(2.8f)), (int)(hipY + Sf(12)), xGreen);
+        }
+        d.drawWideLine((int)(x - Sf(15)), (int)(hipY - Sf(2)), (int)(x + Sf(14)), (int)(hipY - Sf(3)), Sf(2.6f), xBlack);
+        d.fillRect((int)(x + Sf(6)), (int)(hipY - Sf(5)), max(3, S(4)), max(3, S(4)), xGold);
+        for (int k = 0; k < 4; k++) {
+            const float cx2 = x - Sf(6) + k * Sf(5.5f), cy2 = shY + Sf(1) + k * Sf(0.6f);
+            d.fillTriangle((int)(cx2 - Sf(3)), (int)cy2, (int)(cx2 + Sf(3)), (int)cy2, (int)cx2, (int)(cy2 + Sf(6)), xRed);
+        }
+        const float by = hy - Sf(6), sway = sinf(phase * 0.5f) * Sf(2);
+        d.fillTriangle((int)(hx - Sf(10)), (int)by, (int)(hx + Sf(9)), (int)(by - Sf(1)), (int)(hx - Sf(20) + sway), (int)(by - Sf(16)), xGreen);
+        d.drawWideLine((int)(hx - Sf(11)), (int)(by + Sf(0.5f)), (int)(hx + Sf(9)), (int)(by - Sf(1)), Sf(3), xRed);
+        d.fillCircle((int)(hx - Sf(21) + sway), (int)(by - Sf(16)), max(2, S(2.4f)), xGold);
+        // A pointed ear poking out under the hat.
+        d.fillTriangle((int)(hx - Sf(4)), (int)(hy + Sf(1)), (int)hx, (int)(hy - Sf(2)), (int)(hx - Sf(7)), (int)(hy - Sf(8)), face);
+    }
+    if (outfit == jolly::REINDEER) {
+        // Antlers, a collar of bells, and a red nose that glows.
+        const uint16_t antler = rgb(0x9c6b3c), antlerLight = rgb(0xc89a62);
+        for (int k = 0; k < 2; k++) {
+            const float ax = hx - Sf(4) + k * Sf(6), ay = hy - Sf(8);
+            const uint16_t c = k ? antlerLight : antler;
+            const float tx = ax - Sf(6) + k * Sf(4), ty = ay - Sf(18);
+            const float m1x = lerp(ax, tx, 0.45f), m1y = lerp(ay, ty, 0.45f), m2x = lerp(ax, tx, 0.75f), m2y = lerp(ay, ty, 0.75f);
+            d.drawWideLine((int)ax, (int)ay, (int)tx, (int)ty, Sf(1.9f), c);
+            d.drawWideLine((int)m1x, (int)m1y, (int)(m1x + Sf(6)), (int)(m1y - Sf(5)), Sf(1.4f), c);
+            d.drawWideLine((int)m2x, (int)m2y, (int)(m2x - Sf(5)), (int)(m2y - Sf(4)), Sf(1.3f), c);
+            d.drawWideLine((int)tx, (int)ty, (int)(tx + Sf(3)), (int)(ty - Sf(3)), Sf(1.2f), c);
+        }
+        d.drawWideLine((int)(x - Sf(6)), (int)(shY - Sf(1)), (int)(x + Sf(14)), (int)(shY + Sf(2)), Sf(3), xRed);
+        for (int k = 0; k < 3; k++) {
+            const int bx = (int)(x - Sf(2) + k * Sf(6)), byy = (int)(shY + Sf(3) + k * Sf(0.6f));
+            d.fillCircle(bx, byy, max(2, S(2.2f)), xGold);
+            d.drawPixel(bx, byy + max(1, S(1)), dark);
+        }
+        const int nx = (int)(hx + Sf(10.5f)), ny = (int)(hy + Sf(3.5f));
+        const float glow = 0.5f + 0.5f * sinf(phase * 1.3f);
+        d.fillCircle(nx, ny, max(3, S(3.8f)), mix(face, rgb(0xff4040), 0.3f + 0.3f * glow));
+        d.fillCircle(nx, ny, max(2, S(2.6f)), rgb(0xff2a2a));
+        d.drawPixel(nx - 1, ny - 1, 0xFFFF);
+    }
+    if (outfit == jolly::SWEATER) {
+        // A red holiday sweater: a green band with a zigzag, a little tree, dots, ribbed edges.
+        coat(xRed);
+        const float b0 = shY + Sf(9);
+        d.drawWideLine((int)(x - Sf(16)), (int)b0, (int)(x + Sf(16)), (int)(b0 + Sf(1)), Sf(4.5f), xGreen);
+        for (int k = 0; k < 8; k++) {
+            const float zx = x - Sf(15) + k * Sf(4);
+            d.drawLine((int)zx, (int)(b0 + Sf(1.5f)), (int)(zx + Sf(2)), (int)(b0 - Sf(1.2f)), xFur);
+            d.drawLine((int)(zx + Sf(2)), (int)(b0 - Sf(1.2f)), (int)(zx + Sf(4)), (int)(b0 + Sf(1.5f)), xFur);
+        }
+        const int tx = (int)(x + Sf(2)), ty = (int)(shY + Sf(17));
+        d.fillTriangle(tx - S(5), ty + S(9), tx + S(5), ty + S(9), tx, ty + S(1), xGreen);
+        d.fillTriangle(tx - S(4), ty + S(5), tx + S(4), ty + S(5), tx, ty - S(2), xGreen);
+        d.fillRect(tx - max(1, S(1)), ty + S(9), max(2, S(2)), max(1, S(2)), rgb(0x6b4226));
+        star(d, tx, ty - S(3), max(1, S(1.5f)), xGold);
+        for (int k = 0; k < 6; k++) d.drawPixel((int)(x - Sf(12) + (k % 3) * Sf(4)), (int)(shY + Sf(16) + (k / 3) * Sf(6)), xFur);
+        d.drawWideLine((int)(x - Sf(15)), (int)(hipY + Sf(7)), (int)(x + Sf(12)), (int)(hipY + Sf(6)), Sf(3), xGreen);
+        d.drawWideLine((int)(x - Sf(8)), (int)(shY + Sf(1)), (int)(x + Sf(12)), (int)(shY + Sf(3)), Sf(2.6f), xGreen);
+    }
+    if (outfit == jolly::SNOWMAN) {
+        // A snowman suit: two big snowballs over his body and one over his head, coal
+        // buttons, a carrot nose, a scarf and a top hat; his eye looks out of a coal socket.
+        auto ball = [&](float bx, float by, float r) {
+            d.fillCircle((int)(bx - Sf(1.5f)), (int)(by + Sf(1.5f)), S(r), xFurShade);
+            d.fillCircle((int)bx, (int)by, S(r), xFur);
+        };
+        ball(x - Sf(3), hipY - Sf(2), 17);
+        ball(x + Sf(1), shY + Sf(8), 14);
+        ball(hx + Sf(1), hy, 11);
+        for (int k = 0; k < 3; k++) d.fillCircle((int)(x + Sf(11) - k * Sf(1)), (int)(shY + Sf(6) + k * Sf(7)), max(1, S(1.6f)), xBlack);
+        d.drawWideLine((int)(hx - Sf(9)), (int)(hy + Sf(9)), (int)(hx + Sf(7)), (int)(hy + Sf(10)), Sf(3.2f), xRed);
+        d.drawWideLine((int)(hx - Sf(7)), (int)(hy + Sf(10)), (int)(hx - Sf(12)), (int)(hy + Sf(20) + sinf(phase) * Sf(1)), Sf(3), xRed);
+        d.fillTriangle((int)(hx + Sf(8)), (int)(hy + Sf(1)), (int)(hx + Sf(8)), (int)(hy + Sf(5)), (int)(hx + Sf(17)), (int)(hy + Sf(3)), rgb(0xff8a1f));
+        const int mo = pose.mouth ? S(1) : 0;
+        for (int k = 0; k < 4; k++)
+            d.fillCircle((int)(hx + Sf(2) + k * Sf(2.2f)), (int)(hy + Sf(7) + (k == 1 || k == 2 ? Sf(0.8f) + mo : 0)), max(1, S(0.9f)), xBlack);
+        if (pose.blink) d.drawFastHLine(ex - er - 1, ey - S(1), 2 * er + 3, xBlack);
+        else { d.fillCircle(ex, ey - S(1), er + 1, xBlack); d.fillCircle(ex, ey - S(1), er, eyeColor); }
+        const float by = hy - Sf(8);
+        d.fillRect((int)(hx - Sf(7)), (int)(by - Sf(13)), S(14), S(13), xBlack);
+        d.drawWideLine((int)(hx - Sf(11)), (int)by, (int)(hx + Sf(10)), (int)by, Sf(2.2f), xBlack);
+        d.fillRect((int)(hx - Sf(7)), (int)(by - Sf(4)), S(14), max(2, S(2.5f)), xRed);
+        d.fillCircle((int)(hx + Sf(4)), (int)(by - Sf(3)), max(1, S(1.4f)), xGreen);
+        d.fillCircle((int)(hx + Sf(5.5f)), (int)(by - Sf(2.5f)), max(1, S(1)), xRed);
+    }
+    if (outfit == jolly::NUTCRACKER) {
+        // A red jacket with white cross belts, gold buttons and an epaulette; the big
+        // nutcracker jaw (white whiskers, teeth that part as he talks); a tall black shako.
+        coat(xRed);
+        d.drawWideLine((int)(x - Sf(12)), (int)(shY + Sf(4)), (int)(x + Sf(10)), (int)(hipY + Sf(4)), Sf(2.4f), xFur);
+        d.drawWideLine((int)(x + Sf(13)), (int)(shY + Sf(5)), (int)(x - Sf(10)), (int)(hipY + Sf(5)), Sf(2.4f), xFur);
+        for (int k = 0; k < 4; k++) d.fillCircle((int)(x + Sf(13) - k * Sf(0.8f)), (int)(shY + Sf(9) + k * Sf(6)), max(1, S(1.4f)), xGold);
+        d.fillEllipse((int)(x + Sf(7)), (int)(shY + Sf(3)), S(6), max(2, S(2.5f)), xGold);
+        for (int k = 0; k < 4; k++) d.drawFastVLine((int)(x + Sf(3) + k * Sf(2.5f)), (int)(shY + Sf(5)), max(2, S(3)), xGold);
+        d.drawWideLine((int)(x - Sf(15)), (int)(hipY + Sf(1)), (int)(x + Sf(13)), (int)hipY, Sf(3), xBlack);
+        d.fillEllipse((int)(hx + Sf(7)), (int)(hy + Sf(5)), S(5), max(2, S(2.2f)), xFur);
+        const int jy = (int)(hy + Sf(8)) + (pose.mouth ? S(1.5f) : 0);
+        d.fillRect((int)(hx + Sf(4)), jy - S(1), S(7), max(2, S(3)), xFur);
+        d.drawFastHLine((int)(hx + Sf(4)), jy, S(7), dark);
+        const float by = hy - Sf(7);
+        d.fillRect((int)(hx - Sf(8)), (int)(by - Sf(18)), S(16), S(19), xBlack);
+        d.fillRect((int)(hx - Sf(8)), (int)(by - Sf(2)), S(16), max(2, S(2.5f)), xGold);
+        d.fillRect((int)(hx - Sf(8)), (int)(by - Sf(18)), S(16), max(1, S(1.5f)), xGold);
+        d.drawLine((int)(hx - Sf(6)), (int)by, (int)(hx + Sf(5)), (int)(hy + Sf(9)), xGold);
+        d.fillEllipse((int)(hx - Sf(2)), (int)(by - Sf(22)), max(2, S(3)), S(5), xFur);
+        star(d, (int)hx, (int)(by - Sf(9)), max(1, S(2)), xGold);
+    }
+    if (outfit == jolly::WOOLIES) {
+        // Bundled up: a long striped scarf, one end streaming out behind, and fluffy earmuffs.
+        const float sy = shY - Sf(2);
+        d.drawWideLine((int)(x - Sf(8)), (int)sy, (int)(x + Sf(13)), (int)(sy + Sf(3)), Sf(4), xRed);
+        for (int k = 0; k < 4; k++)
+            d.drawWideLine((int)(x - Sf(5) + k * Sf(5)), (int)(sy - Sf(1.5f) + k * Sf(0.7f)), (int)(x - Sf(4) + k * Sf(5)),
+                           (int)(sy + Sf(2) + k * Sf(0.7f)), Sf(1.2f), xFur);
+        float px0 = x - Sf(7), py0 = sy + Sf(1);
+        for (int k = 1; k <= 5; k++) {
+            const float px1 = x - Sf(7) - k * Sf(5.5f), py1 = sy + Sf(1) + k * Sf(1.5f) + sinf(phase * 1.2f - k * 0.9f) * Sf(1.8f) * k / 3;
+            d.drawWideLine((int)px0, (int)py0, (int)px1, (int)py1, Sf(3.4f), k % 2 ? xRed : xFur);
+            px0 = px1; py0 = py1;
+        }
+        for (int k = 0; k < 3; k++) d.drawLine((int)px0, (int)py0, (int)(px0 - Sf(3)), (int)(py0 - Sf(1.5f) + k * Sf(1.5f)), xRed);
+        d.drawWideLine((int)(hx - Sf(3)), (int)(hy - Sf(2)), (int)(hx - Sf(1)), (int)(hy - Sf(10)), Sf(1.8f), xRed);
+        d.drawWideLine((int)(hx - Sf(1)), (int)(hy - Sf(10)), (int)(hx + Sf(6)), (int)(hy - Sf(10)), Sf(1.8f), xRed);
+        d.fillCircle((int)(hx - Sf(3)), (int)(hy + Sf(0.5f)), S(4.2f), xFur);
+        d.fillCircle((int)(hx - Sf(3.5f)), (int)(hy + Sf(1)), max(1, S(2.6f)), xFurShade);
     }
 
     // Near arm last: it swings across the body.

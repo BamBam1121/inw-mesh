@@ -138,6 +138,9 @@ inline void vTaskDelay(uint32_t ms) { delay(ms); }
 inline void vTaskDelete(void*) {}
 inline BaseType_t xTaskCreatePinnedToCore(void (*)(void*), const char*, uint32_t, void*, int, TaskHandle_t*, int) { return pdFALSE; }
 inline BaseType_t xTaskCreate(void (*)(void*), const char*, uint32_t, void*, int, TaskHandle_t*) { return pdFALSE; }
+// Task notifications (ui.cpp's frame pusher): never reached, since no task is ever made here.
+inline uint32_t ulTaskNotifyTake(BaseType_t, TickType_t) { return 0; }
+inline void xTaskNotifyGive(TaskHandle_t) {}
 inline SemaphoreHandle_t xSemaphoreCreateMutex() { return (void*)1; }
 inline SemaphoreHandle_t xSemaphoreCreateBinary() { return (void*)1; }
 inline int xSemaphoreTake(SemaphoreHandle_t, uint32_t) { return pdTRUE; }

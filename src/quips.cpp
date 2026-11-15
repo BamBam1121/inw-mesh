@@ -177,7 +177,28 @@ static const char* const THEMED[][N_THEMED] = {
     "A zombie node still forwards. Respect.",
     "Carved a pumpkin. It looks like an antenna.",
     "Who's out there? Check the heard list.",
-    "Happy Halloween. Keep your batteries charged." }
+    "Happy Halloween. Keep your batteries charged." },
+  // Squatchmas
+  { "Ho ho ho. Ho hop. Ho three hops.",
+    "He's making a list. Every node on it gets an ack.",
+    "Snow on the antenna doesn't stop a packet.",
+    "Silent night. Busy mesh.",
+    "The best gifts fit in one message.",
+    "Reindeer don't need repeaters. You might.",
+    "Chestnuts roasting. Batteries charging.",
+    "Deck the halls with boughs of coax.",
+    "Dashing through the snow, one hop at a time.",
+    "A repeater on the roof is a gift for the whole street.",
+    "Even Santa checks his signal bars.",
+    "Frosty out. Warm by the charger.",
+    "Sasquatch's wish list: one more repeater.",
+    "Merry Squatchmas from the Inland Northwest.",
+    "Out in the snow, the mesh still hears you.",
+    "Stockings hung. Antennas up.",
+    "The lights on the tower aren't just for show.",
+    "Nice list: everyone who relays.",
+    "Peace on earth. Packets on the air.",
+    "Cold drains batteries. Keep yours in a pocket." }
 };
 static constexpr int N_GENERAL = sizeof(GENERAL) / sizeof(GENERAL[0]);
 static constexpr int N_MORE = sizeof(MORE) / sizeof(MORE[0]);
@@ -261,7 +282,8 @@ const char* quipNext() {
     if (k < N_MORE) { if (fitsBoard(MORE[k])) return MORE[k]; continue; }
     k -= N_MORE;
     if (k < N_THEMED) {
-      const uint8_t s = nav.theme().scene == SCENE_HALLOWEEN ? 4 : nav.theme().style < 4 ? nav.theme().style : 0;
+      const uint8_t s = nav.theme().scene == SCENE_HALLOWEEN ? 4 : nav.theme().scene == SCENE_SQUATCHMAS ? 5
+                      : nav.theme().style < 4 ? nav.theme().style : 0;
       if (fitsBoard(THEMED[s][k])) return THEMED[s][k];
       continue;
     }

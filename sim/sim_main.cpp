@@ -569,6 +569,73 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
     }
     return 0;
   }
+  // "squatch_sim OUT jolly": the Squatchmas theme's lock face - every outfit in every
+  // place (xm_OUTFIT_PLACE), then a walk of 90 frames, 33 ms apart, in each place in a
+  // different outfit (xmwalk_PLACE_NNN), for the GIFs.
+  if (argc > 2 && !strcmp(argv[2], "jolly")) {
+    ui_settings.themeId = 5;
+    app::applyTheme();
+    populateHistory();
+    {
+      ConvKey keys[64];
+      const uint16_t k = history.conversations(keys, 64);
+      for (uint16_t i = 0; i < k; i++) history.markRead(keys[i]);
+    }
+    nav.push(makeHomeView());
+    char n[64];
+    for (int c = 0; c < jolly::OUTFITS; c++)
+      for (int p = 0; p < jolly::PLACES; p++) {
+        jolly::outfit() = c; jolly::place() = p;
+        nav.push(makeLockView());
+        run(9000 + c * 700 + p * 1900);
+        snprintf(n, sizeof(n), "xm_%s_%s", jolly::outfitName(c), jolly::placeName(p)); shot(n);
+        nav.pop();
+      }
+    static const uint8_t WALK[4] = {jolly::SANTA, jolly::ELF, jolly::REINDEER, jolly::SNOWMAN};
+    for (int p = 0; p < jolly::PLACES; p++) {
+      jolly::outfit() = WALK[p]; jolly::place() = p;
+      sim::advance(20UL * 60UL * 1000UL);            // dark a good while: he says hello
+      nav.push(makeLockView());
+      for (int f = 0; f < 90; f++) {
+        run(33);
+        snprintf(n, sizeof(n), "xmwalk_%s_%03d", jolly::placeName(p), f); shot(n);
+      }
+      nav.pop();
+    }
+    return 0;
+  }
+  // "squatch_sim OUT jollyfx": the Squatchmas screen changes frame by frame, 20 ms apart
+  // (xfx_KIND_NNN), and its wake, sleep and power-down, for the GIFs.
+  if (argc > 2 && !strcmp(argv[2], "jollyfx")) {
+    ui_settings.themeId = 5;
+    app::applyTheme();
+    populateHistory();
+    jolly::outfit() = jolly::SANTA; jolly::place() = jolly::CABIN;
+    static Canvas home, chats, lock, out;
+    for (Canvas* c : {&home, &chats, &lock, &out}) { c->setColorDepth(16); c->createSprite(L::W, L::H); }
+    nav.push(makeHomeView()); run(900);
+    nav.compose(); nav.canvas().pushSprite(&home, 0, 0);
+    app::openChats(); run(300);
+    nav.compose(); nav.canvas().pushSprite(&chats, 0, 0);
+    nav.push(makeLockView()); run(1500);
+    nav.compose(); nav.canvas().pushSprite(&lock, 0, 0);
+    struct { const char* name; fx::Trans kind; Canvas* from; Canvas* to; int ms; } K[] = {
+      {"forward", fx::Trans::Forward, &home, &chats, 600}, {"back", fx::Trans::Back, &chats, &home, 620},
+      {"unlock", fx::Trans::Unlock, &lock, &home, 950},    {"lock", fx::Trans::Lock, &home, &lock, 1250}};
+    char n[48];
+    for (auto& k : K)
+      for (int ms = 0, i = 0; ms <= k.ms + 20; ms += 20, i++) {
+        fx::transitionFrame(k.kind, *k.from, *k.to, out, ms);
+        snprintf(n, sizeof(n), "xfx_%s_%03d", k.name, i); savePPM(out, n);
+      }
+    struct { const char* name; uint8_t kind; int ms; } R[] = {{"wake", 0, 640}, {"sleep", 1, 520}, {"powerdown", 2, 1150}};
+    for (auto& r : R)
+      for (int ms = 0, i = 0; ms <= r.ms; ms += 20, i++) {
+        fx::render(r.kind, lock, out, (float)ms / r.ms);
+        snprintf(n, sizeof(n), "xfx_%s_%03d", r.name, i); savePPM(out, n);
+      }
+    return 0;
+  }
   // "squatch_sim OUT owntheme": the owner's own themes (themestore.h), as a USB line
   // would bring them: kept, listed, read back after a "restart", replaced by name,
   // taken off, a fifth refused. Prints each check; own_* are the pictures.

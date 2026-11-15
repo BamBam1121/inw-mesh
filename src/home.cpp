@@ -120,6 +120,7 @@ public:
     scenes::mascotLift() = _hop;          // mid-hop after a poke
     scenes::mascotPose() = pose();        // blinking, talking, waving...
     if (t.scene == SCENE_HALLOWEEN) scenes::halloween(d, t, _phase, _scroll, hasUnread);
+    else if (t.scene == SCENE_SQUATCHMAS) scenes::squatchmas(d, t, _phase, _scroll, hasUnread);
     else switch (t.style) {
       case STYLE_BLOCKS: scenes::blocks(d, t, _phase, _scroll, hasUnread); break;
       case STYLE_HERO:   scenes::hero(d, t, _phase, _scroll, hasUnread, app::batteryPct(), app::unread()); break;
