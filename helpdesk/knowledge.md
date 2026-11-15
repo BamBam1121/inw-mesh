@@ -237,7 +237,16 @@ Messages gone after a restart or an update (fixed in pager 1.2.13 / beta 1.2.14,
 - No SD card, or a card whose copy was already written over: the messages can't come back. Advise keeping
   a card in with backups on (Settings > Backups).
 
-Pager 1.2.15 (released 2026-10-22, the current pager release) and T-Deck 1.2.6-beta2 (beta, 2026-10-22)
+Pager 1.2.16, T-Deck 1.2.6 and ThinkNode M9 1.2.6 (all released 2026-11-14, the current releases)
+- Pager 1.2.16: battery health is measured by the pager itself (Settings > Battery > battery health says
+  "not measured yet" until one charge from under 60% to full; the gauge's own figure read ~57% on good
+  packs), the NFC chip is powered only while an NFC screen is open (about 16 mA less, longer battery), and
+  a crash fix: a core dump left by another firmware (Launcher users switching firmware) crashed the start.
+- T-Deck 1.2.6: everything from the 1.2.6 betas (message rescue and save fix, map node display, the send
+  log note, Settings > GPS > speed for a GPS added by hand) plus the same core-dump crash fix.
+- ThinkNode M9 1.2.6: the first M9 release (see the M9 section).
+
+Pager 1.2.15 (released 2026-10-22) and T-Deck 1.2.6-beta2 (beta, 2026-10-22)
 - Everything in pager 1.2.12 and 1.2.14 (below), plus a fix to the message rescue: on a busy store 1.2.13
   and 1.2.14 could put lost messages back but not save them (one big write came back empty), so they were
   put back again at every start and the start was slower. Now saved the first time, in pieces.
@@ -343,29 +352,28 @@ New in 1.2.3 (the release after the 1.2.2 beta; 1.2.2 was only ever a beta, 1.2.
 - Wi-Fi left on away from saved networks now tries less and less often (up to every 15 minutes with the
   screen off) instead of every 20 seconds - it used to cost a lot of battery.
 
-Elecrow ThinkNode M9 (beta, added 2026-10-23)
-- Squatch Mesh has an early beta for the Elecrow ThinkNode M9: https://squatchmesh.com/thinknode-m9 (flash
-  it from Chrome or Edge with the START button there). If someone asks whether Squatch Mesh runs on the
-  M9, say yes, as a beta, and give that link. It is not on the Downloads page yet.
-- Be plain that it hasn't been tested on a real M9: it was built from the M9 support of the firmwares that
-  run on it. It can't harm the M9; MeshCore or Meshtastic can always be flashed back (the page says how).
-  Someone trying it is helping test it: ask them to send a photo of Tools > hardware check, or what the
-  installer's "Show the details" says, through the hand-off.
+Elecrow ThinkNode M9 (released as 1.2.6 on 2026-11-14; betas from 2026-10-23)
+- Squatch Mesh runs on the Elecrow ThinkNode M9: https://squatchmesh.com/thinknode-m9 (flash it from Chrome
+  or Edge with the START button there; it is also on the Downloads page). It ran on real M9s at the local
+  MeshCore meeting on 2026-11-14 (a v1.1 board: GPS, keys, screen, radio). It can't harm the M9; MeshCore
+  or Meshtastic can always be flashed back (the page says how). For a problem, ask for a photo of
+  Tools > hardware check, or what the installer's "Show the details" says, through the hand-off.
+- GPS: 1.2.6 listens on the pin a real v1.1 M9 uses (earlier betas said "GPS not heard" there); if that
+  pin is silent for 6 s it tries the other one, for v1.0 boards.
 - It is the T-Deck's screens, driven from the keyboard (no touchscreen): arrow keys move, the pad's middle
   key or Enter picks and sends (and unlocks the lock screen), Back or Del goes back. Home goes to the home
-  screen; pressed on the home screen it locks and turns the screen off; with the screen dark only Home wakes
-  it (so a pocket can't). The keys with pictures: big speech bubble = chats, small bubble = contacts, map
+  screen; pressed on the home screen it locks and turns the screen off; with the screen dark Home or the
+  pad's middle key wakes it (from 1.2.6; before, only Home, and testers thought it had hung). The keys with pictures: big speech bubble = chats, small bubble = contacts, map
   key = map, pin = an advert to the nodes in range (not a flood; the whole-mesh advert is in Tools), the
   triangle at the bottom left = quick settings (Wi-Fi, Bluetooth, GPS, sound, brightness). Ctrl does
-  nothing yet. Version numbers follow the T-Deck's (the first is 1.2.6-beta1).
+  nothing yet. Version numbers follow the T-Deck's (betas 1.2.6-beta1 and -beta2, release 1.2.6).
 - Plugging in: the M9's USB socket goes to a USB-serial chip, so in the browser's list it is named after
   that chip (USB Serial, CH340, CP210x; on a Mac cu.usbserial or cu.wchusbserial), not "USB JTAG". Some
   computers want that chip's driver first. It has no BOOT button and doesn't need one: if it won't connect,
   unplug it, slide the power switch off and on, plug it back in and press start again.
 - The installer refuses a device that shows up as the ESP32's own USB ("That doesn't look like a M9"):
   that is some other board, often a T-Deck. "Install anyway" overrides it for someone sure it's an M9.
-- Updates: on Wi-Fi it updates itself like the T-Deck (every M9 build is a beta for now, so both update
-  settings get the newest). Pressing START on the page again also updates and keeps everything.
+- Updates: on Wi-Fi it updates itself like the T-Deck (both update settings get the newest M9 build). Pressing START on the page again also updates and keeps everything.
 - The SD card: some M9s shipped with a Windows virus on the microSD card (Elecrow confirmed it, September
   2026; an autorun.inf starting a hidden program). It can't run on the M9. Squatch Mesh deletes it by
   itself every time it starts (only those files: an autorun.inf that starts a program, what it starts,
