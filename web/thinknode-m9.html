@@ -3,10 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ThinkNode M9 beta &middot; Squatch Mesh</title>
-<meta name="description" content="Squatch Mesh for the Elecrow ThinkNode M9. Beta, not yet tested on hardware.">
-<!-- Not linked from the site yet: for the first testers, until it has run on real M9s. -->
-<meta name="robots" content="noindex, nofollow">
+<title>ThinkNode M9 &middot; Squatch Mesh</title>
+<meta name="description" content="Squatch Mesh for the Elecrow ThinkNode M9: free, open-source MeshCore firmware. Install from your browser.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
@@ -23,30 +21,27 @@
     <a class="logo" href="/" aria-label="Squatch Mesh home"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Open menu"><span></span></button>
     <nav id="site-nav" class="nav-links" aria-label="Main">
-      <a class="link" href="/downloads">Downloads</a>
       <a class="link" href="/features">Features</a>
       <a class="link" href="/themes">Themes</a>
       <a class="link" href="/guide">Guide</a>
       <a class="link" href="/help">Help</a>
-      <a class="btn solid" href="/install">Install</a>
+      <a class="btn solid" href="/downloads">Install</a>
     </nav>
   </div>
 </header>
 
 <main id="main" class="wrap">
-  <div class="tag" style="margin-top:46px;color:var(--amber);border-color:var(--amber)">beta &middot; untested</div>
+  <div class="tag" style="margin-top:46px">thinknode m9</div>
   <h1>Squatch Mesh for the ThinkNode M9</h1>
   <p class="sub">For the Elecrow <b>ThinkNode M9</b>. The T-Deck's screens, driven from the keyboard:
   the arrow keys move, the middle key or <b>Enter</b> picks and sends, <b>Back</b> or <b>Del</b> goes back,
-  and <b>Home</b> goes home (press it again there to lock; it also wakes the screen). The keys with pictures
+  and <b>Home</b> goes home (press it again there to lock). <b>Home</b> or the middle key wakes the screen. The keys with pictures
   open what's on them: the speech bubbles your chats and contacts, the map key the map; the pin sends an
-  advert to the nodes nearby, and the triangle opens quick settings. Version <b>1.2.6-beta1</b>.</p>
+  advert to the nodes nearby, and the triangle opens quick settings. Version <b>1.2.6</b>.</p>
 
   <div class="panel warn" style="margin-top:18px">
-    <p class="sub" style="font-size:14px;margin:0"><b>Not tested on a real M9 yet.</b> It is built from
-    the M9 support of the firmwares that run on it, checked against what was learned on real units, but
-    this is its first time on hardware. If something is wrong it will not harm the M9: you can always flash
-    MeshCore or Meshtastic back (<a href="#going-back">how</a>). <b>Not for the T-Deck or the T-Lora
+    <p class="sub" style="font-size:14px;margin:0">Running on real M9s: GPS, keyboard, screen, radio and
+    Wi-Fi updates. You can always flash MeshCore or Meshtastic back (<a href="#going-back">how</a>). <b>Not for the T-Deck or the T-Lora
     Pager</b> &mdash; they have <a href="/t-deck">their</a> <a href="/install">own</a> installers.</p>
   </div>
 
@@ -131,7 +126,7 @@
       <h3>After it starts</h3>
       <ol class="sub" style="font-size:14px;margin:8px 0 0;padding-left:20px">
         <li>The first start sets up storage: give it a minute.</li>
-        <li>Press <b>Home</b> to wake the screen, then <b>Enter</b> to unlock.</li>
+        <li>Press <b>Home</b> or the middle key to wake the screen, then <b>Enter</b> to unlock.</li>
         <li><b>Tools &rsaquo; hardware check</b> shows the board version, the last key pressed, the radio and
         the GPS. A photo of it tells us most of what we need.</li>
         <li>Screen upside down, odd colours, keys that do nothing? Tell us (below): it's a quick fix.</li>
@@ -143,8 +138,7 @@
   <div class="panel">
     <p class="sub" style="font-size:14px;margin:0">Put the M9 on Wi-Fi once (<b>Settings &rsaquo;
     Wi-Fi</b>) and it updates itself: it looks every few hours and installs a new version while it's
-    idle, keeping your contacts and settings, then says so. While the M9 build is a beta, every fix goes
-    out this way. <b>Settings &rsaquo; System &rsaquo; install updates by itself</b> turns that off.
+    idle, keeping your contacts and settings, then says so. Every fix goes out this way. <b>Settings &rsaquo; System &rsaquo; install updates by itself</b> turns that off.
     Pressing start on this page updates it too, any time.</p>
   </div>
 
@@ -159,10 +153,10 @@
   <h2 id="files" style="margin-top:34px">Other ways to flash</h2>
   <div class="panel">
     <p class="sub" style="font-size:14px;margin:0">One file with everything, written at address
-    <b>0x0</b>: <a href="/m9/squatch-mesh-thinknode-m9-1.2.6-beta1-full.bin?h=7ebcc06a0aeb" download>squatch-mesh-thinknode-m9-1.2.6-beta1-full.bin</a>.
+    <b>0x0</b>: <a href="/m9/squatch-mesh-thinknode-m9-1.2.6-full.bin?h=96abe16d5843" download>squatch-mesh-thinknode-m9-1.2.6-full.bin</a>.
     Use it with <a href="https://espressif.github.io/esptool-js/" rel="noopener">Espressif's web flasher</a>
     (address 0x0, don't erase first), or esptool:</p>
-    <pre style="margin:12px 0 0;white-space:pre-wrap;font-family:var(--mono);font-size:13px">esptool.py --chip esp32s3 write_flash 0x0 squatch-mesh-thinknode-m9-1.2.6-beta1-full.bin</pre>
+    <pre style="margin:12px 0 0;white-space:pre-wrap;font-family:var(--mono);font-size:13px">esptool.py --chip esp32s3 write_flash 0x0 squatch-mesh-thinknode-m9-1.2.6-full.bin</pre>
   </div>
 
   <h2 style="margin-top:34px">Tell us how it went</h2>
@@ -177,7 +171,7 @@
   <div class="wrap footer-grid">
     <div class="footer-brand">
       <a class="logo" href="/"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
-      <p>Free, open-source MeshCore firmware for the LilyGo T-Lora Pager and the T-Deck. Made in the Inland Northwest.</p>
+      <p>Free, open-source MeshCore firmware for the LilyGo T-Lora Pager, the T-Deck and the ThinkNode M9. Made in the Inland Northwest.</p>
     </div>
     <nav class="footer-col" aria-label="Product"><h4>Product</h4>
       <a href="/features">Features</a><a href="/themes">Themes</a><a href="/install">Install</a><a href="/downloads">Downloads</a><a href="/releases">Releases</a></nav>
