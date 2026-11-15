@@ -500,7 +500,20 @@ uint32_t tnow() {
 }
 bool testStop(uint32_t t0) {
   s_frames++;
-  if (!s_test) { app::keysPump(); return false; }   // once a frame: keys typed during the animation are kept
+  if (!s_test) {
+    app::keysPump();                                 // once a frame: keys typed during the animation are kept
+#ifdef BOARD_FX_FRAME_MS
+    // The pager draws a frame of a screen change about every 24 ms, evenly. A board
+    // that can go faster drew them as quick as it could, unevenly, and the same
+    // time-based motion looked rushed and jerky next to the pager: hold each frame to
+    // the pager's rhythm.
+    static uint32_t s_last = 0;
+    const uint32_t gap = millis() - s_last;
+    if (gap < BOARD_FX_FRAME_MS) delay(BOARD_FX_FRAME_MS - gap);
+    s_last = millis();
+#endif
+    return false;
+  }
   if (!s_test) return false;
   s_vclock += s_vstep;
   if (s_vclock - t0 > s_stopMs) s_stopped = true;
@@ -644,6 +657,14 @@ void playTo(uint8_t kind, Canvas& frame, uint16_t ms) {
 
 void transition(Trans kind, Canvas& from, Canvas& to) {
   if (kind == Trans::None) { to.pushSprite(P(), 0, 0); return; }
+#if INW_DEV
+  // How long it really took and in how many frames, to compare with the pager.
+  struct Timed {
+    Trans k; uint32_t t0, f0;
+    explicit Timed(Trans kk) : k(kk), t0(millis()), f0(s_frames) {}
+    ~Timed() { if (!s_test) Serial.printf("[fxtime] kind %d: %lu frames in %lu ms\n", (int)k, (unsigned long)(s_frames - f0), (unsigned long)(millis() - t0)); }
+  } timed(kind);
+#endif
   if (kind == Trans::Wake)  { screenOn(to); return; }
   if (kind == Trans::Sleep) { screenOff(from); return; }
   // Every theme draws its own (fx_<theme>.cpp); anything one doesn't handle cuts.
