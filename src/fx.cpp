@@ -484,7 +484,7 @@ namespace k {
 // sprite and a clock that ticks 16 ms per frame, and stops at a chosen moment.
 lgfx::LovyanGFX* s_target = nullptr;
 bool s_test = false, s_stopped = false;
-uint32_t s_vclock = 0, s_stopMs = 0, s_frames = 0;
+uint32_t s_vclock = 0, s_stopMs = 0, s_frames = 0, s_vstep = 16;
 lgfx::LovyanGFX* P() { return s_target ? s_target : (lgfx::LovyanGFX*)nav.display(); }
 // A board can ask for its screen changes to run faster (BOARD_FX_SPEED_PCT, the
 // T-Deck: 250): every one of them is timed on this clock, so they all shorten together
@@ -502,7 +502,7 @@ bool testStop(uint32_t t0) {
   s_frames++;
   if (!s_test) { app::keysPump(); return false; }   // once a frame: keys typed during the animation are kept
   if (!s_test) return false;
-  s_vclock += 16;
+  s_vclock += s_vstep;
   if (s_vclock - t0 > s_stopMs) s_stopped = true;
   return s_stopped;
 }
@@ -654,8 +654,8 @@ void transition(Trans kind, Canvas& from, Canvas& to) {
 // One moment of a screen change, for checking it over USB: dst starts as `from`
 // (as the panel would), the transition runs on a 16 ms-a-frame clock, and stops
 // once atMs has passed.
-void transitionFrame(Trans kind, Canvas& from, Canvas& to, lgfx::LovyanGFX& dst, uint32_t atMs) {
-  s_target = &dst; s_test = true; s_stopped = false; s_vclock = 0; s_stopMs = atMs;
+void transitionFrame(Trans kind, Canvas& from, Canvas& to, lgfx::LovyanGFX& dst, uint32_t atMs, uint32_t stepMs) {
+  s_target = &dst; s_test = true; s_stopped = false; s_vclock = 0; s_stopMs = atMs; s_vstep = stepMs ? stepMs : 16;
   if (kind == Trans::Wake) dst.fillScreen(TFT_BLACK);      // waking starts from dark
   else from.pushSprite(&dst, 0, 0);
   transition(kind, from, to);

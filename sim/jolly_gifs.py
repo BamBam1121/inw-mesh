@@ -16,8 +16,11 @@ def load(p):
 
 
 def gif(frames, path, ms, hold_first=0, hold_last=0):
+    # GIF times are in 10 ms steps: a frame interval between two of them is played as a
+    # repeating mix (25 ms: 20, 30; 42 ms: 40, 40, 50), so the speed comes out right.
     pal = [f.convert("P", palette=Image.ADAPTIVE, colors=255) for f in frames]
-    durs = [ms] * len(pal)
+    pat = {25: [20, 30], 42: [40, 40, 50]}.get(ms, [ms])
+    durs = [pat[i % len(pat)] for i in range(len(pal))]
     if hold_first: durs[0] = hold_first
     if hold_last: durs[-1] = hold_last
     pal[0].save(path, save_all=True, append_images=pal[1:], duration=durs, loop=0, optimize=False, disposal=1)
@@ -38,13 +41,13 @@ if mode == "jolly":
     for p in places:
         fs = sorted(glob.glob(os.path.join(d, "xmwalk_%s_*.ppm" % p)))
         if fs:
-            gif([load(f) for f in fs], os.path.join(d, "walk_%s.gif" % p), 33)
+            gif([load(f) for f in fs], os.path.join(d, "walk_%s.gif" % p), 42)
     print(d, "sheet + walks")
 else:
     kinds = sorted({re.match(r"xfx_(\w+?)_\d+\.ppm", os.path.basename(f)).group(1) for f in glob.glob(os.path.join(d, "xfx_*.ppm"))})
     for k in kinds:
         fs = sorted(glob.glob(os.path.join(d, "xfx_%s_*.ppm" % k)))
-        gif([load(f) for f in fs], os.path.join(d, "fx_%s.gif" % k), 20, hold_first=500, hold_last=700)
+        gif([load(f) for f in fs], os.path.join(d, "fx_%s.gif" % k), 25, hold_first=500, hold_last=700)
     print(d, "gifs:", ", ".join(kinds))
 for f in glob.glob(os.path.join(d, "*.ppm")):
     os.remove(f)

@@ -137,6 +137,8 @@ static void shot(const char* name) {
 static void run(uint32_t ms) {
   for (uint32_t t = 0; t < ms; t += 16) { sim::advance(16); nav.tick(); if (nav.top()) nav.top()->tick(); }
 }
+// One frame of frameMs, as a board that draws a frame every frameMs would see it.
+static void frameOf(uint32_t frameMs) { sim::advance(frameMs); nav.tick(); if (nav.top()) nav.top()->tick(); }
 
 static void clearTo(View* base) {
   while (nav.top() && nav.top() != base) nav.pop();
@@ -597,7 +599,7 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
       sim::advance(20UL * 60UL * 1000UL);            // dark a good while: he says hello
       nav.push(makeLockView());
       for (int f = 0; f < 90; f++) {
-        run(33);
+        frameOf(42);                                   // the pager's lock frame
         snprintf(n, sizeof(n), "xmwalk_%s_%03d", jolly::placeName(p), f); shot(n);
       }
       nav.pop();
@@ -624,13 +626,13 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
       {"unlock", fx::Trans::Unlock, &lock, &home, 950},    {"lock", fx::Trans::Lock, &home, &lock, 1250}};
     char n[48];
     for (auto& k : K)
-      for (int ms = 0, i = 0; ms <= k.ms + 20; ms += 20, i++) {
-        fx::transitionFrame(k.kind, *k.from, *k.to, out, ms);
+      for (int ms = 0, i = 0; ms <= k.ms + 25; ms += 25, i++) {   // 25 ms apart: the pager's 41 fps
+        fx::transitionFrame(k.kind, *k.from, *k.to, out, ms, 25);
         snprintf(n, sizeof(n), "xfx_%s_%03d", k.name, i); savePPM(out, n);
       }
     struct { const char* name; uint8_t kind; int ms; } R[] = {{"wake", 0, 640}, {"sleep", 1, 520}, {"powerdown", 2, 1150}};
     for (auto& r : R)
-      for (int ms = 0, i = 0; ms <= r.ms; ms += 20, i++) {
+      for (int ms = 0, i = 0; ms <= r.ms; ms += 25, i++) {
         fx::render(r.kind, lock, out, (float)ms / r.ms);
         snprintf(n, sizeof(n), "xfx_%s_%03d", r.name, i); savePPM(out, n);
       }

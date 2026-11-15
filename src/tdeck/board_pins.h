@@ -43,6 +43,10 @@
 // link a frame's draw cost swings with what is on screen (17-30 ms), so without this the
 // rate wandered 26-40 fps and the time-based motion looked like it sped up and slowed
 // down. An even cadence reads as flat motion; a frame that overruns just passes through.
+// BOARD_SCENE_STEP_MS: the lock scene (the walking sasquatch, the snow, the scrolling
+// ground) moves by time at the pager's pace - one step per 42 ms, its lock frame - not
+// one step per frame, which at this board's 33 ms frames walked 27% faster (home.cpp).
+#define BOARD_SCENE_STEP_MS     42
 #ifndef BOARD_FRAME_MS
 #define BOARD_FRAME_MS          33
 #endif
