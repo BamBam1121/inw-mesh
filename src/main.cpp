@@ -123,7 +123,10 @@ static uint32_t s_kbFlashUntil = 0;
 static uint32_t s_battFlashAt = 0;
 static bool s_radioOk = false;
 static uint16_t s_radioKicks = 0;   // radioIrqWatch(): missed radio interrupts picked up since start
+static uint16_t s_radioRxKicks = 0; // radioDeafWatch(): chip found in standby while "listening"
 bool inwRadioFlagPending();         // MeshCore RadioLibWrappers.cpp (tools/patch_meshcore.py)
+static void radioChipState(char* out, size_t n);   // below: what the radio chip says it is doing
+void inwRadioSetIdle();             // MeshCore RadioLibWrappers.cpp (tools/patch_meshcore.py)
 #if INW_DEV
 static regions::Scan s_usbScan;    // USB "regions scan"
 #endif
@@ -911,8 +914,10 @@ static void usbCommands() {
                     (unsigned long)power::lightSleepLastMs(), (unsigned long)power::lightSleepMaxMs());
       motion::debugPrint();
       power::printSleepDiagnostics();
-      Serial.printf("[radio] dio1=%d flag=%d missed_irq_picked_up=%u\r\n",
-                    digitalRead(PIN_LORA_DIO1), inwRadioFlagPending() ? 1 : 0, (unsigned)s_radioKicks);
+      Serial.printf("[radio] dio1=%d flag=%d missed_irq_picked_up=%u standby_restarts=%u\r\n",
+                    digitalRead(PIN_LORA_DIO1), inwRadioFlagPending() ? 1 : 0, (unsigned)s_radioKicks,
+                    (unsigned)s_radioRxKicks);
+      { char st[160]; radioChipState(st, sizeof(st)); Serial.printf("[radio] chip %s\r\n", st); }
       uint8_t railOut[2] = {}, railCfg[2] = {};
       const bool railsRead = expander.regs(railOut, railCfg);
       Serial.printf("[peripherals] gps_setting=%d gps_rail_requested=%d nfc_active=%d haptic_standby=%d expander_ok=%d out=%02X%02X cfg=%02X%02X\r\n",
@@ -2057,7 +2062,98 @@ static void radioIrqWatch() {
   highSince = 0;
   inwRadioKick();
   s_radioKicks++;
-  logs.add(LOG_WARN, "radio: missed interrupt picked up (%u since start)", s_radioKicks);
+  logs.add(LOG_WARN, "radio: missed irq picked up #%u", s_radioKicks);   // log lines hold 44 characters
+}
+
+// ---- radio: deaf watchdog -------------------------------------------------------------------
+// 2026-11-19: deaf again with DIO1 low, no flag pending, rail on, on USB all night (so ECO
+// never slept): the chip itself had stopped listening. Two checks, and what the chip says
+// is logged before anything is touched, so the next one shows the cause:
+//  - nothing received for 10 minutes after a busy hour (our mesh is never that quiet).
+// The chip's mode, modem, flags and errors go in the log line, so the cause shows.
+// Then the chip is set up again from scratch (std_init + our radio settings) and MeshCore
+// starts listening, without restarting the pager.
+extern RADIO_CLASS radio;     // variants/inw_pager/target.cpp
+static uint16_t s_radioResets = 0;
+static void radioChipState(char* out, size_t n) {
+  const unsigned dio1 = digitalRead(PIN_LORA_DIO1), busy = digitalRead(PIN_LORA_BUSY);
+  if (strcmp(radio_chip, "SX1262")) {
+    snprintf(out, n, "%s dio1=%u busy=%u rx=%d recv=%lu", radio_chip, dio1, busy,
+             radio_driver.isInRecvMode() ? 1 : 0, (unsigned long)radio_driver.getPacketsRecv());
+    return;
+  }
+  // RadioLib's getStatus() asks for zero bytes and always returns 0; read the status
+  // byte the chip sends after the GetStatus opcode instead.
+  uint8_t st = 0;
+  radio.getMod()->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATUS, &st, 1);   // bits 6:4 mode (2/3 standby, 4 fs, 5 rx, 6 tx), 3:1 last command
+  snprintf(out, n, "mode=%u cmd=%u modem=%u irq=%04lX err=%04X dio1=%u busy=%u rx=%d recv=%lu rxerr=%lu sent=%lu",
+           (st >> 4) & 7, (st >> 1) & 7, radio.getPacketType(), (unsigned long)radio.getIrqFlags(),
+           radio.getDeviceErrors(), dio1, busy, radio_driver.isInRecvMode() ? 1 : 0,
+           (unsigned long)radio_driver.getPacketsRecv(), (unsigned long)radio_driver.getPacketsRecvErrors(),
+           (unsigned long)radio_driver.getPacketsSent());
+}
+// The same in a few characters, for the on-device log: mode, irq flags, device errors,
+// received / receive errors.
+static void radioChipShort(char* out, size_t n) {
+  if (strcmp(radio_chip, "SX1262")) { snprintf(out, n, "r%lu", (unsigned long)radio_driver.getPacketsRecv()); return; }
+  uint8_t st = 0;
+  radio.getMod()->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATUS, &st, 1);
+  snprintf(out, n, "m%u i%lX e%X r%lu x%lu", (st >> 4) & 7, (unsigned long)radio.getIrqFlags(),
+           radio.getDeviceErrors(), (unsigned long)radio_driver.getPacketsRecv(),
+           (unsigned long)radio_driver.getPacketsRecvErrors());
+}
+static void radioRestart(const char* why) {
+  char st[160];
+  s_radioResets++;
+  logs.add(LOG_WARN, "radio reset #%u: %s", s_radioResets, why);
+  radioChipShort(st, sizeof(st));
+  logs.add(LOG_WARN, " before: %s", st);
+  if (!strcmp(radio_chip, "SX1262")) radio.std_init(&inw_spi);
+  radio_driver.begin();                 // its interrupt and state again: MeshCore restarts receive
+  if (g_node) g_node->applyRadio();     // our frequency, bandwidth, SF, CR, power, gain
+  radioChipShort(st, sizeof(st));
+  logs.add(LOG_WARN, " after: %s", st);
+  radioChipState(st, sizeof(st));
+  Serial.printf("[radio] reset: %s\n", st);
+}
+static void radioDeafWatch() {
+  if (!s_radioOk || !g_node) return;
+  const uint32_t now = millis();
+  // Packets received: when the count last moved, and how many in the last hour.
+  static uint32_t lastCount = 0, lastMoveAt = 0, hourAt = 0, hourStart = 0, busyHour = 0;
+  const uint32_t count = radio_driver.getPacketsRecv();
+  if (!lastMoveAt || count != lastCount) { lastCount = count; lastMoveAt = now | 1; }
+  if (!hourAt || now - hourAt >= 3600000UL) { busyHour = count - hourStart; hourStart = count; hourAt = now | 1; }
+  // The chip dropped to standby while MeshCore still thinks it is listening (caught live
+  // 2026-11-19: mode 2, LoRa modem, irq RxDone+Timeout, received count frozen within 30 s
+  // of boot). MeshCore only starts receive again from idle, so tell it it is idle. Read
+  // every 2 s; only standby (2 or 3) twice running counts, never an unreadable value.
+  static uint32_t modeAt = 0, rxKickLoggedAt = 0;
+  static uint8_t standbyReads = 0;
+  if (now - modeAt >= 2000) {
+    modeAt = now;
+    if (!strcmp(radio_chip, "SX1262") && radio_driver.isInRecvMode() && !inwRadioFlagPending()) {
+      uint8_t st = 0;
+      radio.getMod()->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATUS, &st, 1);
+      const uint8_t mode = (st >> 4) & 7;
+      standbyReads = (mode == 2 || mode == 3) ? standbyReads + 1 : 0;
+      if (standbyReads >= 2) {
+        standbyReads = 0;
+        s_radioRxKicks++;
+        if (!rxKickLoggedAt || now - rxKickLoggedAt > 60000) {   // at most one line a minute
+          rxKickLoggedAt = now | 1;
+          char s[160];
+          radioChipShort(s, sizeof(s));
+          logs.add(LOG_WARN, "radio stby->rx #%u %s", s_radioRxKicks, s);
+          radioChipState(s, sizeof(s));
+          Serial.printf("[radio] standby while listening: %s\n", s);
+        }
+        inwRadioSetIdle();              // MeshCore's next pass starts receive again
+        lastMoveAt = now | 1;
+      }
+    } else standbyReads = 0;
+  }
+  if (busyHour >= 20 && now - lastMoveAt > 600000UL) { radioRestart("nothing heard for 10 min"); lastMoveAt = now | 1; }
 }
 
 static uint32_t s_bootAdvert = 8000, s_lastAdvert = 0;
@@ -2234,6 +2330,7 @@ void loop() {
   ext::tick();
   motion::tick(dimmer.asleep());
   radioIrqWatch();
+  radioDeafWatch();
   nodeLoop();
   lap(3);
   nav.tick();
@@ -2327,8 +2424,14 @@ void loop() {
   lap(7);
   const uint32_t total = millis() - tLoop;
   if (total > 150) {
-    logs.add(LOG_WARN, "slow %lu: in%u gps%u wf%u msh%u tk%u drw%u x%u bk%u",
-             (unsigned long)total, laps[0], laps[1], laps[2], laps[3], laps[4], laps[5], laps[6], laps[7]);
+    // At most one a minute: a slow screen (the lock scene, ~700 ms a frame) wrote one
+    // every pass and pushed every other line out of the log (2026-11-19: 48 of 48).
+    static uint32_t slowLoggedAt = 0;
+    if (!slowLoggedAt || millis() - slowLoggedAt > 60000) {
+      slowLoggedAt = millis() | 1;
+      logs.add(LOG_WARN, "slow %lu: in%u gps%u wf%u msh%u tk%u drw%u x%u bk%u",
+               (unsigned long)total, laps[0], laps[1], laps[2], laps[3], laps[4], laps[5], laps[6], laps[7]);
+    }
     extern char g_screenTitle[32];
     if (laps[5] > 150) Serial.printf("[W] draw slow: %ums on '%s'%s\n", laps[5], g_screenTitle, dimmer.asleep() ? " (screen off)" : "");
   }

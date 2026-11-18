@@ -617,7 +617,9 @@ def patch_radiolib_wrappers(src):
         raise SystemExit("patch_meshcore.py: RadioLibWrapper::begin changed upstream, patch did not apply")
     hooks = ("// INW: see patch_radiolib_wrappers in tools/patch_meshcore.py\n"
              "bool inwRadioFlagPending() { return (state & STATE_INT_READY) != 0; }\n"
-             "void inwRadioKick() { state |= STATE_INT_READY; }\n\n")
+             "void inwRadioKick() { state |= STATE_INT_READY; }\n"
+             "// The chip was found in standby while state says RX: idle makes recvRaw start receive.\n"
+             "void inwRadioSetIdle() { if ((state & ~STATE_INT_READY) == STATE_RX) state = STATE_IDLE; }\n\n")
     return src.replace(marker, hooks + marker)
 
 
