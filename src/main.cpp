@@ -122,6 +122,8 @@ static uint32_t s_prefsDirtyAt = 0, s_uiDirtyAt = 0;
 static uint32_t s_kbFlashUntil = 0;
 static uint32_t s_battFlashAt = 0;
 static bool s_radioOk = false;
+static uint16_t s_radioKicks = 0;   // radioIrqWatch(): missed radio interrupts picked up since start
+bool inwRadioFlagPending();         // MeshCore RadioLibWrappers.cpp (tools/patch_meshcore.py)
 #if INW_DEV
 static regions::Scan s_usbScan;    // USB "regions scan"
 #endif
@@ -909,6 +911,8 @@ static void usbCommands() {
                     (unsigned long)power::lightSleepLastMs(), (unsigned long)power::lightSleepMaxMs());
       motion::debugPrint();
       power::printSleepDiagnostics();
+      Serial.printf("[radio] dio1=%d flag=%d missed_irq_picked_up=%u\r\n",
+                    digitalRead(PIN_LORA_DIO1), inwRadioFlagPending() ? 1 : 0, (unsigned)s_radioKicks);
       uint8_t railOut[2] = {}, railCfg[2] = {};
       const bool railsRead = expander.regs(railOut, railCfg);
       Serial.printf("[peripherals] gps_setting=%d gps_rail_requested=%d nfc_active=%d haptic_standby=%d expander_ok=%d out=%02X%02X cfg=%02X%02X\r\n",
@@ -2036,6 +2040,26 @@ static void gpsTick() {
   }
 }
 
+// ---- radio: a "packet ready" interrupt the processor missed ------------------------------
+// The radio raises DIO1 when a packet has arrived or a send has finished, and its rising
+// edge sets MeshCore's flag. If that edge is missed, DIO1 stays high, no new edge ever
+// comes, and the pager hears and sends nothing until a restart (seen 2026-11-18 with ECO
+// on: 10 radio wakes in 2.7 hours; the same symptom was reported before ECO). Anything
+// that leaves DIO1 high with no flag for half a second gets the flag set by hand, so
+// MeshCore reads the radio and starts listening again. Each one is logged.
+bool inwRadioFlagPending();   // MeshCore's RadioLibWrappers.cpp, via tools/patch_meshcore.py
+void inwRadioKick();
+static void radioIrqWatch() {
+  static uint32_t highSince = 0;
+  if (!s_radioOk || digitalRead(PIN_LORA_DIO1) != HIGH || inwRadioFlagPending()) { highSince = 0; return; }
+  if (!highSince) { highSince = millis() | 1; return; }
+  if (millis() - highSince < 500) return;
+  highSince = 0;
+  inwRadioKick();
+  s_radioKicks++;
+  logs.add(LOG_WARN, "radio: missed interrupt picked up (%u since start)", s_radioKicks);
+}
+
 static uint32_t s_bootAdvert = 8000, s_lastAdvert = 0;
 static void autoAdvertTick() {
   if (!g_node) return;
@@ -2209,6 +2233,7 @@ void loop() {
   report::tick();
   ext::tick();
   motion::tick(dimmer.asleep());
+  radioIrqWatch();
   nodeLoop();
   lap(3);
   nav.tick();

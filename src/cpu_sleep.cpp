@@ -8,6 +8,8 @@
 #include <esp_timer.h>
 #include <driver/gpio.h>
 
+void inwRadioKick();   // MeshCore's RadioLibWrappers.cpp, via tools/patch_meshcore.py
+
 namespace power {
 namespace {
   int8_t s_enabled = -1;
@@ -181,6 +183,10 @@ bool idleLightSleep(const SleepInputs& in) {
   gpio_wakeup_disable((gpio_num_t)PIN_BUTTON);
   gpio_set_intr_type((gpio_num_t)PIN_BUTTON, GPIO_INTR_DISABLE);
   portEXIT_CRITICAL(&s_mux);
+  // A packet that arrived during the nap raised DIO1 while the pin was set to wake on
+  // its level, so the rising edge the radio interrupt waits for has already gone by:
+  // without this the flag was never set and the radio stayed deaf (2026-11-18).
+  if (digitalRead(PIN_LORA_DIO1) == HIGH) inwRadioKick();
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
   if (err != ESP_OK) {
