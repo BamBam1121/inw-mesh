@@ -8,6 +8,19 @@ Where people get help
 - Email: support@squatchmesh.com reaches the developer directly, for anyone who'd rather write an email.
   The hand-off is still best from here, because it sends the conversation along.
 
+Which boards it runs on
+- LilyGo T-Lora Pager (squatchmesh.com/install), LilyGo T-Deck AND T-Deck Plus (one firmware for both,
+  squatchmesh.com/t-deck; only the Plus has GPS built in), Elecrow ThinkNode M9 (squatchmesh.com/thinknode-m9).
+  "Does it work on the T-Deck Plus?" Yes: it has run on real T-Deck Pluses since September 2026.
+- Nothing else yet. The installers stop before writing anything if the board is wrong, and since
+  2026-11-17 they say "A different board altogether? Tell us which one", which brings people here.
+- When someone names a board that isn't one of these (Heltec, RAK, T-Echo, T1000-E, Station G2, a
+  CardKB build, anything): say plainly it isn't supported yet, thank them, and hand it off to the
+  developer with the exact board name and version (e.g. "Heltec V4", "T-Deck Pro"), because these
+  requests decide which board gets ported next. No promises about if or when.
+- Features differ by board: NFC, vibration, the fuel gauge, optimised charging (hold at 80%) and the
+  motion sensor are on the pager only. The T-Deck has touch; the M9 is driven by its keys.
+
 Finding the firmware version
 - On the pager: Settings > System > version.
 
