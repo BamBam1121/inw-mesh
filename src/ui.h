@@ -115,6 +115,7 @@ void sanitize(const char* in, char* out, size_t cap);
 // measure them as 16 px colour glyphs. drawUtf8/widthUtf8 sanitize first.
 int  richWidth(lgfx::LovyanGFX& g, const char* s, int n = -1);
 int  drawRich(lgfx::LovyanGFX& g, const char* s, int x, int y, int n = -1);
+void richEmojiDrop(int px);   // emoji drawn this much lower (bigger chat text); 0 = as before
 void richFit(lgfx::LovyanGFX& g, char* s, int maxW);
 int  drawUtf8(lgfx::LovyanGFX& g, const char* utf8, int x, int y, int maxW = 0);
 int  widthUtf8(lgfx::LovyanGFX& g, const char* utf8);
