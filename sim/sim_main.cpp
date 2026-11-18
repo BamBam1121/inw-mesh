@@ -17,6 +17,7 @@
 #include "regions.h"
 #include "battery.h"
 #include "serve_net.h"
+#include "qrview.h"
 #include "scenes.h"       // where the character stands, for the taps that poke him
 // LovyanGFX's PNG writer (utility/lgfx_miniz.c), declared only in that file.
 extern "C" void* tdefl_write_image_to_png_file_in_memory_ex(const void* img, int w, int h, int chans, size_t* len, unsigned int level, int flip);
@@ -574,6 +575,19 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
   // "squatch_sim OUT jolly": the Squatchmas theme's lock face - every outfit in every
   // place (xm_OUTFIT_PLACE), then a walk of 90 frames, 33 ms apart, in each place in a
   // different outfit (xmwalk_PLACE_NNN), for the GIFs.
+  // "squatch_sim OUT qr": the "show my QR code" screen (qr_plain, and qr_long with a long
+  // name full of characters that need encoding), to check it scans.
+  if (argc > 2 && !strcmp(argv[2], "qr")) {
+    ui_settings.themeId = 0;
+    app::applyTheme();
+    nav.push(makeHomeView());
+    run(300);
+    qr::showMine(); run(500); shot("qr_plain"); nav.pop();
+    strlcpy(g_node->prefs().node_name, "Squatch T-Deck & friends #1", sizeof(g_node->prefs().node_name));
+    qr::showMine(); run(500); shot("qr_long"); nav.pop();
+    printf("link %s\n", qr::contactLink().c_str());
+    return 0;
+  }
   if (argc > 2 && !strcmp(argv[2], "jolly")) {
     ui_settings.themeId = 5;
     app::applyTheme();
