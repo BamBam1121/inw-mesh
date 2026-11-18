@@ -577,6 +577,26 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
   // different outfit (xmwalk_PLACE_NNN), for the GIFs.
   // "squatch_sim OUT qr": the "show my QR code" screen (qr_plain, and qr_long with a long
   // name full of characters that need encoding), to check it scans.
+  // "squatch_sim OUT chattext": a conversation at each chat text size (GitHub #14),
+  // bubbles and compact, plus one long message with emoji to check wrapping and lines.
+  if (argc > 2 && !strcmp(argv[2], "chattext")) {
+    ui_settings.themeId = 0;
+    app::applyTheme();
+    populateHistory();
+    const ConvKey inw = ConvKey::channel(g_node->channels[1].channel.secret);
+    history.add(inw, 0, ST_RECV, "Pine Marten", "Snow at the summit \xF0\x9F\x91\x8D" " bring chains, the road past the lodge is icy and the repeater hut door is frozen shut again", sim::epoch - 120, 3, 14);
+    nav.push(makeHomeView());
+    run(300);
+    char n[48];
+    for (int compact = 0; compact < 2; compact++)
+      for (int size = 0; size < 3; size++) {
+        ui_settings.compactChat = compact; ui_settings.chatText = size;
+        app::openThreadForChannel(1); run(400);
+        snprintf(n, sizeof(n), "chat_%s_%d", compact ? "compact" : "bubbles", size); shot(n);
+        nav.pop(); run(100);
+      }
+    return 0;
+  }
   if (argc > 2 && !strcmp(argv[2], "qr")) {
     ui_settings.themeId = 0;
     app::applyTheme();

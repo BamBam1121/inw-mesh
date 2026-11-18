@@ -974,6 +974,11 @@ static void messagesMenu() {
             [] { ui_settings.hideHashBytes = !ui_settings.hideHashBytes; markUiDirty(); });
   tg(*m, "show signal (snr)", &ui_settings.showSnr);
   tg(*m, "compact (irc style)", &ui_settings.compactChat);
+  m->adjust("chat text size", []() -> String {      // GitHub #14
+               static const char* const N[] = {"normal", "large", "extra large"};
+               return N[min<int>(ui_settings.chatText, 2)];
+             },
+             [](int d) { ui_settings.chatText = (uint8_t)constrain((int)ui_settings.chatText + d, 0, 2); markUiDirty(); });
   tg(*m, "ignore 1-character posts", &ui_settings.ignoreOneChar);
   tg(*m, "distances in miles", &ui_settings.miles);
   m->submenu("quick replies", [] { quickRepliesMenu(); });
