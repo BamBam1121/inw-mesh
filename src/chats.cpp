@@ -15,8 +15,11 @@ ConvKey g_openConv;                 // the thread on screen, for notification mu
 // Chat text size (Settings > Display > chat text size, GitHub #14). Only the
 // messages themselves grow; names, times and the rest of the screen stay as they
 // are. Normal is the 16 px font every build has used, at the same 17 px lines.
+// Older saved settings read this byte from what was spare space: anything out of
+// range is normal.
+static uint8_t chatSize() { return ui_settings.chatText <= 2 ? ui_settings.chatText : 0; }
 static const lgfx::IFont* chatFont() {
-  switch (ui_settings.chatText) {
+  switch (chatSize()) {
     case 1:  return &fonts::DejaVu18;
     case 2:  return &fonts::DejaVu24;
     default: return &fonts::Font2;
@@ -24,11 +27,11 @@ static const lgfx::IFont* chatFont() {
 }
 // Line spacing for the font set now, and how far down an emoji (16 px) sits to
 // line up with it. Normal: 17 and 0, as before.
-static int chatLineH(lgfx::LovyanGFX& g) { return ui_settings.chatText ? g.fontHeight() + 2 : 17; }
-static int chatEmojiDrop(lgfx::LovyanGFX& g) { return ui_settings.chatText ? max(0, ((int)g.fontHeight() - 16) / 2) : 0; }
+static int chatLineH(lgfx::LovyanGFX& g) { return chatSize() ? g.fontHeight() + 2 : 17; }
+static int chatEmojiDrop(lgfx::LovyanGFX& g) { return chatSize() ? max(0, ((int)g.fontHeight() - 16) / 2) : 0; }
 // A bigger font fits fewer words: on a wide screen (the pager's) the bubbles may
 // then use the full width.
-static int chatBubbleMax() { return ui_settings.chatText ? max(320, L::W - 16) : 320; }
+static int chatBubbleMax() { return chatSize() ? max(320, L::W - 16) : 320; }
 
 // ---- helpers ------------------------------------------------------------------------
 static bool channelName(const ConvKey& k, char* out, size_t cap, int* idxOut = nullptr) {
@@ -282,7 +285,7 @@ public:
 #if !defined(BOARD_HAS_TOUCH) || !BOARD_HAS_TOUCH
     // With bigger chat text one message can be taller than the view: show it from its
     // first line rather than cut off at the top. (A touchscreen scrolls through it.)
-    if (!fingered && anchor >= 0 && anchor < _n && ui_settings.chatText) {
+    if (!fingered && anchor >= 0 && anchor < _n && chatSize()) {
       if (HistMsg* am = history.find(_ids[anchor])) {
         const int ah = ui_settings.compactChat ? drawCompact(g, *am, y, false, true) : drawBubble(g, *am, y, false, true);
         if (ah > bottom - top - 4) y = top + 2 + ah;
