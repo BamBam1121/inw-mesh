@@ -60,6 +60,7 @@ static Gestures   gestures;
 #include "bootscreen.h"
 #include "fsmigrate.h"
 #include "extport.h"
+#include "qrview.h"
 #include "sdguard.h"
 static void playVirusFight(const sdguard::Found& f);
 #if INW_DEV
@@ -1744,6 +1745,7 @@ static void usbCommands() {
     }
     if (!strcmp(line, "map")) { app::openMap(0, 0, nullptr); continue; }
 #endif
+    if (!strcmp(line, "qr")) { qr::showMine(); nav.invalidate(); continue; }   // the "show my QR code" screen
     if (!strcmp(line, "ask")) {
       confirm("Update to 1.2.12?", "1.2.12 beta: the automatic backup's interval can be set, and a failed update check says so in words. takes about a minute; messages pause while it downloads.", [] {});
       continue;

@@ -25,6 +25,7 @@
 #include "regional.h"
 #include "regions.h"
 #include "themestore.h"
+#include "qrview.h"
 #include <algorithm>
 #include <SPIFFS.h>
 #include <SD.h>
@@ -59,6 +60,7 @@ static void profileMenu() {
       });
     });
     v.info("public key", []() -> String { char h[20]; mesh::Utils::toHex(h, g_node->self_id.pub_key, 8); return String(h) + "..."; });
+    v.action("show my QR code", [] { qr::showMine(); });   // the MeshCore app scans it to add you
     v.header("position");
     v.info("advert position", []() -> String {
       if (!P().node_lat && !P().node_lon) return String("not set");
