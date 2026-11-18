@@ -4,6 +4,7 @@
 #include "tls_client.h"   // WiFiClientSecure without its stray close(0)
 #include <Preferences.h>
 #include <esp_sntp.h>
+#include <esp_wifi.h>
 #include <esp_heap_caps.h>
 #include "settings.h"
 #include "logstore.h"
@@ -98,12 +99,24 @@ static const char* resultText(Result r) {
   }
 }
 
+constexpr uint16_t LISTEN_INTERVAL = 10;       // beacons (~1 s at the usual 102 ms)
+static bool s_deep = false;
+
 static void join(int k) {
   s_joinSlot = s_lastSlot = k;
   s_joinAt = millis() | 1;
   s_assoc = false;
   s_reason = 0;
-  WiFi.begin(net(k).ssid, net(k).pass);
+  // Ask the router to hold our frames for up to LISTEN_INTERVAL beacons, so a deeper
+  // modem sleep (setDeepSleep) can stay joined. It's agreed when joining, so it's set
+  // every time; with the normal sleep the radio still wakes for every beacon.
+  WiFi.begin(net(k).ssid, net(k).pass, 0, nullptr, false);
+  wifi_config_t cfg;
+  if (esp_wifi_get_config(WIFI_IF_STA, &cfg) == ESP_OK) {
+    cfg.sta.listen_interval = LISTEN_INTERVAL;
+    esp_wifi_set_config(WIFI_IF_STA, &cfg);
+  }
+  esp_wifi_connect();
 }
 
 static int scanFound() {
@@ -170,7 +183,7 @@ static volatile bool s_starting = false;
 static void radioUp() {
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(true);                   // modem sleep: coexists with BLE, saves power
+  WiFi.setSleep(s_deep ? WIFI_PS_MAX_MODEM : WIFI_PS_MIN_MODEM);   // modem sleep: coexists with BLE, saves power
   WiFi.setAutoReconnect(false);          // we pick the network ourselves
 }
 static void startTask(void*) {
@@ -204,6 +217,12 @@ void setEnabled(bool on, bool background) {
     s_wasConnected = false;
     logs.add(LOG_INFO, "wifi off");
   }
+}
+
+void setDeepSleep(bool deep) {
+  if (deep == s_deep) return;
+  s_deep = deep;
+  if (s_on) WiFi.setSleep(deep ? WIFI_PS_MAX_MODEM : WIFI_PS_MIN_MODEM);
 }
 
 bool enabled() { return s_on; }
@@ -292,6 +311,11 @@ void tick() {
       configTime(0, 0, "pool.ntp.org", "time.google.com");
     }
   }
+  // A working connection lost: say why. Nothing else records it, and "joining"
+  // straight after tells nobody whether the router dropped us or we lost it.
+  if (!c && s_wasConnected && s_joinSlot < 0)
+    logs.add(LOG_WARN, "wifi lost: reason %u, cpu %lu MHz, screen %s", s_reason,
+             (unsigned long)getCpuFrequencyMhz(), dimmer.asleep() ? "dark" : "on");
   s_wasConnected = c;
   if (s_ntpSynced) {
     s_ntpSynced = false;

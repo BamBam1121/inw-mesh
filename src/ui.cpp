@@ -6,6 +6,8 @@
 #include "gps.h"
 #include "logstore.h"
 #include "netwifi.h"
+#include "homelink.h"
+#include "multiradio.h"
 #include "power.h"
 #include <time.h>
 #include "emoji_data.h"
@@ -196,9 +198,18 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock, bool with
     d.drawString("BT", rx, 1);
   }
   if (wifi::enabled()) {
+    // The home link takes the Wi-Fi slot: HOME dim while it connects or settles,
+    // green once packets go through the companion. Otherwise WiFi as before.
+    const homelink::State ls = homelink::state();
+    const bool linking = ls == homelink::State::Connecting || ls == homelink::State::Handshake || ls == homelink::State::Up;
     rx -= 34;
-    d.setTextColor(wifi::connected() ? t.green : t.dim, t.panel);
-    d.drawString("WiFi", rx, 1);
+    if (wifi::connected() && linking) {
+      d.setTextColor(g_radio.viaLink() ? t.green : t.dim, t.panel);
+      d.drawString("HOME", rx, 1);
+    } else {
+      d.setTextColor(wifi::connected() ? t.green : t.dim, t.panel);
+      d.drawString("WiFi", rx, 1);
+    }
   }
   if (ui_settings.gpsOn && !power::saver()) {
     rx -= 30;

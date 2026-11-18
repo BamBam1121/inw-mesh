@@ -47,6 +47,20 @@ Wi-Fi (1.2.2)
   to it), "no answer, weak signal?", "joined, router gave no address". Before 1.2.2 it could say
   "scanning..." forever; that's fixed. To change a saved password: scan + join the network again.
 
+Home link (not released yet)
+- Settings > Wi-Fi > "use a companion at home", then "companion on this network": the IP (or name) of a
+  companion on that Wi-Fi, port 5000 unless given as host:port. Any companion that can send raw packets
+  works, whatever its firmware (MeshCore companions, openHop Repeater's companion listeners, others);
+  there is no version check.
+- While it's up the pager sends and hears through that companion, its own radio sleeps, and the status
+  bar says HOME (dim while connecting, green when in use) instead of WiFi. Off that network, with Wi-Fi
+  off, or with the companion unreachable, it's straight back on its own radio. Nothing else changes: same
+  name, keys, contacts and messages; the companion's own identity isn't used.
+- "companion refused raw packets" = it answered sends with "unknown command" (on MeshCore that means older
+  than 1.17); the pager uses its own radio and tries again in 10 minutes. "can't reach" = wrong
+  address, companion off, or another client already on that listener (openHop has three).
+- Messages too long for the link (a long path plus a long post) go out on the pager's own radio.
+
 Message details (1.2.2)
 - A message's details (roll onto it and press; the bottom of that menu) show the route, with repeaters
   named when they're in your contacts. "4h 2B" beside

@@ -48,6 +48,7 @@ struct PacketLogEntry {
   int8_t   snr4;
   int16_t  rssi;
   bool     tx;
+  bool     viaLink;             // heard by the home-link companion, not our own radio
 };
 
 // One outgoing DM awaiting its ACK.
@@ -185,6 +186,7 @@ protected:
   void logRxRaw(float snr, float rssi, const uint8_t raw[], int len) override;
   void logRx(mesh::Packet* packet, int len, float score) override;
   void logTx(mesh::Packet* packet, int len) override;
+  bool allowPacketForward(const mesh::Packet* packet) override;
   // Region scopes (regions.h). What the phone app sends goes as MeshCore sends it,
   // in the app's scope. This node's own floods go in its channel's region if it has
   // one, else the default region - never in a scope the app left set.
