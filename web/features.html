@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Features &middot; Squatch Mesh</title>
-<meta name="description" content="Messaging, offline maps, repeater tools, fuel-gauge battery readings, signed Wi-Fi updates and NFC sharing on the LilyGo T-Lora Pager.">
+<meta name="description" content="Messaging, offline maps, repeater tools, signed Wi-Fi updates and more on the LilyGo T-Deck, T-Deck Plus, T-Lora Pager and ThinkNode M9.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
@@ -15,7 +15,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Squatch Mesh">
 <meta property="og:title" content="Features - Squatch Mesh">
-<meta property="og:description" content="Messaging, offline maps, repeater tools, fuel-gauge battery readings, signed Wi-Fi updates and NFC sharing on the LilyGo T-Lora Pager.">
+<meta property="og:description" content="Messaging, offline maps, repeater tools, signed Wi-Fi updates and more on the LilyGo T-Deck, T-Deck Plus, T-Lora Pager and ThinkNode M9.">
 <meta property="og:url" content="https://squatchmesh.com/features">
 <meta property="og:image" content="https://squatchmesh.com/assets/og.png?v=2">
 <meta name="twitter:card" content="summary_large_image">
@@ -57,7 +57,8 @@
 <main id="main" class="wrap">
   <div class="tag" style="margin-top:46px">features</div>
   <h1>What it actually does</h1>
-  <p class="sub">All of this runs on the pager itself. The phone app is optional.</p>
+  <p class="sub">All of this runs on the device itself: the T-Deck, T-Deck Plus, T-Lora Pager and ThinkNode M9.
+  The phone app is optional. Where a device differs, it says so.</p>
 
   <div class="row reveal">
     <div>
@@ -96,7 +97,7 @@
     <div class="panel">
       <table>
         <tr><th>mode</th><th>what happens</th></tr>
-        <tr><td>all</td><td>sound + vibration, every message</td></tr>
+        <tr><td>all</td><td>sound (and vibration on the pager), every message</td></tr>
         <tr><td>@mentions</td><td>only when you are named</td></tr>
         <tr><td>silent</td><td>banner only, no sound</td></tr>
         <tr><td>muted</td><td>nothing, still counted</td></tr>
@@ -128,8 +129,8 @@
       fills in at home and works in the field.</p>
     </div>
     <div class="panel"><p class="sub" style="font-size:13px;margin:0">Repeaters, rooms and people are drawn
-    differently, and the map remembers where you were looking. <code>wasd</code> pans, the wheel zooms,
-    <code>n</code> jumps to the next node.</p></div>
+    differently, and the map remembers where you were looking. On the pager <code>wasd</code> pans, the wheel
+    zooms and <code>n</code> jumps to the next node.</p></div>
   </div>
 
   <div class="row flip reveal">
@@ -153,15 +154,16 @@
 
   <div class="row reveal">
     <div>
-      <h3>A battery reading from a real fuel gauge</h3>
-      <p class="sub" style="font-size:14px">The percentage comes from the fuel gauge, and the charger is
-      configured so the gauge actually sees a charge finish, which keeps the percentage much closer to reality. Optimised
-      charging holds at 80% until shortly before you normally unplug. Battery saver turns off GPS,
-      Bluetooth and Wi-Fi at 20% and gets out of the way again once charged.</p>
+      <h3>A battery reading you can trust</h3>
+      <p class="sub" style="font-size:14px">On the pager the percentage comes from a real fuel gauge, and the
+      charger is configured so the gauge actually sees a charge finish, which keeps the percentage much closer to
+      reality. Optimised charging holds at 80% until shortly before you normally unplug. The T-Deck and M9 have no
+      fuel gauge, so they work the percentage out from the battery voltage. On all of them, battery saver turns
+      off GPS, Bluetooth and Wi-Fi at 20% and gets out of the way again once charged.</p>
     </div>
     <div class="panel" style="display:flex;align-items:center;gap:14px">
       <div class="bar"><i></i></div>
-      <div class="sub" style="font-size:13px;margin:0">charging, held at 80%</div>
+      <div class="sub" style="font-size:13px;margin:0">pager: charging, held at 80%</div>
     </div>
   </div>
 
@@ -172,9 +174,11 @@
     </div>
     <div>
       <h3>Updates over Wi-Fi</h3>
-      <p class="sub" style="font-size:14px">The pager checks on start and asks before installing anything.
-      Releases are signed, the download is hash-checked, and it installs into a spare slot so the version
-      you are running stays intact if anything fails. Contacts and keys are never touched.</p>
+      <p class="sub" style="font-size:14px">On Wi-Fi it checks for a new release every few hours and puts it in
+      by itself while the device is idle, then says so. Prefer to be asked first? Turn off "install updates by
+      itself" in Settings &rsaquo; System. Releases are signed, the download is hash-checked, and it installs
+      into a spare slot so the version you are running stays intact if anything fails. Contacts and keys are
+      never touched.</p>
     </div>
   </div>
 
@@ -205,10 +209,10 @@
 
   <div class="row reveal">
     <div>
-      <h3>NFC and the phone app</h3>
-      <p class="sub" style="font-size:14px">Tap a phone to the pager to hand over your contact or a channel
-      invite, read and write NFC tags, and emulate a tag. And it still pairs with the official MeshCore app
-      over Bluetooth if you want a big screen.</p>
+      <h3>The phone app, and NFC on the pager</h3>
+      <p class="sub" style="font-size:14px">Every device still pairs with the official MeshCore app over
+      Bluetooth if you want a big screen. The pager has NFC as well (the T-Deck and M9 don't): tap a phone to it
+      to hand over your contact or a channel invite, read and write NFC tags, and emulate a tag.</p>
     </div>
     <div class="panel"><p class="sub" style="font-size:13px;margin:0">NFC links use the standard MeshCore
     QR format, so they work with other clients too.</p></div>
@@ -225,7 +229,7 @@
   <div class="wrap footer-grid">
     <div class="footer-brand">
       <a class="logo" href="/"><img src="/assets/favicon.svg" width="30" height="30" alt=""><span>Squatch Mesh</span></a>
-      <p>Free, open-source MeshCore firmware for the LilyGo T-Lora Pager and the T-Deck. Made in the Inland Northwest.</p>
+      <p>Free, open-source MeshCore firmware for the LilyGo T-Deck, T-Deck Plus and T-Lora Pager and the ThinkNode M9. Made in the Inland Northwest.</p>
     </div>
     <nav class="footer-col" aria-label="Product"><h4>Product</h4>
       <a href="/features">Features</a><a href="/themes">Themes</a><a href="/install">Install</a><a href="/downloads">Downloads</a><a href="/releases">Releases</a></nav>
