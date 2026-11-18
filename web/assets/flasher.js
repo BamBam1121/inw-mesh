@@ -33,6 +33,7 @@ const DEVICE = CFG.device || "pager";
 const BOARD = CFG.board || "t-lora-pager";
 const FULL_NAME = CFG.fullName || "LilyGo T-Lora Pager";
 const BOARD_NAMES = { "t-lora-pager": "T-Lora Pager", "t-deck": "T-Deck", "thinknode-m9": "ThinkNode M9" };
+const BOARD_LINKS = { "t-lora-pager": "/install", "t-deck": "/t-deck", "thinknode-m9": "/thinknode-m9" };
 // A board whose USB socket goes to a USB-serial chip (data-usb-bridge: the M9) rather
 // than the ESP32-S3's own USB: it shows up under that chip's name, never as
 // Espressif's 0x303a, and stays connected through a restart.
@@ -84,6 +85,13 @@ if (panel) {
   const offerAnyway = () => {
     anywayBtn.textContent = "It's a " + DEVICE + ": install anyway";
     anywayBtn.hidden = false;
+  };
+  // After a refusal: someone with a board we don't support yet should still have
+  // somewhere to go. (Appended to the note, after say().)
+  const tellUs = () => {
+    const a = document.createElement("a");
+    a.href = "/help"; a.textContent = "Tell us which one";
+    note.append(" A different board altogether? ", a, ", so we know which boards people want next.");
   };
 
   let busy = false;
@@ -497,11 +505,18 @@ if (panel) {
         let feats = "";
         try { feats = String(await loader.chip.getChipFeatures(loader)); } catch (e) { feats = ""; }   // unreadable: carry on
         if (feats.indexOf("Embedded PSRAM " + REFUSE_PSRAM) >= 0) {
-          log("[flasher] chip: " + feats + " - built-in " + REFUSE_PSRAM + " PSRAM, so a " + REFUSE_NAME + ", not a " + DEVICE + ". Nothing written.");
+          /* The M9's chip has the same 8 MB as the T-Deck's, but the M9 is reached
+             through a USB-serial chip, never the ESP32-S3's own USB (Espressif's
+             0x303a), which is how the T-Deck and the pager show up. */
+          const bridged = !!infoOf(port).usbVendorId && infoOf(port).usbVendorId !== 0x303a;
+          const like = bridged ? "ThinkNode M9" : REFUSE_NAME;
+          log("[flasher] chip: " + feats + " - built-in " + REFUSE_PSRAM + " PSRAM" + (bridged ? " behind a USB-serial chip" : "") +
+              ", so a " + like + ", not a " + DEVICE + ". Nothing written.");
           await restart(transport);        // back to the firmware it had
           const e = new Error("wrong hardware");
           e.wrongHardware = feats;
-          e.looksLike = REFUSE_NAME;
+          e.looksLike = like;
+          e.looksLink = bridged ? "/thinknode-m9" : REFUSE_LINK;
           throw e;
         }
       }
@@ -575,6 +590,11 @@ if (panel) {
         say("It's running Squatch Mesh for the " + other + ". Nothing was written. Use the " + other +
             " installer for it, or plug in the " + DEVICE + " and press try again. If it really is a " + DEVICE +
             " that was given the " + other + " firmware by mistake, press install anyway to put it right.");
+        if (BOARD_LINKS[found.board]) {
+          const a = document.createElement("a");
+          a.href = BOARD_LINKS[found.board]; a.textContent = "Open the " + other + " installer";
+          note.append(" ", a, ".");
+        }
         again.hidden = false;
         offerAnyway();
         return;
@@ -675,8 +695,9 @@ if (panel) {
         note.append("Nothing was written, and it's back on the firmware it had. Its chip is the one a " + e.looksLike +
                     " has. Use the ");
         const a = document.createElement("a");
-        a.href = REFUSE_LINK; a.textContent = e.looksLike + " installer";
+        a.href = e.looksLink || REFUSE_LINK; a.textContent = e.looksLike + " installer";
         note.append(a, " for it. If you're sure it's a " + DEVICE + ", press install anyway.");
+        tellUs();
         logBox.open = true;
         again.hidden = false;
         offerAnyway();
@@ -686,6 +707,10 @@ if (panel) {
         say("Nothing was written, and it's back on the firmware it had. Every " + DEVICE + " has " + NEED_PSRAM +
             " of memory (PSRAM) built into its chip; this one's chip has none" +
             " (a T-Lora Pager's doesn't). If you're sure it's a " + DEVICE + ", press install anyway.");
+        const p = document.createElement("a");
+        p.href = "/install"; p.textContent = "the T-Lora Pager installer";
+        note.append(" A pager? Use ", p, ".");
+        tellUs();
         logBox.open = true;
         again.hidden = false;
         offerAnyway();
