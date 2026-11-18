@@ -12,6 +12,24 @@ void openChannelRegionScope(const uint8_t* secret16);   // settings_ui.cpp
 
 ConvKey g_openConv;                 // the thread on screen, for notification muting
 
+// Chat text size (Settings > Display > chat text size, GitHub #14). Only the
+// messages themselves grow; names, times and the rest of the screen stay as they
+// are. Normal is the 16 px font every build has used, at the same 17 px lines.
+static const lgfx::IFont* chatFont() {
+  switch (ui_settings.chatText) {
+    case 1:  return &fonts::DejaVu18;
+    case 2:  return &fonts::DejaVu24;
+    default: return &fonts::Font2;
+  }
+}
+// Line spacing for the font set now, and how far down an emoji (16 px) sits to
+// line up with it. Normal: 17 and 0, as before.
+static int chatLineH(lgfx::LovyanGFX& g) { return ui_settings.chatText ? g.fontHeight() + 2 : 17; }
+static int chatEmojiDrop(lgfx::LovyanGFX& g) { return ui_settings.chatText ? max(0, ((int)g.fontHeight() - 16) / 2) : 0; }
+// A bigger font fits fewer words: on a wide screen (the pager's) the bubbles may
+// then use the full width.
+static int chatBubbleMax() { return ui_settings.chatText ? max(320, L::W - 16) : 320; }
+
 // ---- helpers ------------------------------------------------------------------------
 static bool channelName(const ConvKey& k, char* out, size_t cap, int* idxOut = nullptr) {
   if (!g_node) return false;
@@ -261,6 +279,16 @@ public:
     const bool fingered = _tAnchor >= 0 && _tAnchor < _n;
     const int anchor = fingered ? _tAnchor : (_sel >= 0 ? _sel : _n - 1);
     int y = bottom - 2 + (fingered ? _px : 0);
+#if !defined(BOARD_HAS_TOUCH) || !BOARD_HAS_TOUCH
+    // With bigger chat text one message can be taller than the view: show it from its
+    // first line rather than cut off at the top. (A touchscreen scrolls through it.)
+    if (!fingered && anchor >= 0 && anchor < _n && ui_settings.chatText) {
+      if (HistMsg* am = history.find(_ids[anchor])) {
+        const int ah = ui_settings.compactChat ? drawCompact(g, *am, y, false, true) : drawBubble(g, *am, y, false, true);
+        if (ah > bottom - top - 4) y = top + 2 + ah;
+      }
+    }
+#endif
     _posN = 0;
     _hitN = 0;
     // If a selection is scrolled up, keep a little of the next message visible.
@@ -329,11 +357,13 @@ private:
     char text[200];
     sanitize(m.text, text, sizeof(text));
     uint16_t st[12]; uint8_t ln[12];
-    const int maxW = 320;
-    g.setFont(&fonts::Font2);
+    const int maxW = chatBubbleMax();
+    g.setFont(chatFont());
+    const int lh = chatLineH(g);
     const int nl = wrapText(g, text, maxW - 16, st, ln, 12);
     int textW = 0;
     for (int i = 0; i < nl; i++) textW = max(textW, richWidth(g, text + st[i], ln[i]));
+    g.setFont(&fonts::Font2);                          // names and times stay this size
     char meta[48];
     metaText(m, meta, sizeof(meta));
     char name[28] = "";
@@ -341,7 +371,7 @@ private:
     const int metaW = g.textWidth(meta);
     const int nameW = showName ? richWidth(g, name) : 0;
     const int w = min(maxW, max(max(textW, metaW), nameW) + 16);
-    const int h = 8 + (showName ? 17 : 0) + nl * 17 + 16;
+    const int h = 8 + (showName ? 17 : 0) + nl * lh + 16;
     if (measureOnly) return h;
     const int x = out ? L::W - 8 - w : 8;
     const int y = bottomY - h;
@@ -358,10 +388,14 @@ private:
     }
     g.setTextColor(t.white, bg);
     scrambleIfNew(m.id, text);                        // a new arrival decrypts in front of you
+    g.setFont(chatFont());
+    richEmojiDrop(chatEmojiDrop(g));
     for (int i = 0; i < nl; i++) {
       drawRich(g, text + st[i], x + 8, ty, ln[i]);
-      ty += 17;
+      ty += lh;
     }
+    richEmojiDrop(0);
+    g.setFont(&fonts::Font2);
     g.setTextColor(m.status == ST_FAILED ? t.red : t.dim, bg);
     g.drawString(meta, x + w - 8 - metaW, ty);
     notePos(m.id, x + w - 12, ty + 7);                // where its effects go: the status line
@@ -378,15 +412,20 @@ private:
     sanitize(out ? "me" : (m.sender[0] ? m.sender : "?"), who, sizeof(who));
     snprintf(text, sizeof(text), "%s> %s", who, body);
     uint16_t st[12]; uint8_t ln[12];
+    g.setFont(chatFont());
+    const int lh = chatLineH(g);
     const int nl = wrapText(g, text, L::W - 90, st, ln, 12);
-    const int h = nl * 17 + 2;
-    if (measureOnly) return h;
+    const int h = nl * lh + 2;
+    if (measureOnly) { g.setFont(&fonts::Font2); return h; }
     const int y = bottomY - h;
     if (selected) g.fillRect(0, y, L::W, h, t.focus);
+    richEmojiDrop(chatEmojiDrop(g));
     for (int i = 0; i < nl; i++) {
       g.setTextColor(i == 0 ? (out ? t.green : nameInk(m.sender, t.txt)) : t.txt, selected ? t.focus : t.bg);
-      drawRich(g, text + st[i], 8, y + 1 + i * 17, ln[i]);
+      drawRich(g, text + st[i], 8, y + 1 + i * lh, ln[i]);
     }
+    richEmojiDrop(0);
+    g.setFont(&fonts::Font2);
     char meta[48];
     metaText(m, meta, sizeof(meta));
     g.setTextColor(m.status == ST_FAILED ? t.red : t.dim, selected ? t.focus : t.bg);
