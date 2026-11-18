@@ -20,6 +20,19 @@ public:
     return _ok;
   }
   bool ok() const { return _ok; }
+  bool standby() const { return _standby; }
+
+  // Called only on existing loop passes. Never truncate an effect or add a
+  // periodic wakeup: the sequencer may finish while the CPU is asleep.
+  void idlePower(bool saving) {
+    if (!_ok) return;
+    if (!saving) { wake(); return; }
+    if (_standby || millis() - _lastIdleCheck < 100) return;
+    _lastIdleCheck = millis();
+    const uint8_t go = read(REG_GO);
+    if (go != 0) return; // Includes 0xFF on failed read: keep the effect safe.
+    if (write(REG_MODE, 0x40)) _standby = true;
+  }
 
   void setMode(uint8_t m) { _mode = m % CONFIG_COUNT; if (_ok) apply(); }
   uint8_t mode() const { return _mode; }
@@ -34,7 +47,7 @@ public:
   // Play a theme's sequence: effect ids, with bit 7 set meaning a pause of
   // (v & 0x7F) x 10 ms. Up to 8 slots, one GO write.
   void pattern(const uint8_t* seq, uint8_t n) {
-    if (!_ok || !n) return;
+    if (!_ok || !n || !wake()) return;
     write(REG_ODCLAMP, _odClamp);
     uint8_t slot = REG_SEQ;
     for (uint8_t i = 0; i < n && slot <= 0x0B; i++) write(slot++, seq[i]);
@@ -49,7 +62,7 @@ public:
 
   // Notification: the theme pattern if one is set, else `pulses` strong buzzes.
   void buzz(uint8_t pulses = 3) {
-    if (!_ok) return;
+    if (!_ok || !wake()) return;
     if (_pat && _patN && pulses == 3) { pattern(_pat, _patN); return; }
     write(REG_ODCLAMP, _odClamp);          // the tick lowers it; put it back
     uint8_t slot = REG_SEQ;
@@ -68,6 +81,7 @@ public:
     const uint32_t now = millis();
     if (now - _lastTick < 30) return;
     _lastTick = now;
+    if (!wake()) return;
     write(REG_ODCLAMP, _tickClamp);
     write(REG_SEQ, _tickEffect);
     write(REG_SEQ + 1, 0);
@@ -85,7 +99,16 @@ private:
     write(REG_FEEDBACK, fb & 0x7F);        // N_ERM_LRA = 0: ERM
   }
 
+  bool wake() {
+    if (!_standby) return true;
+    if (!write(REG_MODE, 0)) return false;
+    delayMicroseconds(250); // DRV2605 wake settling, register contents retained.
+    _standby = false;
+    return true;
+  }
+
   void apply() {
+    if (!wake()) return;
     write(REG_MODE, 0);
     switch (_mode) {
       case 0: write(REG_LIB, 6); write(REG_CTRL3, 0x88); _effect = 47; break;
@@ -113,7 +136,8 @@ private:
   }
 
   TwoWire* _w = nullptr;
-  bool     _ok = false;
+  bool     _ok = false, _standby = false;
+  uint32_t _lastIdleCheck = 0;
   uint8_t  _mode = 5, _effect = 14, _odClamp = 0xFF;
   uint32_t _lastTick = 0;
   const uint8_t* _pat = nullptr;

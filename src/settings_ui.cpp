@@ -11,6 +11,8 @@
 #include "backlight.h"
 #include "netwifi.h"
 #include "power.h"
+#include "eco_power.h"
+#include "cpu_sleep.h"
 #include "battery.h"
 #include "notify.h"
 #include "ota.h"
@@ -701,7 +703,11 @@ static void displayMenu() {
   m->toggle("wake screen on message", [] { return ui_settings.wakeOnMessage; },
             [] { ui_settings.wakeOnMessage = !ui_settings.wakeOnMessage; markUiDirty(); });
   // Lifting it into view lights the screen on the lock face (motion.h).
-  m->toggle("raise to wake", [] { return motion::raiseToWake(); }, [] {
+  m->toggle("raise to wake", [] { return !power::eco() && motion::raiseToWake(); }, [] {
+    if (power::eco()) {
+      nav.toast("turn off ECO mode to use raise to wake", 3000);
+      return; // Keep the user's saved preference for when ECO ends.
+    }
     motion::setRaiseToWake(!motion::raiseToWake());
     if (motion::raiseToWake() && motion::paused()) nav.toast("starts when battery saver ends", 3000);
     else if (motion::raiseToWake() && !motion::running()) nav.toast("motion sensor not responding", 3000);
@@ -1008,6 +1014,20 @@ static void batteryMenu() {
   m->adjust("turn on at", []() -> String { return String(ui_settings.saverPct) + "%"; },
             [](int d) { ui_settings.saverPct = constrain(ui_settings.saverPct + d * 5, 5, 50); markUiDirty(); });
   m->info("what it does", []() -> String { return String("gps, bluetooth, wi-fi off, dim screen"); });
+  // Experimental (from PR #13): off unless turned on here; off, the pager runs exactly as before.
+  m->header("ECO mode (experimental)");
+  m->toggle("ECO mode", [] { return power::eco(); }, [] {
+    if (power::eco()) {
+      if (!power::setEco(false)) nav.toast("could not save ECO setting", 3000);
+      return;
+    }
+    confirm("Turn on ECO mode?",
+            "experimental. with the screen off the pager runs slower and sleeps between messages to save battery. "
+            "it only sleeps with wi-fi, bluetooth and gps off, and raise to wake is off while ECO is on.",
+            [] { if (!power::setEco(true)) nav.toast("could not save ECO setting", 3000); });
+  });
+  m->info("what it does", []() -> String { return String("screen off: slower chip, sleeps between messages"); });
+  m->info("sleeps when", []() -> String { return String("wi-fi, bluetooth and gps are off"); });
   nav.push(m);
 }
 

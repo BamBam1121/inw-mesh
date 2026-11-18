@@ -7,6 +7,7 @@
 #include "logstore.h"
 #include "netwifi.h"
 #include "power.h"
+#include "eco_power.h"
 #include <time.h>
 #include "emoji_data.h"
 #include "regional.h"
@@ -164,6 +165,11 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
     rx -= smallW() + 5;
     s_sigX = rx;
     smallSignal(d, t, rx, 16);
+  }
+  if (power::eco()) {                    // experimental ECO mode (Settings > Battery)
+    rx -= d.textWidth("ECO") + 6;
+    d.setTextColor(t.green, t.panel);
+    d.drawString("ECO", rx, 1);
   }
   if (power::saver()) {
     rx -= 44;
