@@ -50,6 +50,7 @@
 #include "fx.h"
 #include "regional.h"
 #include "extport.h"
+#include "qrview.h"
 #include "motion.h"
 #include "scenes.h"
 #include "squatch_talk.h"
@@ -1481,6 +1482,8 @@ static void usbCommands() {
       app::rebootToFlashMode();
     } else if (!strcmp(line, "extpage")) {
       ext::openPage();
+    } else if (!strcmp(line, "qr")) {          // the "show my QR code" screen
+      qr::showMine();
     }
     nav.invalidate();
 #endif
