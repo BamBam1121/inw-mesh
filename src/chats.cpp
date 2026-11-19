@@ -108,7 +108,15 @@ public:
     if (_revealId && millis() - _revealAt < REVEAL_MS + 60) dirty = true;   // the decrypt effect
   }
 
-  void setCompose(const String& s) { _compose = s; _sel = -1; dirty = true; }
+  void setCompose(const String& s) { _compose = s; _cur = -1; _spaceAt = -1; _sel = -1; dirty = true; }
+  // Text put in where the cursor is (an emoji from the picker).
+  void insertAtCursor(const String& s) {
+    if ((int)(_compose.length() + s.length()) > maxLen() + 4) return;
+    const int at = cursorAt();
+    _compose = _compose.substring(0, at) + s + _compose.substring(at);
+    if (_cur >= 0) _cur = at + s.length();
+    _spaceAt = -1; _sel = -1; dirty = true;
+  }
   const String& compose() const { return _compose; }
   const ConvKey& key() const { return _key; }
 
@@ -116,7 +124,11 @@ public:
     if (c == '\n') { send(); return; }
     if ((uint8_t)c < 0x20 || (uint8_t)c > 0x7E) return;
     if ((int)_compose.length() >= maxLen()) return;
-    _compose += c;
+    const int at = cursorAt();
+    if (_cur < 0) _compose += c;                      // at the end, as it always was
+    else { _compose = _compose.substring(0, at) + c + _compose.substring(at); _cur = at + 1; }
+    _spaceAt = c == ' ' ? at : -1;                    // a space a hold-and-turn may take back
+    caretOn();
     _sel = -1;
     _tAnchor = -1; _px = 0;                // typing: back to the newest
     dirty = true;
@@ -125,10 +137,14 @@ public:
   bool backspace() override {
     if (_sel >= 0) { _sel = -1; dirty = true; return true; }
     if (!_compose.length()) return false;
-    // Drop a whole UTF-8 character (an emoji is 4 bytes), not one byte of it.
-    int n = _compose.length() - 1;
-    while (n > 0 && ((uint8_t)_compose[n] & 0xC0) == 0x80) n--;
-    _compose.remove(n);
+    // Drop the whole UTF-8 character before the cursor (an emoji is 4 bytes).
+    const int at = cursorAt();
+    if (at == 0) { dirty = true; return true; }      // nothing before it: the draft stays
+    const int n = prevChar(at);
+    _compose.remove(n, at - n);
+    if (_cur >= 0) _cur = n;
+    _spaceAt = -1;
+    caretOn();
     dirty = true;
     return true;
   }
@@ -143,6 +159,31 @@ public:
     else _sel = max(0, s);
     dirty = true;
   }
+
+  // The text cursor: hold space and turn the wheel (pager), or roll the trackball left
+  // and right (T-Deck). Typing, backspace and emoji then go in where it is.
+  bool moveCursor(int steps, bool firstOfHold) override {
+    if (!_compose.length() || !steps) return false;
+    if (firstOfHold && _spaceAt >= 0 && _spaceAt < (int)_compose.length() && _compose[_spaceAt] == ' ') {
+      _compose.remove(_spaceAt, 1);                    // the space that started the hold
+      if (_cur > _spaceAt) _cur--;
+    }
+    _spaceAt = -1;
+    int at = cursorAt();
+    for (; steps < 0 && at > 0; steps++) at = prevChar(at);
+    for (; steps > 0 && at < (int)_compose.length(); steps--) at = nextChar(at);
+    _cur = at >= (int)_compose.length() ? -1 : at;
+    _sel = -1;
+    caretOn();
+    dirty = true;
+    return true;
+  }
+#if BOARD_HAS_TRACKBALL
+  bool roll(int dx, int dy) override {
+    if (dy || !dx || _sel >= 0 || !_compose.length()) return false;
+    return moveCursor(dx, false);
+  }
+#endif
 
   void press() override {
     if (_sel >= 0 && _sel < _n) { openMessageActions(this, _ids[_sel]); return; }
@@ -183,7 +224,12 @@ public:
         return true;
       }
       case TouchEvent::Tap:
-        if (e.y >= composeTop()) { openEmojiPicker(this); return true; }
+        if (e.y >= composeTop()) {
+          // On the draft's words: the cursor goes there. The right end (the count),
+          // or an empty bar: emoji and quick replies, as before.
+          if (_compose.length() && e.x < L::W - 70) { placeCursorAt(e.x); return true; }
+          openEmojiPicker(this); return true;
+        }
         // A channel's title (its right half: the "<" is back): Set Region Scope, as
         // the app's channel menu.
         if (e.y >= L::HEAD_Y && e.y < L::HEAD_Y + L::HEAD_H && e.x >= L::W / 2 && _key.type == CONV_CHANNEL && g_node) {
@@ -570,20 +616,77 @@ private:
     }
     char safe[200];
     sanitize(_compose.c_str(), safe, sizeof(safe));
-    // Show the end of a long draft; never start the view inside an emoji marker.
-    const char* p = safe;
-    while (*p && richWidth(g, p) > w - 70) p += (*p == 0x01 || *p == 0x02) && p[1] ? 2 : 1;
+    // The cursor's place in the shown text, and a window on a long draft that keeps it
+    // in view (the end, as before, while it is at the end). Never starts inside an
+    // emoji marker.
+    const int avail = w - 70;
+    const int sp = sanitizedLen(cursorAt());
+    int start = 0;
+    if (_cur < 0) {
+      while (safe[start] && richWidth(g, safe + start) > avail) start += stepMarked(safe, start);
+    } else {
+      start = min(_winStart, sp);
+      while (start > 0 && richWidth(g, safe + start, sp - start) < avail / 3) start = prevMarked(safe, start);
+      while (start < sp && richWidth(g, safe + start, sp - start) > avail - 4) start += stepMarked(safe, start);
+    }
+    _winStart = start;
+    _textX = x + 12;
     g.setTextColor(t.white, t.panel);
+    g.setClipRect(x + 10, y, avail + 4, h);
     richEmojiDrop(chatEmojiDrop(g));
-    const int cx = drawRich(g, p, x + 12, ty);
+    drawRich(g, safe + start, x + 12, ty);
     richEmojiDrop(0);
-    if (_caret) g.fillRect(cx + 1, ty + 1, 2, caretH, t.green);
+    g.clearClipRect();
+    const int cx = x + 12 + richWidth(g, safe + start, sp - start);
+    if (_caret) g.fillRect(_cur < 0 ? cx + 1 : cx - 1, ty + 1, 2, caretH, t.green);
     g.setFont(&fonts::Font2);
     char cnt[12];
     snprintf(cnt, sizeof(cnt), "%d", maxLen() - (int)_compose.length());
     g.setTextColor((int)_compose.length() > maxLen() - 15 ? t.amber : t.dim, t.panel);
     g.drawString(cnt, x + w - 12 - g.textWidth(cnt), smallY);
   }
+
+  // The cursor as a byte offset in _compose (-1: at the end, where typing follows it).
+  int cursorAt() const { return _cur < 0 || _cur > (int)_compose.length() ? (int)_compose.length() : _cur; }
+  int prevChar(int at) const { int n = at - 1; while (n > 0 && ((uint8_t)_compose[n] & 0xC0) == 0x80) n--; return max(0, n); }
+  int nextChar(int at) const { int n = at + 1; while (n < (int)_compose.length() && ((uint8_t)_compose[n] & 0xC0) == 0x80) n++; return n; }
+  // How long the shown (sanitized) text of the first `bytes` of the draft is.
+  int sanitizedLen(int bytes) const {
+    char pre[200], out[200];
+    const int n = max(0, min(bytes, (int)sizeof(pre) - 1));
+    memcpy(pre, _compose.c_str(), n); pre[n] = 0;
+    sanitize(pre, out, sizeof(out));
+    return strlen(out);
+  }
+  static int stepMarked(const char* s, int at) { return (s[at] == 0x01 || s[at] == 0x02) && s[at + 1] ? 2 : 1; }
+  static int prevMarked(const char* s, int at) {
+    if (at >= 2 && (s[at - 2] == 0x01 || s[at - 2] == 0x02)) return at - 2;
+    return at - 1;
+  }
+  void caretOn() { _caret = true; _blinkAt = millis(); }
+  // A tap in the draft (T-Deck): the cursor goes to the nearest gap between characters.
+  void placeCursorAt(int px) {
+    Canvas& g = nav.canvas();
+    g.setFont(chatFont());
+    char safe[200];
+    sanitize(_compose.c_str(), safe, sizeof(safe));
+    const int len = _compose.length();
+    int best = len, bestD = 1 << 30;
+    for (int b = 0; ; b = nextChar(b)) {
+      const int sp = sanitizedLen(b);
+      if (sp >= _winStart) {
+        const int d = abs(_textX + richWidth(g, safe + _winStart, sp - _winStart) - px);
+        if (d < bestD) { bestD = d; best = b; }
+      }
+      if (b >= len) break;
+    }
+    g.setFont(&fonts::Font2);
+    _cur = best >= len ? -1 : best;
+    _spaceAt = -1; _sel = -1;
+    caretOn();
+    dirty = true;
+  }
+  int _cur = -1, _spaceAt = -1, _winStart = 0, _textX = 18;
 
   static constexpr uint16_t MAX_IDS = 200;
   ConvKey _key;
@@ -664,11 +767,11 @@ public:
     for (int i = 0; i < 11; i++) if (s_recent[i] == cp) { at = i; break; }
     for (int i = at; i > 0; i--) s_recent[i] = s_recent[i - 1];
     s_recent[0] = cp;
-    String c = _tv->compose();
+    String c;
     utf8Append(c, cp);
     ThreadView* tv = _tv;
     nav.pop();
-    tv->setCompose(c);
+    tv->insertAtCursor(c);
   }
   // Touch: tap an emoji to insert it, drag to scroll, tap the header's right side
   // for quick replies.

@@ -597,6 +597,11 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
           for (const char* c = "On my way up, see you at the lodge"; *c; c++) nav.key(*c);
           run(100);
           snprintf(n, sizeof(n), "chat_typing_%d", size); shot(n);
+          // The cursor moved back 11 (to before "the lodge"), "old " typed there.
+          nav.top()->moveCursor(-9, false);
+          for (const char* c = "old "; *c; c++) nav.key(*c);
+          run(100);
+          snprintf(n, sizeof(n), "chat_cursor_%d", size); shot(n);
         }
         nav.pop(); run(100);
       }
