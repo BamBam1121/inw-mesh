@@ -74,7 +74,7 @@
 .qs-glow { display: none; }
 .qs-inner { position: relative; padding: 26px 20px 24px; }
 .qs-kicker { margin: 0 0 4px; font-size: 14.5px; font-weight: 600; color: var(--amber); }
-.qs-title { margin: 0 0 10px; font: 800 clamp(24px, 3.6vw, 32px)/1.15 var(--display); font-stretch: 112%; color: var(--heading); }
+.qs-title { margin: 0 0 10px; font: 26px/1.25 var(--display); font-synthesis: none; color: var(--heading); }
 .qs-sub { margin: 0 0 20px; max-width: 60ch; color: var(--text); font-size: 16px; line-height: 1.55; }
 .qs-fine { margin: 14px 0 0; color: var(--muted); font-size: 14px; }
 /* the two "start fresh" tick boxes under START: small, and out of the way */
@@ -87,7 +87,7 @@
 
 .qs-btn { position: relative; display: inline-flex; align-items: center; justify-content: center;
   min-height: 56px; min-width: 200px; padding: 0 36px; border: 1px solid #e0ae4a; border-radius: var(--radius-sm); cursor: pointer;
-  font: 800 19px/1 var(--display); font-stretch: 112%; letter-spacing: 0.06em; color: #1a1205; background: var(--amber); }
+  font: 26px/1 var(--display); font-synthesis: none; color: #1a1205; background: var(--amber); }
 .qs-btn:hover { background: #ffd27a; }
 .qs-btn:focus-visible { outline: 3px solid var(--amber); outline-offset: 4px; }
 .qs-btn[disabled] { filter: grayscale(0.6); opacity: 0.65; cursor: not-allowed; }

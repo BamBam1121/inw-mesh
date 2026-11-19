@@ -113,6 +113,37 @@
   // The releases page fills this in; no inline script needed, so the CSP can forbid them.
   if (document.getElementById("releases")) window.loadReleases("releases");
 
+  /* home page: the last few releases for every board, newest first. Betas are left
+     out (T-Deck and M9 releases are GitHub pre-releases, so go by the name instead).
+     The static line in the page stays if GitHub can't be reached. */
+  const latest = document.getElementById("latest");
+  if (latest) (async () => {
+    let data = null;
+    try {
+      const c = sessionStorage.getItem("sm-releases");
+      if (c) { const { at, data: d } = JSON.parse(c); if (Date.now() - at < 600000) data = d; }
+    } catch (e) { /* storage blocked */ }
+    if (!data) {
+      try {
+        const r = await fetch("https://api.github.com/repos/BamBam1121/inw-mesh/releases");
+        if (!r.ok) return;
+        data = await r.json();
+        try { sessionStorage.setItem("sm-releases", JSON.stringify({ at: Date.now(), data })); } catch (e) { /* fine */ }
+      } catch (e) { return; }
+    }
+    const board = (tag) => /^tdeck-/.test(tag) ? "T-Deck" : /^m9-/.test(tag) ? "ThinkNode M9" : "T-Lora Pager";
+    const rows = (data || []).filter((r) => !/beta|rc/i.test(r.tag_name || "") && !r.draft).slice(0, 5).map((r) => {
+      const tag = r.tag_name || "";
+      const ver = tag.replace(/^(tdeck-|m9-)?v/, "");
+      let what = (r.name || "").replace(/^(T-Deck|ThinkNode M9)\s+/, "").trim();
+      what = what.startsWith(ver) ? what.slice(ver.length).replace(/^\s*-\s*/, "") : "";
+      const date = new Date(r.published_at || r.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+      return '<li><span class="px">' + esc(date) + "</span>" + '<a href="' + esc(r.html_url) + '">' + esc(board(tag) + " " + ver) + "</a>" +
+        (what ? ": " + esc(what) : "") + "</li>";
+    });
+    if (rows.length) latest.innerHTML = rows.join("");
+  })();
+
   function render(box, list) {
     // The pager's releases. T-Deck betas are pre-releases tagged tdeck-v*.
     list = (list || []).filter((rel) => !rel.prerelease && !/^tdeck-/.test(rel.tag_name || ""));

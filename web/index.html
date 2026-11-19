@@ -5,10 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Squatch Mesh - off-grid messaging for the LilyGo T-Deck, T-Lora Pager and ThinkNode M9</title>
 <meta name="description" content="Squatch Mesh is free, open-source MeshCore firmware that turns the LilyGo T-Deck, T-Deck Plus, T-Lora Pager and ThinkNode M9 into standalone off-grid messengers. No cell service, no internet, no subscription.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,600..800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/style.css?v=8">
+<link rel="stylesheet" href="/assets/style.css?v=9">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://squatchmesh.com/">
 <meta name="theme-color" content="#070b0a">
@@ -39,22 +36,20 @@
 
 <main id="main">
 
-  <!-- HERO: what it is, the install button, and a real photo of it -->
   <section class="hero">
     <div class="wrap hero-grid">
       <div>
-        <span class="eyebrow">Free firmware for the T&#8209;Deck, T&#8209;Deck Plus, T&#8209;Lora Pager and ThinkNode&nbsp;M9</span>
-        <h1>Text anyone on the mesh. No cell service needed.</h1>
-        <p class="lead">Squatch Mesh turns your T-Deck, pager or M9 into a standalone off-grid messenger: channels,
-        direct messages, maps and repeater tools, right on the device. No phone, no internet, no subscription.</p>
+        <h1>Squatch Mesh</h1>
+        <p class="lead" style="color:var(--text)">Firmware for the LilyGo T&#8209;Deck, T&#8209;Lora Pager and ThinkNode&nbsp;M9 that lets you text
+        people on the MeshCore mesh right from the device. You don't need a phone or cell service for it.</p>
+        <p>I started it on my T&#8209;Lora Pager here in the Inland Northwest, then ported it to the T&#8209;Deck and the M9.
+        It's free and open source (GPL-3.0), and once it's on there it updates itself over Wi&#8209;Fi.</p>
         <div class="hero-cta">
-          <a class="btn solid lg" href="/downloads">Install in your browser</a>
-          <a class="textlink" href="#features">See what it does</a>
+          <a class="btn solid lg" href="/downloads">Install it</a>
         </div>
-        <p class="sub" style="font-size:15.5px;margin:0 0 6px">Free and open source (GPL-3.0). Signed Wi-Fi updates. Works with the MeshCore app.</p>
-        <p class="sub" style="font-size:15.5px;margin:0">Pick your device:
-          <a href="/t-deck">T&#8209;Deck &amp; T&#8209;Deck&nbsp;Plus</a> &middot;
-          <a href="/install">T&#8209;Lora&nbsp;Pager</a> &middot;
+        <p class="sub" style="font-size:16px;margin:0">Or go straight to your device:
+          <a href="/t-deck">T&#8209;Deck &amp; T&#8209;Deck&nbsp;Plus</a>,
+          <a href="/install">T&#8209;Lora&nbsp;Pager</a>,
           <a href="/thinknode-m9">ThinkNode&nbsp;M9</a></p>
       </div>
       <figure>
@@ -66,52 +61,44 @@
                  alt="A T-Lora Pager held up on a mountain top, showing the Aurora lock screen with the sasquatch saying Rise and shine">
           </picture>
         </div>
-        <figcaption class="photo-cap">A T-Lora Pager on Squatch Mesh, up on the mountain.</figcaption>
+        <figcaption class="photo-cap">my pager up on the mountain, Aurora theme</figcaption>
       </figure>
     </div>
   </section>
 
-  <!-- GET STARTED -->
-  <section class="section" style="padding-top:24px">
-    <div class="wrap themes">
-      <div>
-        <h2 style="margin-top:0">On the air in a few minutes</h2>
-        <p class="lead">No tools to download. You only need your device, a USB-C cable that carries data, and Chrome or Edge.</p>
-        <p><a class="btn solid" href="/downloads">Install</a></p>
-      </div>
-      <div class="steps">
-        <div class="step"><h3>Flash it from your browser</h3><p class="sub">Plug your device in, click Install, pick its port. Your contacts are kept when you update.</p></div>
-        <div class="step"><h3>Name your node</h3><p class="sub">Pick how you appear to everyone else. The Inland Northwest radio preset is ready; any MeshCore settings work.</p></div>
-        <div class="step"><h3>Message the mesh</h3><p class="sub">Join a channel or message a contact. Repeaters on hills carry it for miles.</p></div>
-      </div>
+  <section class="section" style="padding-top:8px">
+    <div class="wrap narrow">
+      <h2 style="margin-top:0">Installing</h2>
+      <p>It installs from Chrome or Edge in about two minutes. Plug the device in with a USB-C cable that does data
+      (charge-only cables are the number one reason it doesn't show up), click Install and pick the port.</p>
+      <p>Updating later keeps your contacts, channels and messages, so you can try a new version without starting over.
+      The Inland Northwest radio preset is set up out of the box, and any other MeshCore settings work too.</p>
+      <p><a href="/downloads">Go to the installers</a></p>
     </div>
   </section>
 
-  <!-- FEATURES -->
   <section class="section band" id="features">
     <div class="wrap">
-      <div class="section-head">
-        <h2>A full messenger on the device itself</h2>
-        <p class="lead">Everything runs on the device. The phone app is optional.</p>
-      </div>
+      <h2 style="margin-top:0">What it does</h2>
+      <p class="lead" style="margin-bottom:22px">Everything runs on the device. The MeshCore phone app still works with it if you want it.</p>
       <dl class="feature-list">
-        <div><dt>Messaging</dt><dd>Channels, direct messages and rooms, with delivery ticks, retries, @mentions and emoji. Room for 2,000 contacts and 40 channels.</dd></div>
-        <div><dt>Offline maps</dt><dd>Map tiles from the SD card, with every node that shares its position drawn on top.</dd></div>
-        <div><dt>Repeater tools</dt><dd>Log in to repeaters, read status and telemetry, trace routes and see which repeaters carried a message.</dd></div>
-        <div><dt>Battery that lasts</dt><dd>GPS and the screen power down when you're not looking, and a saver kicks in when low. On the pager, charging holds at 80%.</dd></div>
-        <div><dt>Safe Wi-Fi updates</dt><dd>Releases are signed and checked before installing, and your contacts and keys are left alone.</dd></div>
-        <div><dt>Phone app &amp; NFC</dt><dd>Pair with the MeshCore app over Bluetooth. On the pager, tap a phone to share your contact or a channel.</dd></div>
+        <div><dt>Messaging</dt><dd>Channels, DMs and rooms, with delivery ticks, retries, @mentions and emoji. It holds 2,000 contacts and 40 channels.</dd></div>
+        <div><dt>Offline maps</dt><dd>Map tiles off the SD card, with everyone who shares their position drawn on top.</dd></div>
+        <div><dt>Repeater tools</dt><dd>Log into repeaters, check their status and telemetry, trace routes, and see which repeaters carried your message.</dd></div>
+        <div><dt>Battery</dt><dd>GPS and the screen shut off when you're not using them, and a saver kicks in when you're low. The pager stops charging at 80% to go easy on the cell.</dd></div>
+        <div><dt>Updates</dt><dd>Releases are signed and checked before they install, and they leave your contacts and keys alone.</dd></div>
+        <div><dt>Phone app and NFC</dt><dd>Pairs with the MeshCore app over Bluetooth. On the pager you can tap a phone to share your contact or a channel.</dd></div>
       </dl>
-      <p style="margin-top:22px"><a class="textlink" href="/features">All features</a></p>
+      <p style="margin-top:22px"><a href="/features">The full feature list</a></p>
     </div>
   </section>
 
-  <!-- THEMES -->
   <section class="section">
     <div class="wrap themes" data-theme-switcher>
       <div>
-        <h2 style="margin-top:0">Five themes, top to bottom</h2>
-        <p class="lead">Each one changes the colours, the lock-screen scene, the message sounds and even the charging icon.</p>
+        <h2 style="margin-top:0">Themes</h2>
+        <p>Five are built in, and Squatchmas is in beta right now. Each one changes the colours, the lock screen,
+        the message sounds and even the charging icon. If none of them are your thing, you can make your own in the browser.</p>
         <div class="theme-tabs" role="tablist" aria-label="Themes">
           <button type="button" role="tab" id="t-squatch" aria-controls="p-squatch" aria-selected="true">Squatch</button>
           <button type="button" role="tab" id="t-aurora" aria-controls="p-aurora" aria-selected="false">Aurora</button>
@@ -119,80 +106,79 @@
           <button type="button" role="tab" id="t-hero" aria-controls="p-hero" aria-selected="false">Hero</button>
           <button type="button" role="tab" id="t-halloween" aria-controls="p-halloween" aria-selected="false">Halloween</button>
         </div>
-        <a class="textlink" href="/themes">Compare the themes</a><br>
-        <a class="textlink" href="/theme-maker">Make your own</a>
+        <p style="margin:0"><a href="/themes">All of them side by side</a> &middot; <a href="/theme-maker">Make your own</a></p>
       </div>
       <div>
         <div class="theme-panel" role="tabpanel" id="p-squatch" aria-labelledby="t-squatch">
           <div class="device"><picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/img/anim-squatch-v4.png"><img class="screen" src="/assets/img/anim-squatch-v4.webp" width="480" height="222" alt="Squatch theme: pines, mountains and a walking sasquatch in terminal green"></picture></div>
-          <p style="margin-top:14px">Terminal green, pines and a sasquatch walking the ridge.</p>
+          <p class="photo-cap">Squatch: terminal green, pines, and a sasquatch walking the ridge</p>
         </div>
         <div class="theme-panel" role="tabpanel" id="p-aurora" aria-labelledby="t-aurora" hidden>
           <div class="device"><picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/img/anim-aurora-v4.png"><img class="screen" src="/assets/img/anim-aurora-v4.webp" width="480" height="222" alt="Aurora theme: northern lights over a dark ridge"></picture></div>
-          <p style="margin-top:14px">Curtains of light over a dark ridge, with slow bell tones.</p>
+          <p class="photo-cap">Aurora: northern lights over a dark ridge, with slow bell tones</p>
         </div>
         <div class="theme-panel" role="tabpanel" id="p-blocks" aria-labelledby="t-blocks" hidden>
           <div class="device"><picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/img/anim-blocks-v4.png"><img class="screen" src="/assets/img/anim-blocks-v4.webp" width="480" height="222" alt="Blocks theme: a blocky world of grass and dirt under a pixel sky"></picture></div>
-          <p style="margin-top:14px">A blocky world under a pixel moon, with soft piano notes.</p>
+          <p class="photo-cap">Blocks: a blocky world under a pixel moon, soft piano notes</p>
         </div>
         <div class="theme-panel" role="tabpanel" id="p-hero" aria-labelledby="t-hero" hidden>
           <div class="device"><picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/img/anim-hero-v4.png"><img class="screen" src="/assets/img/anim-hero-v4.webp" width="480" height="222" alt="Hero theme: night hills, a castle and a row of hearts showing the battery"></picture></div>
-          <p style="margin-top:14px">Night hills, a castle and hearts that track your battery.</p>
+          <p class="photo-cap">Hero: night hills, a castle, and hearts for your battery</p>
         </div>
         <div class="theme-panel" role="tabpanel" id="p-halloween" aria-labelledby="t-halloween" hidden>
           <div class="device"><picture><source media="(prefers-reduced-motion: reduce)" srcset="/assets/img/anim-halloween-v2.png"><img class="screen" src="/assets/img/anim-halloween-v2.webp" width="480" height="222" alt="Halloween theme: the sasquatch in costume, out trick-or-treating under a big moon"></picture></div>
-          <p style="margin-top:14px">The sasquatch in a new costume every time it wakes, with spooky little tunes.</p>
+          <p class="photo-cap">Halloween: a new costume every time it wakes up</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- HOW THE MESH WORKS -->
   <section class="section band">
-    <div class="wrap">
-      <div class="section-head" style="margin-bottom:0">
-        <h2>No towers. Just radios passing it on.</h2>
-        <p class="lead">Your device sends a short, encrypted burst over LoRa radio. No SIM, no account.
-        Radios on hills hear it and pass it on once each, so it spreads across the region without looping.
-        Miles away someone's radio chimes, and replies find the quickest way back.</p>
-        <p><a class="textlink" href="/mesh">More about the mesh</a></p>
-      </div>
+    <div class="wrap narrow">
+      <h2 style="margin-top:0">How the mesh works</h2>
+      <p>Your device sends a short encrypted burst over LoRa radio. Repeaters on hills and rooftops hear it and pass it
+      along once each, so it spreads across the area without bouncing around forever. That's how a message gets miles
+      away without any cell towers involved.</p>
+      <p style="margin:0"><a href="/mesh">More on how the mesh works</a></p>
     </div>
   </section>
 
-  <!-- FAQ -->
-  <section class="section" id="faq">
-    <div class="wrap">
-      <div class="section-head">
-        <h2 style="margin-top:0">Questions</h2>
-        <p class="lead">Not answered here? <a href="/help">Get help or send feedback</a>.</p>
-      </div>
-      <div class="faq">
-        <details><summary>Which devices does it run on?</summary>
-          <p>The LilyGo <a href="/t-deck">T-Deck and T-Deck Plus</a> (the same firmware runs on both; only the Plus has GPS built in), the <a href="/install">LilyGo T-Lora Pager</a>, and the <a href="/thinknode-m9">Elecrow ThinkNode M9</a>. The mesh itself is <a href="https://meshcore.io">MeshCore</a>, so you can talk to anyone on a MeshCore network, whatever device they use.</p></details>
-        <details><summary>Does it cost anything?</summary>
-          <p>No. Squatch Mesh is free and open source under GPL-3.0, and the mesh has no subscription or fees. You only need the device.</p></details>
-        <details><summary>Will I lose my contacts when I update?</summary>
-          <p>No. Updates over Wi-Fi or from the website keep your contacts, channels, messages and settings. Only tick "erase device" in the installer if you mean to wipe everything.</p></details>
-        <details><summary>Does it still work with the MeshCore phone app?</summary>
-          <p>Yes. Pair it over Bluetooth like any MeshCore companion, and the phone and the device share the same contacts and settings.</p></details>
-        <details><summary>Do I need a ham radio licence?</summary>
-          <p>No. MeshCore uses unlicensed ISM radio bands, so no callsign is needed. Stay within your region's power limits.</p></details>
-        <details><summary>What if something goes wrong while flashing?</summary>
-          <p>Run the installer again: it writes everything the device needs to start, even on a blank chip. If the device no longer shows up, its install page says how to put it in flash mode: <a href="/t-deck">T-Deck</a>, <a href="/install">pager</a> (hold BOOT, tap RESET, release BOOT), <a href="/thinknode-m9">M9</a>.</p></details>
-      </div>
+  <section class="section">
+    <div class="wrap narrow">
+      <h2 style="margin-top:0">Latest releases</h2>
+      <ul class="releases-mini" id="latest">
+        <li><span class="px">Nov 14, 2026</span> T-Lora Pager 1.2.16, T-Deck 1.2.6 and ThinkNode M9 1.2.6. The Squatchmas theme is in beta on all three.</li>
+      </ul>
+      <p style="margin:0"><a href="https://github.com/BamBam1121/inw-mesh/releases">Every release with its notes, on GitHub</a></p>
+
+      <h2>Who makes this</h2>
+      <p>Me. It's a one-person project from the Inland Northwest, tested every day on the local MeshCore mesh,
+      including a couple of repeaters I run myself. More than 150 devices have run it so far.</p>
+      <p style="margin:0">If something's broken or you want a feature, use the <a href="/help">help page</a> or come find me in
+      #squatch-mesh on the <a href="https://inlandnwmesh.org/" rel="noopener">Inland NW Mesh</a> Discord.</p>
     </div>
   </section>
 
-  <!-- CLOSING -->
-  <section class="section" style="padding-top:0">
-    <div class="wrap">
-      <div class="cta">
-        <h2>Put it on your device</h2>
-        <p class="lead">Flash Squatch Mesh from your browser in a few minutes. Free, open source, and yours to change.
-        It's made in the Inland Northwest and tested on the local MeshCore mesh, and more than 150 devices have run it so far.</p>
-        <a class="btn solid lg" href="/downloads">Install Squatch Mesh</a>
-      </div>
+  <section class="section band" id="faq">
+    <div class="wrap narrow qa">
+      <h2 style="margin-top:0">Questions</h2>
+      <h3>Which devices does it run on?</h3>
+      <p>The LilyGo <a href="/t-deck">T-Deck and T-Deck Plus</a> (same firmware, only the Plus has GPS built in), the
+      <a href="/install">LilyGo T-Lora Pager</a>, and the <a href="/thinknode-m9">Elecrow ThinkNode M9</a>. The mesh itself is
+      <a href="https://meshcore.io">MeshCore</a>, so you can talk to anyone on a MeshCore network whatever they're using.</p>
+      <h3>Does it cost anything?</h3>
+      <p>Nothing. It's GPL-3.0 and the mesh has no fees. You just need the device.</p>
+      <h3>Will I lose my contacts when I update?</h3>
+      <p>No. Updates from the site or over Wi-Fi keep your contacts, channels, messages and settings. Only tick
+      "erase device" in the installer if you actually want a clean slate.</p>
+      <h3>Does the MeshCore phone app still work?</h3>
+      <p>Yes. Pair it over Bluetooth like any MeshCore companion and the phone and the device share contacts and settings.</p>
+      <h3>Do I need a ham licence?</h3>
+      <p>No. MeshCore runs on the unlicensed ISM band, so there's no callsign. Just stay under your region's power limits.</p>
+      <h3>What if flashing goes wrong?</h3>
+      <p>Run the installer again. It writes everything the device needs to boot, even on a blank chip. If the device
+      doesn't show up at all, its install page says how to get it into flash mode: <a href="/t-deck">T-Deck</a>,
+      <a href="/install">pager</a> (hold BOOT, tap RESET, let go of BOOT), <a href="/thinknode-m9">M9</a>.</p>
     </div>
   </section>
 
@@ -221,7 +207,7 @@
   </div>
 </footer>
 
-<script src="/assets/app.js?v=10" defer></script>
+<script src="/assets/app.js?v=11" defer></script>
 <script src="/assets/squatch-helper.js?v=17" defer></script>
 </body>
 </html>

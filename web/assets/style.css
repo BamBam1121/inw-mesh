@@ -1,29 +1,37 @@
 /* Squatch Mesh - site styles.
-   Dark forest ground and the terminal green from the firmware's Squatch theme.
-   Plain on purpose: real photos and real screens do the talking, no glow, no
-   pills, nothing that moves unless it is the device's own animation.
+   The site borrows the pager's own look: the Squatch theme's colours and the two
+   bitmap fonts the firmware draws with (LovyanGFX Font4 for headings, Font2 for
+   small labels), converted 1:1 so a heading looks like the device screen.
+   Plain on purpose: real photos and real screens, no glow, no pills, nothing
+   that moves unless it is the device's own animation.
    Mobile first: everything below is the phone layout, wider screens add to it. */
 
+@font-face { font-family: "Pager Large"; src: url("/assets/fonts/pager-large.woff") format("woff"); font-display: swap; }
+@font-face { font-family: "Pager Small"; src: url("/assets/fonts/pager-small.woff") format("woff"); font-display: swap; }
+
+/* colours: the firmware's Squatch theme (bg 060a09, panel 0b120e, line 16241c,
+   green 3dffa8, text b9d4c6, white e8f2ed); muted is lifted for reading on a monitor */
 :root {
-  --bg: #0b0f0d;
-  --bg-2: #0f1411;          /* alternate section band */
-  --panel: #121a16;         /* boxes */
-  --panel-2: #172119;       /* raised / hovered */
-  --line: #223029;
-  --line-2: #2f4038;
+  --bg: #060a09;
+  --bg-2: #0b120e;          /* alternate section band */
+  --panel: #0b120e;         /* boxes */
+  --panel-2: #122a21;       /* raised / hovered (the theme's focus colour) */
+  --line: #16241c;
+  --line-2: #24392e;
   --accent: #3dffa8;        /* the firmware's terminal green */
   --accent-ink: #03140c;    /* text on accent */
   --accent-dim: #2c8f63;
   --accent-soft: rgba(61, 255, 168, 0.08);
-  --heading: #f1f5f2;
-  --text: #cad8d0;
+  --heading: #e8f2ed;
+  --text: #c6dccf;
   --muted: #8ea89b;          /* 6.5:1 on --bg, 5.9:1 on --panel */
   --amber: #f0c060;
   --radius: 6px;
   --radius-sm: 4px;
   --wrap: 1120px;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --display: "Archivo", var(--sans);
+  --display: "Pager Large", var(--sans);
+  --pixel: "Pager Small", var(--mono);
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 }
@@ -53,15 +61,20 @@ figure { margin: 0; }
 .skip:focus { top: 12px; }
 
 /* ---- type ------------------------------------------------------------- */
-h1, h2, h3, h4 { font-family: var(--display); font-stretch: 112%; color: var(--heading); line-height: 1.12; margin: 0; }
-h1 { font-size: clamp(31px, 2.4vw + 18px, 50px); font-weight: 800; font-stretch: 106%; letter-spacing: -0.01em; }
-h2 { font-size: clamp(25px, 2vw + 16px, 38px); font-weight: 800; margin: 52px 0 14px; letter-spacing: -0.005em; }
-h3 { font-size: clamp(18px, 0.4vw + 16.5px, 21px); font-weight: 700; margin: 0 0 6px; }
+/* the bitmap fonts are drawn at whole multiples of their pixel size (26 and 16)
+   so every pixel lands square; never fake-bold them */
+h1, h2 { font-family: var(--display); font-weight: 400; font-synthesis: none; color: var(--heading); margin: 0; letter-spacing: 0; }
+h1 { font-size: 52px; line-height: 1.1; }
+h2 { font-size: 26px; line-height: 1.25; margin: 52px 0 12px; }
+h3, h4 { font-family: var(--sans); color: var(--heading); margin: 0; }
+h3 { font-size: 18.5px; font-weight: 700; line-height: 1.3; margin: 0 0 6px; }
 h4 { font-size: 15px; font-weight: 700; }
+@media (max-width: 380px) { h1 { font-size: 39px; } }
+.px { font: 16px/1.4 var(--pixel); font-synthesis: none; letter-spacing: 0; }
 .lead, .sub { color: var(--muted); font-size: clamp(17px, 0.5vw + 15px, 19.5px); line-height: 1.55; max-width: 62ch; }
 .sub { font-size: inherit; }
 /* small label over a heading: plain words, no badge */
-.tag, .eyebrow { display: inline-block; font: 600 14.5px/1.4 var(--sans); color: var(--muted); }
+.tag, .eyebrow { display: inline-block; font: 16px/1.4 var(--pixel); font-synthesis: none; color: var(--muted); }
 code, .kbd { font-family: var(--mono); }
 code { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 1px 5px; font-size: 0.86em; color: var(--heading); }
 .kbd { display: inline-block; border: 1px solid var(--line-2); border-bottom-width: 3px; border-radius: 4px; padding: 0 7px;
@@ -80,7 +93,6 @@ code { background: var(--panel-2); border: 1px solid var(--line); border-radius:
 .btn.lg { min-height: 52px; padding: 0 26px; font-size: 17px; }
 .btn.small { min-height: 38px; padding: 0 14px; font-size: 14.5px; }
 .textlink { font-weight: 600; }
-.textlink::after { content: " \2192"; }
 
 a:focus-visible, button:focus-visible, .btn:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
   outline: 3px solid var(--accent); outline-offset: 3px;
@@ -90,7 +102,7 @@ a:focus-visible, button:focus-visible, .btn:focus-visible, summary:focus-visible
 header.nav { position: sticky; top: 0; z-index: 40; background: var(--bg); border-bottom: 1px solid var(--line); }
 .nav-inner { display: flex; align-items: center; gap: 16px; height: 62px; }
 .logo { display: inline-flex; align-items: center; gap: 10px; color: var(--heading); text-decoration: none;
-  font: 800 19px/1 var(--display); font-stretch: 112%; margin-right: auto; }
+  font: 26px/1 var(--display); font-synthesis: none; margin-right: auto; }
 .logo img { width: 30px; height: 30px; border-radius: 6px; }
 .nav-toggle { display: inline-grid; place-items: center; width: 46px; height: 46px; border-radius: var(--radius-sm); cursor: pointer;
   background: transparent; border: 1px solid var(--line-2); color: var(--heading); }
@@ -139,7 +151,7 @@ main { display: block; }
 .trust svg { width: 16px; height: 16px; color: var(--accent); flex: none; }
 .photo { border-radius: var(--radius); overflow: hidden; background: #1a211d; }
 .photo img { width: 100%; }
-.photo-cap { color: var(--muted); font-size: 14px; margin-top: 10px; }
+.photo-cap { color: var(--muted); font: 16px/1.4 var(--pixel); font-synthesis: none; margin-top: 10px; }
 @media (min-width: 960px) {
   .hero { padding: 64px 0 80px; }
   .hero-grid { grid-template-columns: 1fr 1.15fr; gap: 48px; }
@@ -157,7 +169,7 @@ main { display: block; }
 /* ---- numbers strip ------------------------------------------------------------- */
 .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .stat { padding: 18px 4px; }
-.stat b { display: block; font: 800 clamp(24px, 1.6vw + 16px, 32px)/1 var(--display); font-stretch: 112%; color: var(--heading); }
+.stat b { display: block; font: 26px/1 var(--display); color: var(--heading); }
 .stat span { display: block; color: var(--muted); font-size: 14.5px; margin-top: 6px; }
 @media (min-width: 720px) { .stats { grid-template-columns: repeat(4, 1fr); } }
 
@@ -177,7 +189,7 @@ main { display: block; }
 .card { display: block; color: inherit; text-decoration: none; }
 a.card:hover { border-color: var(--accent-dim); }
 .card p { color: var(--muted); font-size: 16px; margin: 0; }
-.card .k { color: var(--heading); font: 700 18px/1.3 var(--display); font-stretch: 112%; margin-bottom: 6px; }
+.card .k { color: var(--heading); font: 700 18px/1.3 var(--sans); margin-bottom: 6px; }
 /* a plain line icon, no tile behind it */
 .icon { display: block; width: 24px; height: 24px; margin-bottom: 10px; color: var(--accent); }
 .icon svg { width: 24px; height: 24px; }
@@ -192,7 +204,7 @@ a.card:hover { border-color: var(--accent-dim); }
 /* plain list of features: words, a line between, no boxes */
 .feature-list { display: grid; gap: 0 40px; margin: 0; }
 .feature-list > div { padding: 18px 0; border-top: 1px solid var(--line); }
-.feature-list dt { color: var(--heading); font: 700 18px/1.3 var(--display); font-stretch: 112%; margin: 0 0 4px; }
+.feature-list dt { color: var(--heading); font: 700 18px/1.3 var(--sans); margin: 0 0 4px; }
 .feature-list dd { margin: 0; color: var(--muted); }
 @media (min-width: 760px) { .feature-list { grid-template-columns: 1fr 1fr; } }
 
@@ -225,13 +237,13 @@ a.card:hover { border-color: var(--accent-dim); }
 
 /* ---- page header (inner pages) ------------------------------------------------ */
 .page-head { padding: 48px 0 10px; }
-.page-head h1 { font-size: clamp(30px, 3vw + 16px, 48px); margin: 6px 0 14px; }
+.page-head h1 { margin: 6px 0 14px; }
 @media (min-width: 880px) { .page-head { padding: 72px 0 16px; } }
 
 /* inner pages keep their existing markup; give it rhythm */
 main.wrap { padding-bottom: 40px; }
 main.wrap > .tag:first-child { margin-top: 48px; }
-main.wrap > h1 { margin: 6px 0 14px; font-size: clamp(30px, 3vw + 16px, 48px); }
+main.wrap > h1 { margin: 6px 0 14px; }
 main.wrap > .sub { font-size: clamp(17px, 0.5vw + 15px, 19.5px); }
 
 /* ---- tables ------------------------------------------------------------------ */
@@ -239,19 +251,27 @@ table { width: 100%; border-collapse: collapse; font-size: 15.5px; }
 th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font: 600 14px/1.4 var(--sans); }
 tr:last-child td { border-bottom: 0; }
-figcaption { color: var(--muted); font-size: 14px; margin-top: 9px; }
+figcaption { color: var(--muted); font: 16px/1.4 var(--pixel); font-synthesis: none; margin-top: 9px; }
 
-/* ---- footer ------------------------------------------------------------------ */
-.site-footer { margin-top: 40px; border-top: 1px solid var(--line); background: var(--bg-2); color: var(--muted); font-size: 15px; }
-.footer-grid { display: grid; gap: 30px; padding-top: 44px; padding-bottom: 30px; grid-template-columns: repeat(2, 1fr); }
-.footer-brand { grid-column: 1 / -1; max-width: 340px; }
-.footer-brand p { margin: 12px 0 0; }
-.site-footer h4 { color: var(--heading); margin-bottom: 10px; font-stretch: 100%; }
-.site-footer nav a, .footer-col a { display: block; color: var(--muted); text-decoration: none; padding: 4px 0; }
-.site-footer a:hover { color: var(--heading); text-decoration: underline; }
-.footer-base { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; padding-top: 18px; padding-bottom: 26px;
-  border-top: 1px solid var(--line); font-size: 14px; }
-@media (min-width: 880px) { .footer-grid { grid-template-columns: 1.6fr 1fr 1fr 1fr; } .footer-brand { grid-column: auto; } }
+/* home: latest releases and the plain Q&A */
+.releases-mini { list-style: none; margin: 0 0 14px; padding: 0; }
+.releases-mini li { padding: 10px 0; border-top: 1px solid var(--line); }
+.releases-mini li:last-child { border-bottom: 1px solid var(--line); }
+.releases-mini .px { color: var(--muted); display: inline-block; min-width: 118px; margin-right: 10px; }
+.qa h3 { margin-top: 26px; }
+.qa p { color: var(--text); margin: 0; }
+
+/* ---- footer: a few plain lines ------------------------------------------------------ */
+.site-footer { margin-top: 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; }
+.footer-grid { display: flex; flex-wrap: wrap; gap: 6px 0; padding-top: 30px; padding-bottom: 14px; align-items: baseline; }
+.footer-brand { flex-basis: 100%; margin-bottom: 10px; }
+.footer-brand p { margin: 10px 0 0; max-width: 560px; }
+.site-footer h4 { display: none; }
+.footer-col { display: contents; }
+.site-footer nav a, .footer-col a { display: inline-block; color: var(--muted); padding: 2px 0; margin-right: 18px; }
+.site-footer a:hover { color: var(--heading); }
+.footer-base { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; padding-top: 14px; padding-bottom: 18px;
+  border-top: 1px solid var(--line); font: 16px/1.4 var(--pixel); font-synthesis: none; }
 
 /* ---- privacy notice ---------------------------------------------------------------- */
 .notice { position: fixed; left: 50%; bottom: 14px; z-index: 60; width: min(540px, calc(100% - 24px)); transform: translateX(-50%);
@@ -265,3 +285,5 @@ figcaption { color: var(--muted); font-size: 14px; margin-top: 9px; }
 /* legacy hooks used by inner pages */
 .reveal { }
 .meta { color: var(--muted); font-size: 14.5px; }
+.wrap.narrow > * { max-width: 780px; }
+.hero h1 { color: var(--accent); }
