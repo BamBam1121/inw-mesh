@@ -9,7 +9,7 @@
 .chat-top { display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 14px 18px; border-bottom: 1px solid var(--line); }
 .chat-top .who { display: flex; align-items: center; gap: 10px; color: var(--heading); font: 600 16px/1.2 var(--display); }
-.chat-top .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.chat-top .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
 .chat-reset { background: none; border: 0; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; padding: 6px; }
 .chat-reset:hover { color: var(--heading); }
 .chat-log { display: flex; flex-direction: column; gap: 10px; padding: 18px; min-height: 260px; max-height: min(60vh, 560px);
@@ -25,7 +25,7 @@
 .msg.pending { color: var(--muted); animation: chat-pulse 1.2s ease-in-out infinite; }
 @keyframes chat-pulse { 50% { opacity: 0.5; } }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.chips button { background: var(--bg-2); border: 1px solid var(--line-2); color: var(--text); border-radius: 999px;
+.chips button { background: var(--bg-2); border: 1px solid var(--line-2); color: var(--text); border-radius: var(--radius-sm);
   padding: 7px 13px; font: inherit; font-size: 14px; cursor: pointer; }
 .chips button:hover { border-color: var(--accent-dim); color: var(--heading); }
 .helper:not(.ready) .chips, .helper:not(.ready) .chat-form { display: none; }
@@ -69,49 +69,27 @@
   font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); }
 
 /* ---- quick start: the one button that does everything ------------------------------ */
-.quickstart { position: relative; margin-top: 28px; border-radius: 22px; overflow: hidden;
-  border: 1px solid rgba(240, 192, 96, 0.45); background:
-    radial-gradient(120% 140% at 50% -20%, rgba(240, 192, 96, 0.16), transparent 62%), var(--panel);
-  box-shadow: 0 0 0 1px rgba(240, 192, 96, 0.08), 0 18px 60px -28px rgba(240, 192, 96, 0.55); }
-.qs-glow { position: absolute; inset: -40% -10% auto -10%; height: 220px; pointer-events: none;
-  background: radial-gradient(60% 100% at 50% 0%, rgba(240, 192, 96, 0.28), transparent 70%);
-  filter: blur(18px); animation: qs-breathe 6s ease-in-out infinite; }
-.qs-inner { position: relative; padding: 30px 22px 26px; text-align: center; }
-.qs-kicker { margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.16em; font-size: 12px;
-  font-weight: 700; color: var(--amber); }
-.qs-title { margin: 0 0 10px; font: 700 clamp(24px, 4.4vw, 34px)/1.15 var(--display); color: var(--heading); }
-.qs-sub { margin: 0 auto 22px; max-width: 54ch; color: var(--text); font-size: 15px; line-height: 1.6; }
-.qs-fine { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
+.quickstart { position: relative; margin-top: 28px; border-radius: var(--radius); border: 1px solid #5a4818;
+  border-top: 4px solid var(--amber); background: var(--panel); }
+.qs-glow { display: none; }
+.qs-inner { position: relative; padding: 26px 20px 24px; }
+.qs-kicker { margin: 0 0 4px; font-size: 14.5px; font-weight: 600; color: var(--amber); }
+.qs-title { margin: 0 0 10px; font: 800 clamp(24px, 3.6vw, 32px)/1.15 var(--display); font-stretch: 112%; color: var(--heading); }
+.qs-sub { margin: 0 0 20px; max-width: 60ch; color: var(--text); font-size: 16px; line-height: 1.55; }
+.qs-fine { margin: 14px 0 0; color: var(--muted); font-size: 14px; }
 /* the two "start fresh" tick boxes under START: small, and out of the way */
-.qs-opts { display: grid; gap: 7px; width: fit-content; max-width: 100%; margin: 18px auto 0; text-align: left; }
+.qs-opts { display: grid; gap: 7px; width: fit-content; max-width: 100%; margin: 18px 0 0; text-align: left; }
 .qs-opts[hidden] { display: none; }
-.qs-opt { display: flex; gap: 9px; align-items: flex-start; color: var(--muted); font-size: 13px; line-height: 1.45; cursor: pointer; }
+.qs-opt { display: flex; gap: 9px; align-items: flex-start; color: var(--muted); font-size: 14px; line-height: 1.45; cursor: pointer; }
 .qs-opt input { flex: none; width: 15px; height: 15px; margin: 2px 0 0; accent-color: var(--amber); cursor: pointer; }
 .qs-opt b { color: var(--text); font-weight: 600; }
 .qs-opt input:disabled, .qs-opt input:disabled + span { opacity: 0.55; cursor: not-allowed; }
 
 .qs-btn { position: relative; display: inline-flex; align-items: center; justify-content: center;
-  min-height: 62px; padding: 0 clamp(34px, 8vw, 66px); border: 0; border-radius: 999px; cursor: pointer;
-  font: 800 20px/1 var(--display); letter-spacing: 0.16em; color: #1a1205;
-  background: linear-gradient(180deg, #ffd980, #f0c060 58%, #d9a43e);
-  box-shadow: 0 0 0 1px rgba(255, 233, 176, 0.5) inset, 0 10px 30px -10px rgba(240, 192, 96, 0.9),
-    0 0 34px -6px rgba(240, 192, 96, 0.65);
-  animation: qs-pulse 2.8s ease-in-out infinite; transition: transform 0.12s ease, box-shadow 0.2s ease; }
-.qs-btn:hover { transform: translateY(-1px);
-  box-shadow: 0 0 0 1px rgba(255, 240, 200, 0.7) inset, 0 14px 38px -10px rgba(240, 192, 96, 1),
-    0 0 52px -4px rgba(240, 192, 96, 0.85); }
-.qs-btn:active { transform: translateY(1px); }
+  min-height: 56px; min-width: 200px; padding: 0 36px; border: 1px solid #e0ae4a; border-radius: var(--radius-sm); cursor: pointer;
+  font: 800 19px/1 var(--display); font-stretch: 112%; letter-spacing: 0.06em; color: #1a1205; background: var(--amber); }
+.qs-btn:hover { background: #ffd27a; }
 .qs-btn:focus-visible { outline: 3px solid var(--amber); outline-offset: 4px; }
-.qs-btn[disabled] { animation: none; filter: grayscale(0.6); opacity: 0.65; cursor: not-allowed; }
-.qs-btn.working { animation: none; }
+.qs-btn[disabled] { filter: grayscale(0.6); opacity: 0.65; cursor: not-allowed; }
 
-@keyframes qs-pulse {
-  0%, 100% { box-shadow: 0 0 0 1px rgba(255, 233, 176, 0.5) inset, 0 10px 30px -10px rgba(240, 192, 96, 0.9),
-    0 0 30px -8px rgba(240, 192, 96, 0.6); }
-  50% { box-shadow: 0 0 0 1px rgba(255, 233, 176, 0.65) inset, 0 12px 34px -10px rgba(240, 192, 96, 1),
-    0 0 56px -4px rgba(240, 192, 96, 0.9); }
-}
-@keyframes qs-breathe { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
-
-@media (min-width: 720px) { .qs-inner { padding: 40px 30px 34px; } }
-@media (prefers-reduced-motion: reduce) { .qs-btn, .qs-glow { animation: none !important; } }
+@media (min-width: 720px) { .qs-inner { padding: 32px 30px 30px; } }

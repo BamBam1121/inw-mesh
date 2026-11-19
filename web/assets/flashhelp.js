@@ -153,7 +153,7 @@
 
     if (verdict === "ok") {
       const chip = (text.match(/radio=(\S+)/) || text.match(/\[boot\]\s+radio\s+ok\s+(\S+)/) || [])[1];
-      show("Done — your pager is up", "ok");
+      show("Done: your pager is up", "ok");
       bubble("assistant",
         "The pager answered: it started and its radio is running" +
         (chip && chip !== "none" ? " (" + chip + ")" : "") + "." +
@@ -170,11 +170,11 @@
       selfFixed = true;
       show("It keeps restarting. Writing it again…", "busy");
       bubble("assistant", "The pager is restarting over and over, so the write didn't take. " +
-        "I'm writing the same thing again — that fixes it.", "note");
+        "I'm writing the same thing again. That fixes it.", "note");
       button.click();
       setTimeout(() => {
         if (!document.querySelector("ewt-install-dialog")) {
-          show("It keeps restarting — one tap to fix it", "bad");
+          show("It keeps restarting. One tap to fix it", "bad");
           again.hidden = false;
           again.textContent = "Write it again";
           bubble("assistant", "Your browser wants a click before it can open the USB port again. " +
@@ -195,7 +195,7 @@
     // No answer. Usually just means it finished starting before we could listen.
     show("Written successfully", "ok");
     bubble("assistant",
-      "That wrote cleanly. I couldn't get a word out of the pager afterwards, which is normal — it has " +
+      "That wrote cleanly. I couldn't get a word out of the pager afterwards, which is normal. It has " +
       "usually finished starting before the browser can listen.\n\n**Look at the pager itself:** if the screen " +
       "is on and it isn't restarting, you're done." +
       (kind === "first install" ? " A first install takes a few minutes to set up storage the first time." : "") +
@@ -252,7 +252,7 @@
     } catch (e) {
       wait.remove();
       messages.pop();
-      bubble("assistant", "I can't reach the helper right now — check your connection.", "note");
+      bubble("assistant", "I can't reach the helper right now. Check your connection.", "note");
     }
     asking = false;
   }

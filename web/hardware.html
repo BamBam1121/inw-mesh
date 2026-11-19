@@ -7,8 +7,8 @@
 <meta name="description" content="The LilyGo T-Lora Pager hardware Squatch Mesh runs on, what the firmware drives, and what it takes to port.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/style.css?v=7">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,600..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css?v=8">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://squatchmesh.com/hardware">
 <meta name="theme-color" content="#070b0a">
@@ -49,6 +49,16 @@
   <p class="sub">Built for the LilyGo T-Lora Pager. A keyboard, a wheel, a real screen and a
   battery, in something that fits in a pocket.</p>
 
+  <figure style="max-width:640px;margin-top:22px">
+    <div class="photo"><picture>
+      <source type="image/webp" srcset="/assets/img/photo-pager-desk-700.webp 700w, /assets/img/photo-pager-desk-1200.webp 1200w" sizes="(min-width: 700px) 640px, 100vw">
+      <img src="/assets/img/photo-pager-desk-700.jpg" srcset="/assets/img/photo-pager-desk-700.jpg 700w, /assets/img/photo-pager-desk-1200.jpg 1200w"
+           sizes="(min-width: 700px) 640px, 100vw" width="1200" height="900" loading="lazy"
+           alt="A LilyGo T-Lora Pager on a desk running Squatch Mesh: the Squatch lock screen, the QWERTY keyboard and the scroll wheel on the side">
+    </picture></div>
+    <figcaption>The pager itself, running the Squatch theme.</figcaption>
+  </figure>
+
   <div class="grid c2" style="margin-top:26px">
     <div class="panel reveal">
       <h3>The board</h3>
@@ -75,7 +85,7 @@
   <h2>Getting one</h2>
   <div class="panel reveal">
     <p class="sub" style="font-size:14px;margin:0">Sold by LilyGo directly and through the usual
-    resellers. Buy the version for your region's band &mdash; 915 MHz in North America, 868 MHz in
+    resellers. Buy the version for your region's band: 915 MHz in North America, 868 MHz in
     Europe. Add a microSD card; the firmware uses it for offline maps and for the backups that bring
     your contacts back after a fresh install.</p>
   </div>
@@ -84,7 +94,7 @@
   <div class="panel reveal">
     <p class="sub" style="font-size:14px;margin:0">The mesh half of this is
     <a href="https://meshcore.io">MeshCore</a>, which runs on plenty of hardware. The half that is
-    ours &mdash; the interface, themes, maps, battery work &mdash; assumes this screen, this keyboard
+    ours (the interface, themes, maps, battery work) assumes this screen, this keyboard
     and this wheel. It has been ported once already: <a href="/t-deck">Squatch Mesh for the LilyGo
     T-Deck and T-Deck Plus</a> is rebuilt around the touchscreen. Another board with a display
     and buttons is realistic work rather than a rewrite. It is GPL-3.0;
@@ -120,7 +130,7 @@
   </div>
 </footer>
 
-<script src="/assets/app.js?v=8" defer></script>
+<script src="/assets/app.js?v=10" defer></script>
 <script src="/assets/squatch-helper.js?v=17" defer></script>
 </body>
 </html>

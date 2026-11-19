@@ -533,7 +533,7 @@ if (panel) {
           const before = parts.slice(0, idx).reduce((n, p) => n + p.data.length, 0);
           const done = before + written;
           pct((done / total) * 100);
-          say("Writing " + parts[idx].name + " — " + Math.round((done / total) * 100) + "%. Keep the cable in.");
+          say("Writing " + parts[idx].name + ": " + Math.round((done / total) * 100) + "%. Keep the cable in.");
         },
       });
       pct(100);
@@ -665,7 +665,7 @@ if (panel) {
                       { baud: 460800, compress: false, wait: 1500 }];
       for (const attempt of ladder) {
         try {
-          if (attempt.wait) { say("That didn't take — trying a slower, simpler write. This one takes longer."); await sleep(attempt.wait); }
+          if (attempt.wait) { say("That didn't take. Trying a slower, simpler write. This one takes longer."); await sleep(attempt.wait); }
           await letGo();
           chip = await writeIt(parts, attempt.baud, attempt.compress);
           lastErr = null;
@@ -757,7 +757,7 @@ if (panel) {
       } else if (!writing) {
         log("[flasher] failed: " + msg);
         show("Nothing was written", "bad");
-        say(msg + " — it stopped before writing anything, so the pager is just as it was. Check the internet " +
+        say(msg + ". It stopped before writing anything, so the pager is just as it was. Check the internet " +
             "connection and press try again.");
         logBox.open = true;
         again.hidden = false;
@@ -765,7 +765,7 @@ if (panel) {
       } else {
         log("[flasher] failed: " + msg);
         show("That didn't finish", "bad");
-        say(msg + " — the firmware was only part written, so the pager may not start until this " +
+        say(msg + ". The firmware was only part written, so the pager may not start until this " +
             "finishes. Press try again: it picks up from scratch and repairs it. If it still won't take, " +
             (BOARD !== "t-lora-pager" ? LOADER_HOW + ", and press try again."
                            : "unplug the pager, plug it back in, and hold the BOOT button while you press try again."));
@@ -786,7 +786,7 @@ if (panel) {
   function wipeOutcome(ok, lead) {
     if (ok) {
       const all = wipe === "everything";
-      show(all ? "Done — reset, starting as new" : "Done — starting fresh", "ok");
+      show(all ? "Done: reset, starting as new" : "Done: starting fresh", "ok");
       say("The pager restarts twice while it clears, which can take a few minutes. Leave it switched on. " +
           (all ? "It comes up as a new device with a new identity, and asks for your region again."
                : "Its contacts, channels and messages are gone; your keys, name, radio settings and Wi-Fi are kept."));
@@ -835,7 +835,7 @@ if (panel) {
     }
     if (m && m[3] === "1" && wipe) return wipeOutcome(/\[wipe\] ok/.test(boot), "v" + m[1] + " is installed and running.");
     if (m && m[3] === "1") {
-      show("Done — your pager is up", "ok");
+      show("Done: your pager is up", "ok");
       say("It answered: v" + m[1] + " running, " + m[2] + " radio working, " + m[4] + " contacts." +
           (kind === "install" ? " A first install sets up storage on the first start, so give it a few minutes."
                               : " Your contacts, channels and messages are untouched."));
@@ -899,7 +899,7 @@ if (panel) {
       return "written";
     }
     show("Written successfully", "ok");
-    say("That wrote cleanly. The pager didn't answer afterwards, which is normal — it usually finishes " +
+    say("That wrote cleanly. The pager didn't answer afterwards, which is normal. It usually finishes " +
         "starting before the browser can listen. Look at the pager: if the screen is on and it isn't " +
         "restarting, you're done.");
     return "written";

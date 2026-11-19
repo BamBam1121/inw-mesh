@@ -7,9 +7,9 @@
 <meta name="description" content="Flash Squatch Mesh onto a LilyGo T-Lora Pager from your browser over USB. Chrome or Edge, no tools to install.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/style.css?v=7">
-<link rel="stylesheet" href="/assets/help.css?v=6">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,600..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css?v=8">
+<link rel="stylesheet" href="/assets/help.css?v=7">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="canonical" href="https://squatchmesh.com/install">
 <meta name="theme-color" content="#070b0a">
@@ -67,7 +67,7 @@
         <label class="qs-opt"><input type="checkbox" id="qs-reset" autocomplete="off">
           <span><b>Reset everything.</b> Keys, contacts, settings, all of it. The pager starts as new.</span></label>
       </div>
-      <p class="qs-fine">Chrome or Edge on a desktop. Your browser will ask which USB device to use &mdash;
+      <p class="qs-fine">Chrome or Edge on a desktop. Your browser will ask which USB device to use;
       pick the pager.</p>
     </div>
   </section>
@@ -87,9 +87,9 @@
   </div>
 
   <div class="grid c3" style="margin-top:26px">
-    <div class="panel reveal"><div class="tag">01</div><h3>Plug in USB-C</h3><p class="sub" style="font-size:14px">Use a cable that carries data, not a charge-only one. That is the single most common reason no port appears.</p></div>
-    <div class="panel reveal"><div class="tag">02</div><h3>Press start</h3><p class="sub" style="font-size:14px">It asks the pager what is on it and picks the right kind of install. Coming from other firmware? <a href="#keep-data">Save your keys and contacts first</a>.</p></div>
-    <div class="panel reveal"><div class="tag">03</div><h3>Wait for it to boot</h3><p class="sub" style="font-size:14px">An update is quick. A first install formats storage on the first start, which takes a few minutes.</p></div>
+    <div class="panel reveal"><div class="tag">Step 1</div><h3>Plug in USB-C</h3><p class="sub" style="font-size:14px">Use a cable that carries data, not a charge-only one. That is the single most common reason no port appears.</p></div>
+    <div class="panel reveal"><div class="tag">Step 2</div><h3>Press start</h3><p class="sub" style="font-size:14px">It asks the pager what is on it and picks the right kind of install. Coming from other firmware? <a href="#keep-data">Save your keys and contacts first</a>.</p></div>
+    <div class="panel reveal"><div class="tag">Step 3</div><h3>Wait for it to boot</h3><p class="sub" style="font-size:14px">An update is quick. A first install formats storage on the first start, which takes a few minutes.</p></div>
   </div>
 
   <div class="panel reveal" id="radio" style="margin-top:22px">
@@ -188,7 +188,7 @@
     <b>There is no need to tick "erase device".</b> Erasing wipes everything on the pager,
     including its bootloader, and takes your contacts and channels with it. Both buttons write
     the bootloader and partition table, so either one can bring back a pager that will not
-    start &mdash; but nothing brings back data an erase removed.
+    start, but nothing brings back data an erase removed.
   </div>
 
   <h2>Coming from 1.0.x</h2>
@@ -255,9 +255,9 @@
   </div>
 </footer>
 
-<script src="/assets/app.js?v=8" defer></script>
-<script src="/assets/flashhelp.js?v=5" defer></script>
-<script type="module" src="/assets/flasher.js?v=28"></script>
+<script src="/assets/app.js?v=10" defer></script>
+<script src="/assets/flashhelp.js?v=6" defer></script>
+<script type="module" src="/assets/flasher.js?v=29"></script>
 <script src="/assets/squatch-helper.js?v=17" defer></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
 .tm[hidden] { display: none; }
 .tm-controls { display: grid; gap: 14px; order: 2; min-width: 0; }
 .tm-preview { order: 1; position: sticky; top: 66px; z-index: 5; margin: 0 -20px; padding: 10px 20px 12px;
-  background: rgba(7, 11, 10, 0.92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: var(--bg);
   border-bottom: 1px solid var(--line); }
 @media (min-width: 980px) {
   .tm { grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: 26px; align-items: start; }
@@ -53,7 +53,7 @@
 .tm-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
 .tm-presets-label { color: var(--muted); font-size: 13.5px; }
 .tm-chips { display: flex; flex-wrap: wrap; gap: 7px; }
-.tm-chip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px 0 8px; border-radius: 999px; cursor: pointer;
+.tm-chip { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px 0 8px; border-radius: var(--radius-sm); cursor: pointer;
   background: var(--bg-2); border: 1px solid var(--line); color: var(--text); font: 500 13.5px/1 var(--sans); }
 .tm-chip:hover { border-color: var(--accent-dim); color: var(--heading); }
 .tm-chip i { display: block; width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.18); }
@@ -114,12 +114,12 @@
 /* ---- preview ---- */
 .tm-preview-inner { display: grid; gap: 10px; }
 .tm-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
-.tm-tabs button { height: 34px; padding: 0 13px; border-radius: 999px; cursor: pointer; font: 600 13.5px/1 var(--sans);
+.tm-tabs button { height: 34px; padding: 0 13px; border-radius: var(--radius-sm); cursor: pointer; font: 600 13.5px/1 var(--sans);
   color: var(--muted); background: var(--panel); border: 1px solid var(--line); }
 .tm-tabs button:hover { color: var(--heading); }
 .tm-tabs button[aria-selected="true"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 .tm-boards { justify-content: flex-start; }
-.tm-screen-wrap { border-radius: 18px; padding: 10px; background: linear-gradient(160deg, #1a2420, #0c1210); border: 1px solid var(--line-2);
+.tm-screen-wrap { border-radius: var(--radius); padding: 10px; background: #000; border: 1px solid var(--line-2);
   box-shadow: var(--shadow); }
 .tm-screen-wrap canvas { display: block; width: 100%; height: auto; border-radius: 8px; image-rendering: pixelated; background: #000;
   box-shadow: 0 0 0 1px #000; }
