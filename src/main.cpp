@@ -2065,16 +2065,11 @@ static void radioIrqWatch() {
   logs.add(LOG_WARN, "radio: missed irq picked up #%u", s_radioKicks);   // log lines hold 44 characters
 }
 
-// ---- radio: deaf watchdog -------------------------------------------------------------------
-// 2026-11-19: deaf again with DIO1 low, no flag pending, rail on, on USB all night (so ECO
-// never slept): the chip itself had stopped listening. Two checks, and what the chip says
-// is logged before anything is touched, so the next one shows the cause:
-//  - nothing received for 10 minutes after a busy hour (our mesh is never that quiet).
-// The chip's mode, modem, flags and errors go in the log line, so the cause shows.
-// Then the chip is set up again from scratch (std_init + our radio settings) and MeshCore
-// starts listening, without restarting the pager.
+// ---- radio: the chip in standby while MeshCore thinks it is listening ----------------------
+// 2026-11-19: deaf with DIO1 low, no flag pending, rail on, on USB all night (so ECO never
+// slept): the SX1262 had dropped to standby and MeshCore never started receive again.
+// radioDeafWatch() below spots that and hands it back; what the chip said is logged.
 extern RADIO_CLASS radio;     // variants/inw_pager/target.cpp
-static uint16_t s_radioResets = 0;
 static void radioChipState(char* out, size_t n) {
   const unsigned dio1 = digitalRead(PIN_LORA_DIO1), busy = digitalRead(PIN_LORA_BUSY);
   if (strcmp(radio_chip, "SX1262")) {
@@ -2102,28 +2097,9 @@ static void radioChipShort(char* out, size_t n) {
            radio.getDeviceErrors(), (unsigned long)radio_driver.getPacketsRecv(),
            (unsigned long)radio_driver.getPacketsRecvErrors());
 }
-static void radioRestart(const char* why) {
-  char st[160];
-  s_radioResets++;
-  logs.add(LOG_WARN, "radio reset #%u: %s", s_radioResets, why);
-  radioChipShort(st, sizeof(st));
-  logs.add(LOG_WARN, " before: %s", st);
-  if (!strcmp(radio_chip, "SX1262")) radio.std_init(&inw_spi);
-  radio_driver.begin();                 // its interrupt and state again: MeshCore restarts receive
-  if (g_node) g_node->applyRadio();     // our frequency, bandwidth, SF, CR, power, gain
-  radioChipShort(st, sizeof(st));
-  logs.add(LOG_WARN, " after: %s", st);
-  radioChipState(st, sizeof(st));
-  Serial.printf("[radio] reset: %s\n", st);
-}
 static void radioDeafWatch() {
   if (!s_radioOk || !g_node) return;
   const uint32_t now = millis();
-  // Packets received: when the count last moved, and how many in the last hour.
-  static uint32_t lastCount = 0, lastMoveAt = 0, hourAt = 0, hourStart = 0, busyHour = 0;
-  const uint32_t count = radio_driver.getPacketsRecv();
-  if (!lastMoveAt || count != lastCount) { lastCount = count; lastMoveAt = now | 1; }
-  if (!hourAt || now - hourAt >= 3600000UL) { busyHour = count - hourStart; hourStart = count; hourAt = now | 1; }
   // The chip dropped to standby while MeshCore still thinks it is listening (caught live
   // 2026-11-19: mode 2, LoRa modem, irq RxDone+Timeout, received count frozen within 30 s
   // of boot). MeshCore only starts receive again from idle, so tell it it is idle. Read
@@ -2149,11 +2125,11 @@ static void radioDeafWatch() {
           Serial.printf("[radio] standby while listening: %s\n", s);
         }
         inwRadioSetIdle();              // MeshCore's next pass starts receive again
-        lastMoveAt = now | 1;
       }
     } else standbyReads = 0;
   }
-  if (busyHour >= 20 && now - lastMoveAt > 600000UL) { radioRestart("nothing heard for 10 min"); lastMoveAt = now | 1; }
+  // (A "nothing heard for 10 minutes -> set the radio up again" rule was here for a day:
+  // next to a noisy PC it fired 734 times in 7.6 hours and helped nothing. Removed.)
 }
 
 static uint32_t s_bootAdvert = 8000, s_lastAdvert = 0;
