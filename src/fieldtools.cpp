@@ -75,7 +75,7 @@ static bool openLog(const char* dir, const char* stem, const char* header, char*
 static void appendLine(const char* path, const String& line) {
   if (!path[0] || !sdMounted()) return;
   File f = SD.open(path, FILE_APPEND);
-  if (!f) return;
+  if (!f) { sdWriteFailed("field log"); return; }
   f.println(line);
   f.close();
 }

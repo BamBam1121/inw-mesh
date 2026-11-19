@@ -587,6 +587,29 @@ def patch_mymesh(src):
     return src
 
 
+def patch_radiolib_wrappers(src):
+    # The radio raises DIO1 for "packet received" / "send finished", and its rising
+    # edge sets a private flag here. If that edge is ever missed (seen with ECO's light
+    # sleep, and the same "deaf until reboot" was reported before ECO existed), DIO1
+    # stays high, no new edge ever comes, and receive waits for ever. These let the
+    # app see the flag and set it (src/main.cpp radioIrqWatch).
+    old = '#include "RadioLibWrappers.h"\n'
+    if src.count(old) != 1:
+        raise SystemExit("patch_meshcore.py: RadioLibWrappers.cpp include changed upstream, patch did not apply")
+    src = src.replace(old, '#include <helpers/radiolib/RadioLibWrappers.h>\n')
+    marker = "void RadioLibWrapper::begin() {"
+    if src.count(marker) != 1:
+        raise SystemExit("patch_meshcore.py: RadioLibWrapper::begin changed upstream, patch did not apply")
+    hooks = ("// INW: see patch_radiolib_wrappers in tools/patch_meshcore.py\n"
+             "bool inwRadioFlagPending() { return (state & STATE_INT_READY) != 0; }\n"
+             "void inwRadioKick() { state |= STATE_INT_READY; }\n"
+             "// The chip was found in standby while state says RX: idle makes recvRaw start receive.\n"
+             "void inwRadioSetIdle() { if ((state & ~STATE_INT_READY) == STATE_RX) state = STATE_IDLE; }\n"
+             "// What MeshCore thinks the radio is doing (0 idle, 1 rx, 3 sending; +16 flag pending).\n"
+             "unsigned char inwRadioState() { return state; }\n\n")
+    return src.replace(marker, hooks + marker)
+
+
 def make_middleware(fname, fn):
     def middleware(env, node):
         src_path = node.srcnode().get_abspath()
@@ -604,3 +627,4 @@ def make_middleware(fname, fn):
 
 env.AddBuildMiddleware(make_middleware("DataStore.cpp", patch_datastore), "*/companion_radio/DataStore.cpp")  # noqa: F821
 env.AddBuildMiddleware(make_middleware("MyMesh.cpp", patch_mymesh), "*/companion_radio/MyMesh.cpp")  # noqa: F821
+env.AddBuildMiddleware(make_middleware("RadioLibWrappers.cpp", patch_radiolib_wrappers), "*/radiolib/RadioLibWrappers.cpp")  # noqa: F821

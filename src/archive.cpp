@@ -45,7 +45,7 @@ static void writeAll() {
     const ConvKey k = s_q[done].conv;
     pathFor(k, path, sizeof(path));
     File f = SD.open(path, FILE_APPEND);
-    if (!f) break;                           // the card went: try again next time
+    if (!f) { sdWriteFailed("messages"); break; }   // the card went: rest it, try again later
     // Every queued message of this chat in one open, in order.
     for (int i = done; i < s_n; i++) {
       if (!(s_q[i].conv == k)) continue;

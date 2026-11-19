@@ -354,6 +354,7 @@ public:
         snprintf(path, sizeof(path), "%s/%ld.%s", dir, (long)d.y, d.png ? "png" : "jpg");
         File f = SD.open(path, FILE_WRITE);
         if (f) { f.write(d.data, d.len); f.close(); }
+        else sdWriteFailed("map tile");
         _cache->forget(d.z, d.x, d.y);
         dirty = true;
       } else if (_cache->put(d.z, d.x, d.y, d.data, d.len, d.png)) {
