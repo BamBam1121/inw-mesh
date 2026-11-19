@@ -593,6 +593,11 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
         ui_settings.compactChat = compact; ui_settings.chatText = size;
         app::openThreadForChannel(1); run(400);
         snprintf(n, sizeof(n), "chat_%s_%d", compact ? "compact" : "bubbles", size); shot(n);
+        if (!compact) {                                // a draft in the box you type in
+          for (const char* c = "On my way up, see you at the lodge"; *c; c++) nav.key(*c);
+          run(100);
+          snprintf(n, sizeof(n), "chat_typing_%d", size); shot(n);
+        }
         nav.pop(); run(100);
       }
     return 0;
