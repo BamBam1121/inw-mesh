@@ -608,6 +608,35 @@ document.addEventListener('keydown',e=>{if(e.target===tx)return;
     printf("link %s\n", qr::contactLink().c_str());
     return 0;
   }
+  // "squatch_sim OUT trees": the lock face in every scene with trees, walking long enough
+  // for a few to pass behind him (tr_SCENE_NNN, every third frame of the pager's 42 ms).
+  if (argc > 2 && !strcmp(argv[2], "trees")) {
+    populateHistory();
+    {
+      ConvKey keys[64];
+      const uint16_t k = history.conversations(keys, 64);
+      for (uint16_t i = 0; i < k; i++) history.markRead(keys[i]);
+    }
+    nav.push(makeHomeView());
+    struct { uint8_t theme, place; const char* name; } S[] = {
+      {0, 0, "squatch"}, {3, 0, "aurora"}, {4, spooky::WOODS, "halloween_woods"},
+      {5, jolly::CABIN, "xm_cabin"}, {5, jolly::TREEFARM, "xm_treefarm"}, {5, jolly::LAKE, "xm_lake"}, {5, jolly::TOWER, "xm_tower"}};
+    char n[64];
+    for (const auto& s : S) {
+      ui_settings.themeId = s.theme;
+      app::applyTheme();
+      if (s.theme == 4) { spooky::costume() = 0; spooky::place() = s.place; }
+      if (s.theme == 5) { jolly::outfit() = jolly::SANTA; jolly::place() = s.place; }
+      nav.push(makeLockView());
+      run(3000);
+      for (int f = 0; f < 150; f++) {
+        frameOf(42);
+        if (f % 3 == 0) { snprintf(n, sizeof(n), "tr_%s_%03d", s.name, f / 3); shot(n); }
+      }
+      nav.pop();
+    }
+    return 0;
+  }
   if (argc > 2 && !strcmp(argv[2], "jolly")) {
     ui_settings.themeId = 5;
     app::applyTheme();

@@ -98,11 +98,10 @@ inline void jollyCabin(lgfx::LovyanGFX& d, const Theme& t, const SpookyFrame& f,
   d.drawCircle(cx + 32, cy - 15, 4, rgb(0x2f9a4c)); d.drawCircle(cx + 32, cy - 15, 3, rgb(0x2f9a4c));
   d.fillRect(cx + 31, cy - 12, 3, 2, rgb(0xd62f2f));
   jollyLights(d, cx - 7, cy - 31, cx + 71, cy - 31, 4, 13, phase, 1, rgb(0x1a2a20));
-  // Snowy pines close by, none right where he walks.
+  // Snowy pines close by; he walks in front of them.
   const int pitch = 92, n = W / pitch + 3, span = n * pitch;
   for (int i = 0; i < n; i++) {
     const int x = spookyWrap(i * pitch - scroll, span) - pitch;
-    if (x > f.mascotX - 50 && x < f.mascotX + 44) continue;
     const uint32_t h = hash(i * 17 + 9);
     jollyPine(d, x, g, 52 + h % 30, rgb(PINE), snow);
   }
@@ -153,7 +152,6 @@ inline void jollyTreeFarm(lgfx::LovyanGFX& d, const Theme& t, const SpookyFrame&
   const int pitch = 64, n = W / pitch + 3, span = n * pitch;
   for (int i = 0; i < n; i++) {
     const int x = spookyWrap(i * pitch - scroll, span) - pitch;
-    if (x > f.mascotX - 46 && x < f.mascotX + 40) continue;
     const uint32_t h = hash(i * 13 + 7);
     if (h % 5 == 0) {                                                          // a stump
       d.fillRect(x - 4, g - 5, 9, 5, rgb(0x6b4a2b));
@@ -220,7 +218,6 @@ inline void jollyLake(lgfx::LovyanGFX& d, const Theme& t, const SpookyFrame& f, 
     const int x = spookyWrap(i * pitch - scroll, span) - pitch;
     const uint32_t h = hash(i * 19 + 3);
     d.fillEllipse(x + 30, g - 2, 26 + h % 12, 6, mix(t.bg, snow, 0.75f));
-    if (x > f.mascotX - 50 && x < f.mascotX + 44) continue;
     if (h & 1) jollyPine(d, x, g, 44 + h % 22, rgb(PINE), snow);
   }
 }
@@ -281,7 +278,6 @@ inline void jollyTower(lgfx::LovyanGFX& d, const Theme& t, const SpookyFrame& f,
   const int pp = 150, pn = W / pp + 3, ps = pn * pp;
   for (int i = 0; i < pn; i++) {
     const int x = spookyWrap(i * pp + 40 - scroll, ps) - pp;
-    if (x > f.mascotX - 50 && x < f.mascotX + 44) continue;
     jollyPine(d, x, g, 48 + hash(i * 29 + 1) % 24, rgb(PINE), snow);
   }
 }

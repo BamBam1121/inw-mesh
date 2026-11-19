@@ -74,7 +74,6 @@ inline void inw(lgfx::LovyanGFX& d, const Theme& t, float phase, float scroll, b
   for (int i = 0; i < (NARROW ? 9 : 14); i++) {
     int px = (int)(i * 46 - scroll);
     px = ((px % span) + span) % span - 30;
-    if (px > MASCOT_X - 50 && px < MASCOT_X + 50) continue;
     const int ph = 20 + (i % 3) * 7;
     d.fillTriangle(px, GROUND - 4, px + 9, GROUND - 4 - ph, px + 18, GROUND - 4, t.greenDim);
   }
@@ -256,7 +255,6 @@ inline void auroraGround(lgfx::LovyanGFX& d, const Theme& t, float phase, float 
   for (int i = 0; i < (NARROW ? 13 : 18); i++) {
     int x = (int)(i * 29 + (hash(i) % 13) - scroll);
     x = ((x % span) + span) % span - 30;
-    if (x > MASCOT_X - 45 && x < MASCOT_X + 40) continue;
     const int h = 18 + hash(i * 3) % 16;
     d.fillTriangle(x, GROUND + dy, x + 7, GROUND - h + dy, x + 14, GROUND + dy, pine);
   }
