@@ -124,9 +124,15 @@ static uint32_t s_battFlashAt = 0;
 static bool s_radioOk = false;
 static uint16_t s_radioKicks = 0;   // radioIrqWatch(): missed radio interrupts picked up since start
 static uint16_t s_radioRxKicks = 0; // radioDeafWatch(): chip found in standby while "listening"
+static uint16_t s_radioSetups = 0;  // radioDeafWatch(): radio set up again from scratch
+static char s_radioSetupWhy[48] = "";   // ... and why, the last time
 bool inwRadioFlagPending();         // MeshCore RadioLibWrappers.cpp (tools/patch_meshcore.py)
 static void radioChipState(char* out, size_t n);   // below: what the radio chip says it is doing
 void inwRadioSetIdle();             // MeshCore RadioLibWrappers.cpp (tools/patch_meshcore.py)
+unsigned char inwRadioState();      // MeshCore RadioLibWrappers.cpp (tools/patch_meshcore.py)
+extern RADIO_CLASS radio;           // variants/inw_pager/target.cpp
+static void radioSetupAgain(const char* why);   // below
+static uint16_t radioSyncWord();
 #if INW_DEV
 static regions::Scan s_usbScan;    // USB "regions scan"
 #endif
@@ -914,9 +920,10 @@ static void usbCommands() {
                     (unsigned long)power::lightSleepLastMs(), (unsigned long)power::lightSleepMaxMs());
       motion::debugPrint();
       power::printSleepDiagnostics();
-      Serial.printf("[radio] dio1=%d flag=%d missed_irq_picked_up=%u standby_restarts=%u\r\n",
+      Serial.printf("[radio] dio1=%d flag=%d missed_irq_picked_up=%u standby_restarts=%u set_up_again=%u (%s) meshcore_state=%u sync=%04X\r\n",
                     digitalRead(PIN_LORA_DIO1), inwRadioFlagPending() ? 1 : 0, (unsigned)s_radioKicks,
-                    (unsigned)s_radioRxKicks);
+                    (unsigned)s_radioRxKicks, (unsigned)s_radioSetups, s_radioSetupWhy[0] ? s_radioSetupWhy : "-",
+                    (unsigned)inwRadioState(), (unsigned)radioSyncWord());
       { char st[160]; radioChipState(st, sizeof(st)); Serial.printf("[radio] chip %s\r\n", st); }
       uint8_t railOut[2] = {}, railCfg[2] = {};
       const bool railsRead = expander.regs(railOut, railCfg);
@@ -958,6 +965,29 @@ static void usbCommands() {
     if (themeCommand(line)) continue;
 #if INW_DEV   // the rest is for the developer build (pio run -e t-lora-pager-dev), never a release:
               // diagnostics, remote control for screenshots, test commands
+    // Radio repair tests: knock the chip out of its settings the way it was found
+    // (2026-11-19: standby, packet type 16, MeshCore idle and unable to start receive)
+    // and watch radioDeafWatch() put it right. "radio setup" sets it up again at once.
+    if (!strncmp(line, "radio ", 6) && !strcmp(radio_chip, "SX1262")) {
+      const char* what = line + 6;
+      uint8_t v;
+      if (!strcmp(what, "setup")) radioSetupAgain("usb command");
+      else if (!strcmp(what, "break stby")) { radio.standby(); }
+      else if (!strcmp(what, "break gfsk")) {
+        radio.standby(); v = RADIOLIB_SX126X_PACKET_TYPE_GFSK;
+        radio.getMod()->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_PACKET_TYPE, &v, 1);
+      } else if (!strcmp(what, "break 16")) {
+        radio.standby(); v = 0x10;
+        radio.getMod()->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_PACKET_TYPE, &v, 1, true, false);
+        inwRadioSetIdle();
+      } else if (!strcmp(what, "break sync")) {
+        const uint8_t sw[2] = {0x34, 0x44};             // the public LoRaWAN sync word
+        radio.writeRegister(RADIOLIB_SX126X_REG_LORA_SYNC_WORD_MSB, (uint8_t*)sw, 2);
+      } else { Serial.println("[radio] radio setup | radio break stby|gfsk|16|sync"); continue; }
+      char st[160]; radioChipState(st, sizeof(st));
+      Serial.printf("[radio] %s -> chip %s sync=%04X\r\n", what, st, (unsigned)radioSyncWord());
+      continue;
+    }
     // Anyone with a USB cable could send "press" or "key" to get past the lock
     // screen, or "shot" to read what's on it. While locked (or dark, which locks)
     // only commands that don't reveal or unlock anything are accepted.
@@ -2093,43 +2123,107 @@ static void radioChipShort(char* out, size_t n) {
   if (strcmp(radio_chip, "SX1262")) { snprintf(out, n, "r%lu", (unsigned long)radio_driver.getPacketsRecv()); return; }
   uint8_t st = 0;
   radio.getMod()->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATUS, &st, 1);
-  snprintf(out, n, "m%u i%lX e%X r%lu x%lu", (st >> 4) & 7, (unsigned long)radio.getIrqFlags(),
-           radio.getDeviceErrors(), (unsigned long)radio_driver.getPacketsRecv(),
-           (unsigned long)radio_driver.getPacketsRecvErrors());
+  snprintf(out, n, "m%u p%u i%lX e%X r%lu x%lu", (st >> 4) & 7, radio.getPacketType(),
+           (unsigned long)radio.getIrqFlags(), radio.getDeviceErrors(),
+           (unsigned long)radio_driver.getPacketsRecv(), (unsigned long)radio_driver.getPacketsRecvErrors());
 }
+
+// The LoRa sync word the chip holds (MeshCore's private one reads 1424).
+static uint16_t radioSyncWord() {
+  if (strcmp(radio_chip, "SX1262")) return 0;
+  uint8_t b[2] = {0, 0};
+  radio.readRegister(RADIOLIB_SX126X_REG_LORA_SYNC_WORD_MSB, b, 2);
+  return (uint16_t)(b[0] << 8 | b[1]);
+}
+static uint16_t s_syncExpect = 0;   // what it held once it was listening properly (learned)
+
+// The radio from scratch, as at boot: a hardware reset and MeshCore's own set-up
+// (std_init), MeshCore's radio start (interrupt, preamble, idle), then the saved
+// frequency, bandwidth, SF, CR, power and gain. MeshCore starts receive on its next pass.
+static void radioSetupAgain(const char* why) {
+  static uint32_t loggedAt = 0;
+  char was[48], st[160];
+  radioChipShort(was, sizeof(was));
+  radioChipState(st, sizeof(st));
+  Serial.printf("[radio] setting the radio up again (%s): was %s sync=%04X meshcore_state=%u\n", why, st,
+                (unsigned)radioSyncWord(), (unsigned)inwRadioState());
+  const bool ok = radio.std_init(&inw_spi);
+  radio_driver.begin();
+  if (g_node) g_node->applyRadio();
+  s_radioSetups++;
+  snprintf(s_radioSetupWhy, sizeof(s_radioSetupWhy), "%s", why);
+  s_syncExpect = 0;
+  radioChipState(st, sizeof(st));
+  Serial.printf("[radio] %s: now %s sync=%04X\n", ok ? "set up again" : "SET-UP FAILED", st, (unsigned)radioSyncWord());
+  // The first few, then at most one pair of lines every 10 minutes (log lines hold 44 characters).
+  if (s_radioSetups <= 5 || !loggedAt || millis() - loggedAt > 600000UL) {
+    loggedAt = millis() | 1;
+    logs.add(ok ? LOG_WARN : LOG_ERROR, "radio set up again #%u: %s", (unsigned)s_radioSetups, why);
+    logs.add(LOG_WARN, "radio was %s", was);
+  }
+}
+
+// ---- radio: the chip not doing what MeshCore thinks it is doing ----------------------------
+// Every 2 s, from what the chip itself says (never from what MeshCore believes):
+//  - MeshCore idle for 8 s. It starts receive on every loop pass, so idle that lasts means
+//    the chip keeps refusing. Caught 2026-11-19: chip in standby with packet type 16 (not
+//    LoRa), every startReceive failing, deaf and silent for over an hour. 8 s is MeshCore's
+//    own "radio stuck" rule (Dispatcher ERR_EVENT_STARTRX_TIMEOUT), which only sets a flag.
+//  - "Listening" but the chip no longer set for LoRa, or its sync word changed: deaf to
+//    the mesh with receive still on. Twice running.
+//  Each of those: the radio is set up again from scratch (radioSetupAgain), at most every 20 s.
+//  - "Listening" with the chip in standby, settings intact (caught 2026-11-19 too: mode 2,
+//    irq RxDone+Timeout): MeshCore is told it is idle and starts receive again.
 static void radioDeafWatch() {
-  if (!s_radioOk || !g_node) return;
+  if (!s_radioOk || !g_node || strcmp(radio_chip, "SX1262")) return;
   const uint32_t now = millis();
-  // The chip dropped to standby while MeshCore still thinks it is listening (caught live
-  // 2026-11-19: mode 2, LoRa modem, irq RxDone+Timeout, received count frozen within 30 s
-  // of boot). MeshCore only starts receive again from idle, so tell it it is idle. Read
-  // every 2 s; only standby (2 or 3) twice running counts, never an unreadable value.
-  static uint32_t modeAt = 0, rxKickLoggedAt = 0;
-  static uint8_t standbyReads = 0;
-  if (now - modeAt >= 2000) {
-    modeAt = now;
-    if (!strcmp(radio_chip, "SX1262") && radio_driver.isInRecvMode() && !inwRadioFlagPending()) {
-      uint8_t st = 0;
-      radio.getMod()->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATUS, &st, 1);
-      const uint8_t mode = (st >> 4) & 7;
-      standbyReads = (mode == 2 || mode == 3) ? standbyReads + 1 : 0;
-      if (standbyReads >= 2) {
-        standbyReads = 0;
-        s_radioRxKicks++;
-        if (!rxKickLoggedAt || now - rxKickLoggedAt > 60000) {   // at most one line a minute
-          rxKickLoggedAt = now | 1;
-          char s[160];
-          radioChipShort(s, sizeof(s));
-          logs.add(LOG_WARN, "radio stby->rx #%u %s", s_radioRxKicks, s);
-          radioChipState(s, sizeof(s));
-          Serial.printf("[radio] standby while listening: %s\n", s);
-        }
-        inwRadioSetIdle();              // MeshCore's next pass starts receive again
+  static uint32_t checkAt = 0, idleSince = 0, setupAt = 0, rxKickLoggedAt = 0;
+  static uint8_t standbyReads = 0, wrongReads = 0;
+  if (now - checkAt < 2000) return;
+  checkAt = now;
+  const unsigned char ms = inwRadioState();     // 0 idle, 1 listening, 3 sending; +16 flag pending
+  const char* setup = nullptr;
+
+  if (ms == 0) {
+    if (!idleSince) idleSince = now | 1;
+    else if (now - idleSince >= 8000) setup = "not listening 8 s";
+  } else idleSince = 0;
+
+  if (ms == 1) {
+    uint8_t s = 0;
+    radio.getMod()->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATUS, &s, 1);
+    const uint8_t mode = (s >> 4) & 7;           // 2/3 standby, 4 fs, 5 rx, 6 tx
+    const uint8_t type = radio.getPacketType();
+    const uint16_t sync = radioSyncWord();
+    const bool notLora = type != RADIOLIB_SX126X_PACKET_TYPE_LORA;
+    const bool syncMoved = s_syncExpect && sync != s_syncExpect;
+    wrongReads = (notLora || syncMoved) ? wrongReads + 1 : 0;
+    standbyReads = (mode == 2 || mode == 3) ? standbyReads + 1 : 0;
+    if (!notLora && !s_syncExpect && mode == 5) s_syncExpect = sync;
+    if (wrongReads >= 2) setup = notLora ? "not set for LoRa" : "sync word changed";
+    else if (standbyReads >= 2) {
+      standbyReads = 0;
+      s_radioRxKicks++;
+      if (!rxKickLoggedAt || now - rxKickLoggedAt > 60000) {   // at most one line a minute
+        rxKickLoggedAt = now | 1;
+        char t[160];
+        radioChipShort(t, sizeof(t));
+        logs.add(LOG_WARN, "radio stby->rx #%u %s", s_radioRxKicks, t);
+        radioChipState(t, sizeof(t));
+        Serial.printf("[radio] standby while listening: %s\n", t);
       }
-    } else standbyReads = 0;
+      inwRadioSetIdle();              // MeshCore's next pass starts receive again
+    }
+  } else { standbyReads = 0; wrongReads = 0; }
+
+  if (setup && (!setupAt || now - setupAt >= 20000)) {
+    setupAt = now | 1;
+    idleSince = 0; wrongReads = 0; standbyReads = 0;
+    radioSetupAgain(setup);
   }
   // (A "nothing heard for 10 minutes -> set the radio up again" rule was here for a day:
-  // next to a noisy PC it fired 734 times in 7.6 hours and helped nothing. Removed.)
+  // next to a noisy PC it fired 734 times in 7.6 hours and helped nothing. Removed. The
+  // checks above act only on what the chip reports, never on silence.)
 }
 
 static uint32_t s_bootAdvert = 8000, s_lastAdvert = 0;

@@ -619,7 +619,9 @@ def patch_radiolib_wrappers(src):
              "bool inwRadioFlagPending() { return (state & STATE_INT_READY) != 0; }\n"
              "void inwRadioKick() { state |= STATE_INT_READY; }\n"
              "// The chip was found in standby while state says RX: idle makes recvRaw start receive.\n"
-             "void inwRadioSetIdle() { if ((state & ~STATE_INT_READY) == STATE_RX) state = STATE_IDLE; }\n\n")
+             "void inwRadioSetIdle() { if ((state & ~STATE_INT_READY) == STATE_RX) state = STATE_IDLE; }\n"
+             "// What MeshCore thinks the radio is doing (0 idle, 1 rx, 3 sending; +16 flag pending).\n"
+             "unsigned char inwRadioState() { return state; }\n\n")
     return src.replace(marker, hooks + marker)
 
 
