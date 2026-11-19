@@ -4,6 +4,7 @@
 #pragma once
 #include <Arduino.h>
 #include <math.h>
+#include <esp_heap_caps.h>
 #include "es8311_codec.h"
 
 // WAVE_CHIME: a music box / celesta (the note with its octave and twelfth over it).
@@ -51,22 +52,46 @@ public:
 private:
   static void task(void* arg) {
     JinglePlayer* p = (JinglePlayer*)arg;
+    // Work the whole tune out first, then play it from memory. Squatchmas's bells and chimes
+    // cost several sinf/expf a sample; worked out live while the screen woke (the wake effect
+    // draws flat out, and the CPU may still be at its screen-off clock) the speaker ran dry
+    // and the tune came out broken. Played from memory, feeding it is only a copy.
+    size_t total = 0;
+    for (uint8_t i = 0; i < p->_j->count; i++) total += (size_t)(Es8311::SAMPLE_RATE * p->_j->steps[i].ms / 1000);
+    int16_t* pcm = nullptr;
+    if (total && total <= Es8311::SAMPLE_RATE * MAX_PRERENDER_S) {
+      pcm = (int16_t*)heap_caps_malloc(total * sizeof(int16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+      if (!pcm) pcm = (int16_t*)malloc(total * sizeof(int16_t));
+    }
+    uint32_t workedMs = 0;
+    if (pcm) {
+      const uint32_t t0 = millis();
+      p->_rec = pcm; p->_recN = 0;
+      for (uint8_t i = 0; i < p->_j->count; i++) p->tone(p->_j->steps[i]);
+      p->_rec = nullptr;
+      workedMs = millis() - t0;
+    }
     if (p->_amp) p->_amp(true);
     if (p->_codec->start()) {
       p->_codec->setVolumePercent(p->_vol);
       p->_codec->setMute(false);
       p->tone({0, 60});                  // the amp needs a moment after power-up, or the first note is clipped
       p->_late = 0; p->_fed = millis();
-      for (uint8_t i = 0; i < p->_j->count; i++) p->tone(p->_j->steps[i]);
+      if (pcm) {
+        for (size_t at = 0; at < p->_recN; at += 256) p->emit(pcm + at, (int)min((size_t)256, p->_recN - at));
+      } else {
+        for (uint8_t i = 0; i < p->_j->count; i++) p->tone(p->_j->steps[i]);   // no memory: work it out as it plays
+      }
       // The speaker holds Es8311::QUEUE_MS of sound; fed later than that, it ran dry and
       // the tune had a hole in it. Say so, with how late: it is the only trace of one.
       const uint32_t late = p->_late;
       p->tone({0, (uint16_t)(40 + Es8311::QUEUE_MS)});   // let the last note play out before power-down
       p->_codec->stop();
       if (late > Es8311::QUEUE_MS) Serial.printf("[jingle] %s had a gap: fed %lu ms late (the speaker holds %u ms)\n", p->_j->name, (unsigned long)late, (unsigned)Es8311::QUEUE_MS);
-      else Serial.printf("[jingle] %s played through (latest feed %lu ms, the speaker holds %u ms)\n", p->_j->name, (unsigned long)late, (unsigned)Es8311::QUEUE_MS);
+      else Serial.printf("[jingle] %s played through (latest feed %lu ms, the speaker holds %u ms, worked out ahead in %lu ms%s)\n", p->_j->name, (unsigned long)late, (unsigned)Es8311::QUEUE_MS, (unsigned long)workedMs, pcm ? "" : ", no memory: live");
     } else p->_fail = 2;
     if (p->_amp) p->_amp(false);
+    free(pcm);
     p->_busy = false;
     vTaskDelete(nullptr);
   }
@@ -118,13 +143,22 @@ private:
           buf[n] = 0;
         }
       }
-      _codec->write(buf, n);
-      const uint32_t now = millis();     // how long since the speaker was last given sound
-      if (now - _fed > _late) _late = now - _fed;
-      _fed = now;
+      emit(buf, n);
     }
   }
 
+  // Sound goes to the speaker, or into the tune being worked out ahead (_rec).
+  void emit(const int16_t* buf, int n) {
+    if (_rec) { memcpy(_rec + _recN, buf, n * sizeof(int16_t)); _recN += n; return; }
+    _codec->write(buf, n);
+    const uint32_t now = millis();     // how long since the speaker was last given sound
+    if (now - _fed > _late) _late = now - _fed;
+    _fed = now;
+  }
+
+  static constexpr uint32_t MAX_PRERENDER_S = 12;   // the longest tune is a few seconds; 12 s is 384 kB of PSRAM
+  int16_t* _rec = nullptr;
+  size_t _recN = 0;
   Es8311* _codec = nullptr;
   void (*_amp)(bool) = nullptr;
   volatile uint8_t _fail = 0;
