@@ -31,6 +31,10 @@ static int chatEmojiDrop(lgfx::LovyanGFX& g) { return chatSize() ? max(0, ((int)
 // A bigger font fits fewer words: on a wide screen (the pager's) the bubbles may
 // then use the full width.
 static int chatBubbleMax() { return chatSize() ? max(320, L::W - 16) : 320; }
+// The box you type in grows with it, and what you type is in the same font. Normal
+// is the 24 px bar as before; the messages end 4 px above it.
+static int composeH() { return chatSize() == 2 ? 36 : chatSize() == 1 ? 30 : 24; }
+static int composeTop() { return L::H - composeH() - 4; }
 
 // ---- helpers ------------------------------------------------------------------------
 static bool channelName(const ConvKey& k, char* out, size_t cap, int* idxOut = nullptr) {
@@ -217,7 +221,7 @@ public:
     }
     drawHeader(g, title, sub);
 
-    const int top = L::BODY_Y + 2, bottom = L::H - 28;
+    const int top = L::BODY_Y + 2, bottom = composeTop();
     g.setClipRect(0, top, L::W, bottom - top);
     if (!_n) {
       g.setTextColor(t.dim, t.bg);
@@ -466,20 +470,25 @@ private:
 
   void drawCompose(Canvas& g, int y) {
     const Theme& t = nav.theme();
-    const int x = 6, w = L::W - 12, h = 24;
+    const int x = 6, w = L::W - 12, h = composeH();
     y += 2;
     g.fillRoundRect(x, y, w, h, 12, t.panel);
     g.drawRoundRect(x, y, w, h, 12, _sel < 0 ? t.greenDim : t.line);
+    // What you type is in the chat text size; the hint and the count stay small.
+    const int smallY = y + (h - 16) / 2;
+    g.setFont(chatFont());
+    const int fh = g.fontHeight(), ty = y + (h - fh) / 2, caretH = max(14, fh - 2);
     if (!_compose.length()) {
       g.setTextColor(t.dim, t.panel);
       char ph[48];
       char nm[28];
       convName(_key, nm, sizeof(nm));
       snprintf(ph, sizeof(ph), "message %s", nm);
-      drawUtf8(g, ph, x + 12, y + 4, w - 180);
+      drawUtf8(g, ph, x + 12, ty, w - 180);
+      g.setFont(&fonts::Font2);
       const char* hint = _sel >= 0 ? "press: actions" : "press: emoji + replies";
-      g.drawString(hint, x + w - 12 - g.textWidth(hint), y + 4);
-      if (_sel < 0 && _caret) g.fillRect(x + 10, y + 5, 2, 14, t.green);
+      g.drawString(hint, x + w - 12 - g.textWidth(hint), smallY);
+      if (_sel < 0 && _caret) g.fillRect(x + 10, ty + 1, 2, caretH, t.green);
       return;
     }
     char safe[200];
@@ -488,12 +497,15 @@ private:
     const char* p = safe;
     while (*p && richWidth(g, p) > w - 70) p += (*p == 0x01 || *p == 0x02) && p[1] ? 2 : 1;
     g.setTextColor(t.white, t.panel);
-    const int cx = drawRich(g, p, x + 12, y + 4);
-    if (_caret) g.fillRect(cx + 1, y + 5, 2, 14, t.green);
+    richEmojiDrop(chatEmojiDrop(g));
+    const int cx = drawRich(g, p, x + 12, ty);
+    richEmojiDrop(0);
+    if (_caret) g.fillRect(cx + 1, ty + 1, 2, caretH, t.green);
+    g.setFont(&fonts::Font2);
     char cnt[12];
     snprintf(cnt, sizeof(cnt), "%d", maxLen() - (int)_compose.length());
     g.setTextColor((int)_compose.length() > maxLen() - 15 ? t.amber : t.dim, t.panel);
-    g.drawString(cnt, x + w - 12 - g.textWidth(cnt), y + 4);
+    g.drawString(cnt, x + w - 12 - g.textWidth(cnt), smallY);
   }
 
   static constexpr uint16_t MAX_IDS = 200;
