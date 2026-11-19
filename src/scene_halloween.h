@@ -194,12 +194,11 @@ inline void spookyWoods(lgfx::LovyanGFX& d, const Theme& t, const SpookyFrame& f
     const uint16_t c = i % 2 ? t.amber : t.green;
     d.fillRect(ex, ey, 2, 2, c); d.fillRect(ex + 5, ey, 2, 2, c);
   }
-  // Bare trees, leaning this way and that. None right where he walks.
+  // Bare trees, leaning this way and that; he walks in front of them.
   const int pitch = 64, n = W / pitch + 3, span = n * pitch;
   const uint16_t bark = mix(t.line, t.dim, 0.18f);
   for (int i = 0; i < n; i++) {
     const int x = spookyWrap(i * pitch - scroll, span) - pitch;
-    if (x > f.mascotX - 46 && x < f.mascotX + 40) continue;
     const uint32_t h = hash(i * 17 + 9);
     const int lean = (int)(h % 13) - 6, hh = 70 + (h >> 4) % 26;
     const int tx = x + lean, ty = g - hh;
