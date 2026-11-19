@@ -2248,13 +2248,17 @@ void loop() {
     const uint32_t now = millis(); laps[i] = now - lapAt; lapAt = now;
     power::sleepDiagnosticPhase(static_cast<power::SleepReason>(i + 1), dimmer.asleep());
   };
-  const int8_t detents = rotary.takeDetents();
+  int8_t detents = rotary.takeDetents();          // not const: a space-held turn moves the cursor instead
   const bool press = rotary.takePress();
   bool backspace = false, anyKey = false;
   char chars[16];
   uint8_t nchars = 0;
   KeyEvent ev;
+  // Space held while the wheel turns moves the text cursor (chats.cpp), like a phone's
+  // space-bar trackpad. The press already typed a space: the first move takes it back.
+  static bool spaceHeld = false, spaceMoved = false;
   while (nextKey(ev)) {
+    if (ev.index == KEY_IDX_SPACE) { spaceHeld = ev.pressed; if (ev.pressed) spaceMoved = false; }
     if (!ev.pressed) continue;
     anyKey = true;
     if (ev.index == KEY_IDX_BACKSPACE) backspace = true;
@@ -2331,6 +2335,14 @@ void loop() {
       strlcpy(before, g_screenTitle, sizeof(before));
       const uint32_t tIn = millis();
       const char* what = detents ? "wheel" : press ? "press" : backspace ? "backspace" : "key";
+      if (detents && spaceHeld && nav.top()) {
+        // A space pressed in this same pass isn't typed yet: drop it here instead.
+        bool pending = false;
+        for (uint8_t i = 0; i < nchars; i++)
+          if (chars[i] == ' ') { memmove(chars + i, chars + i + 1, nchars - i - 1); nchars--; pending = true; break; }
+        if (nav.top()->moveCursor(detents, !spaceMoved && !pending)) { spaceMoved = true; detents = 0; }
+        else if (pending) chars[nchars++] = ' ';          // nothing to move: it was just a space
+      }
       if (detents) nav.rotate(detents);
       if (press) nav.press();
       for (uint8_t i = 0; i < nchars; i++) {
