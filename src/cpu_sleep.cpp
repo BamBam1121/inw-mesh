@@ -7,6 +7,8 @@
 #include <esp_err.h>
 #include <esp_timer.h>
 #include <driver/gpio.h>
+#include <soc/soc.h>
+#include <soc/usb_serial_jtag_reg.h>
 
 void inwRadioKick();   // MeshCore's RadioLibWrappers.cpp, via tools/patch_meshcore.py
 
@@ -173,8 +175,16 @@ bool idleLightSleep(const SleepInputs& in) {
   if (err == ESP_OK) { stage = "radio wake"; err = gpio_wakeup_enable((gpio_num_t)PIN_LORA_DIO1, GPIO_INTR_HIGH_LEVEL); }
   if (err == ESP_OK) { stage = "button wake"; err = gpio_wakeup_enable((gpio_num_t)PIN_BUTTON, GPIO_INTR_LOW_LEVEL); }
   if (err == ESP_OK) { stage = "GPIO wake"; err = esp_sleep_enable_gpio_wakeup(); }
+  // Nothing is plugged in (USB blocks sleep), but a cable may be while it naps, and a
+  // sleeping chip can't answer the computer: it asked a few times, marked the pager
+  // "Device Descriptor Request Failed" and never asked again until it was replugged.
+  // So hide from USB while asleep (no pull-up on D+, the computer sees nothing there)
+  // and show up again on waking, when it answers and USB then keeps it awake.
+  const uint32_t usbPads = REG_READ(USB_SERIAL_JTAG_CONF0_REG);
+  REG_WRITE(USB_SERIAL_JTAG_CONF0_REG, (usbPads | USB_SERIAL_JTAG_PAD_PULL_OVERRIDE) & ~USB_SERIAL_JTAG_DP_PULLUP);
   const int64_t start = esp_timer_get_time();
   if (err == ESP_OK) { stage = "enter sleep"; err = esp_light_sleep_start(); }
+  REG_WRITE(USB_SERIAL_JTAG_CONF0_REG, usbPads);        // as it was: seen again
   const int64_t elapsed = esp_timer_get_time() - start;
   const uint32_t wake = (uint32_t)esp_sleep_get_wakeup_cause();
   const int radioAfter = digitalRead(PIN_LORA_DIO1), buttonAfter = digitalRead(PIN_BUTTON);
