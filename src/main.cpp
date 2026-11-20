@@ -423,12 +423,45 @@ static uint32_t s_panelAt = 0;   // millis of the last Sleep In or Sleep Out sen
 // only comes up after this returns. Lit while the panel was still asleep or just woken,
 // it showed rainbow static, mostly when a message woke the screen: the light came on
 // first and the panel was told to wake after.
+// ---- panel: the screen chip not in the state it was put in ---------------------------------
+// 2026-11-19: now and then the screen woke black (light on, keyboard lit) and came back
+// only after two or three more sleeps and wakes. The radio on the same bus was caught the
+// same day holding settings nobody sent it. So after each wake the panel is asked what it
+// is doing - power mode (0x0A: booster, awake, normal mode, display on), memory access
+// (0x0B: the rotation) and pixel format (0x0C) - and compared with what it said once boot
+// was done. Different twice running: the panel is set up from scratch, and it's logged.
+static int16_t s_panelGood[3] = {-1, -1, -1};   // learned after boot; -1: reads not trusted
+static uint16_t s_panelRepairs = 0;
+static uint8_t panelRead(uint8_t cmd) { return display.getPanel()->readCommand(cmd, 0, 1) & 0xFF; }
+static void panelLearn() {
+  const uint8_t pm = panelRead(0x0A), mad = panelRead(0x0B), fmt = panelRead(0x0C);
+  if ((pm & 0x9C) == 0x9C) { s_panelGood[0] = pm; s_panelGood[1] = mad; s_panelGood[2] = fmt; }
+  Serial.printf("[panel] state after boot: power %02X, rotation %02X, format %02X%s\n", pm, mad, fmt,
+                s_panelGood[0] < 0 ? " (not readable: no check on wake)" : "");
+}
+static void panelCheck() {
+  if (s_panelGood[0] < 0) return;
+  uint8_t pm = 0, mad = 0, fmt = 0;
+  for (int tries = 0; tries < 2; tries++) {      // a second look rules out one bad read
+    pm = panelRead(0x0A); mad = panelRead(0x0B); fmt = panelRead(0x0C);
+    if (pm == s_panelGood[0] && mad == s_panelGood[1] && fmt == s_panelGood[2]) return;
+  }
+  s_panelRepairs++;
+  display.init();                                 // reset pin, init commands, invert, format
+  display.setRotation(TFT_ROTATION);
+  const uint8_t pm2 = panelRead(0x0A), mad2 = panelRead(0x0B), fmt2 = panelRead(0x0C);
+  Serial.printf("[panel] woke wrong (power %02X rotation %02X format %02X, should be %02X %02X %02X): set up again -> %02X %02X %02X\n",
+                pm, mad, fmt, s_panelGood[0], s_panelGood[1], s_panelGood[2], pm2, mad2, fmt2);
+  logs.add(LOG_WARN, "screen set up again #%u: p%02X r%02X f%02X", (unsigned)s_panelRepairs, pm, mad, fmt);   // 44 characters
+}
+
 static void panelWake() {
   if (!s_panelOff) return;
   const uint32_t since = millis() - s_panelAt;
   if (since < 120) delay(120 - since);
   display.wakeup();
   delay(120);
+  panelCheck();
   s_panelAt = millis();
   s_panelOff = false;
   nav.invalidate();
@@ -968,6 +1001,21 @@ static void usbCommands() {
     // Radio repair tests: knock the chip out of its settings the way it was found
     // (2026-11-19: standby, packet type 16, MeshCore idle and unable to start receive)
     // and watch radioDeafWatch() put it right. "radio setup" sets it up again at once.
+    // Panel repair test: "panel" reads its state; "panel break off|rot|fmt" sends a stray
+    // display-off / rotation / pixel format; then lock and wake (or "panel wake") to watch
+    // panelCheck() put it right.
+    if (!strcmp(line, "panel") || !strncmp(line, "panel ", 6)) {
+      const char* what = line[5] ? line + 6 : "";
+      auto* p = display.getPanel();
+      if (!strcmp(what, "break off")) { p->startWrite(); p->writeCommand(0x28, 1); p->endWrite(); }
+      else if (!strcmp(what, "break rot")) { p->startWrite(); p->writeCommand(0x36, 1); p->writeData(0x00, 1); p->endWrite(); }
+      else if (!strcmp(what, "break fmt")) { p->startWrite(); p->writeCommand(0x3A, 1); p->writeData(0x66, 1); p->endWrite(); }
+      else if (!strcmp(what, "wake")) { s_panelOff = true; panelWake(); }
+      Serial.printf("[panel] %s: power %02X rotation %02X format %02X, healthy %02X %02X %02X, repairs %u\n",
+                    *what ? what : "state", panelRead(0x0A), panelRead(0x0B), panelRead(0x0C),
+                    s_panelGood[0], s_panelGood[1], s_panelGood[2], (unsigned)s_panelRepairs);
+      continue;
+    }
     if (!strncmp(line, "radio ", 6) && !strcmp(radio_chip, "SX1262")) {
       const char* what = line + 6;
       uint8_t v;
@@ -2037,6 +2085,7 @@ void setup() {
   }
   nav.invalidate();
   s_uiReady = true;                               // from here on, screen changes animate
+  panelLearn();                                   // what a healthy panel says (panelCheck)
 }
 
 // ---- loop -------------------------------------------------------------------------------------------
