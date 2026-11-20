@@ -27,6 +27,7 @@
 #include "themestore.h"
 #include "qrview.h"
 #include <algorithm>
+#include "eco_power.h"
 #include <SPIFFS.h>
 #include <SD.h>
 
@@ -1125,6 +1126,25 @@ static void batteryMenu() {
   m->adjust("turn on at", []() -> String { return String(ui_settings.saverPct) + "%"; },
             [](int d) { ui_settings.saverPct = constrain(ui_settings.saverPct + d * 5, 5, 50); markUiDirty(); });
   m->info("what it does", []() -> String { return String("gps, bluetooth, wi-fi off, dim screen"); });
+  // Experimental (from PR #13): off unless turned on here; off, it runs exactly as before.
+  m->header("ECO mode (experimental)");
+  m->toggle("ECO mode", [] { return power::eco(); }, [] {
+    if (power::eco()) {
+      if (!power::setEco(false)) nav.toast("could not save ECO setting", 3000);
+      return;
+    }
+    confirm("Turn on ECO mode?",
+#if BOARD_HAS_TOUCH
+            "experimental. with the screen off the T-Deck sleeps between messages to save battery. "
+            "it only sleeps with wi-fi, bluetooth and gps off. a message, the trackball or a touch wakes it.",
+#else
+            "experimental. with the screen off the pager runs slower and sleeps between messages to save battery. "
+            "it only sleeps with wi-fi, bluetooth and gps off, and raise to wake is off while ECO is on.",
+#endif
+            [] { if (!power::setEco(true)) nav.toast("could not save ECO setting", 3000); });
+  });
+  m->info("what it does", []() -> String { return String("screen off: sleeps between messages"); });
+  m->info("sleeps when", []() -> String { return String("wi-fi, bluetooth and gps are off"); });
   nav.push(m);
 }
 

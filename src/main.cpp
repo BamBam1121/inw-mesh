@@ -11,6 +11,9 @@
 #include <Preferences.h>
 #include <soc/rtc_cntl_reg.h>
 #include "power.h"
+#include "eco_power.h"
+#include "cpu_sleep.h"
+#include "sleep_deadline.h"
 #include "notify.h"
 #include "statusbar.h"
 #include "ota.h"
@@ -123,6 +126,8 @@ extern char g_screenTitle[32];   // ui.cpp: the last header drawn
 static uint32_t s_prefsDirtyAt = 0, s_uiDirtyAt = 0;
 static uint32_t s_kbFlashUntil = 0;
 static bool s_radioOk = false;
+bool inwStoreBeginSleep();          // MeshCore DataStore helper (tools/patch_meshcore.py): ECO
+void inwStoreEndSleep();
 static uint16_t s_radioKicks = 0;   // radioIrqWatch(): missed radio interrupts picked up since start
 static uint16_t s_radioRxKicks = 0; // radioDeafWatch(): chip found in standby while "listening"
 static uint16_t s_radioSetups = 0;  // radioDeafWatch(): radio set up again from scratch
@@ -137,6 +142,7 @@ static void radioSetupAgain(const char* why);
 static uint16_t radioSyncWord();
 #if BOARD_HAS_TOUCH
 static bool s_touchWake = false;   // touchscreen: a double tap on the dark screen (tapWake)
+static uint32_t s_darkTouchAt = 0; // the last touch on the dark screen (ECO: no nap right after)
 #endif
 #if INW_DEV
 static regions::Scan s_usbScan;    // USB "regions scan"
@@ -1168,6 +1174,23 @@ static void usbCommands() {
     if (themeCommand(line)) continue;
 #if INW_DEV   // the rest is for the developer build (pio run -e t-lora-pager-dev), never a release:
               // diagnostics, remote control for screenshots, test commands
+    // "eco on" / "eco off": the Settings switch, for testing.
+    if (!strcmp(line, "eco on") || !strcmp(line, "eco off")) {
+      const bool ok = power::setEco(line[5] == 'n');
+      Serial.printf("[cpu] eco %s%s\n", power::eco() ? "on" : "off", ok ? "" : " (could not save)");
+      continue;
+    }
+    // "cpu": ECO's state and why the last dark minutes did or didn't sleep.
+    if (!strcmp(line, "cpu") || !strcmp(line, "cpu reset")) {
+      if (line[3]) { power::resetSleepDiagnostics(dimmer.asleep()); Serial.println("[cpu] diagnostics reset"); continue; }
+      Serial.printf("[cpu] eco=%d clock=%lu MHz sleep=%s count=%lu last=%lu ms max=%lu ms total=%llu ms wake=%lu fails=%lu\n",
+                    power::eco() ? 1 : 0, (unsigned long)power::cpuClockMhz(), power::lightSleepStatus(),
+                    (unsigned long)power::lightSleepCount(), (unsigned long)power::lightSleepLastMs(),
+                    (unsigned long)power::lightSleepMaxMs(), (unsigned long long)(power::lightSleepMicros() / 1000ULL),
+                    (unsigned long)power::lightSleepWakeCause(), (unsigned long)power::sleepFailureCount());
+      power::printSleepDiagnostics();
+      continue;
+    }
     // Radio repair tests (from the pager, 2026-11-19): knock the chip out of its settings
     // the way it was found and watch radioDeafWatch() put it right. "radio" alone: state.
     if ((!strcmp(line, "radio") || !strncmp(line, "radio ", 6)) && !strcmp(radio_chip, "SX1262")) {
@@ -2479,6 +2502,9 @@ void setup() {
   if (s_radioOk) snprintf(rinfo, sizeof(rinfo), "%s  %.3f MHz sf%u", radio_chip, g_node->prefs().freq, g_node->prefs().sf);
   else strlcpy(rinfo, "not responding", sizeof(rinfo));
   bootStep("radio", s_radioOk, rinfo);
+  // ECO (experimental): off unless turned on in Settings > Battery.
+  if (!power::initEco()) Serial.println("[power] ECO setting could not be read");
+  else if (power::eco()) logs.add(LOG_INFO, "ECO on: sleeps between messages when dark");
   if (s_radioOk) logs.add(LOG_INFO, "radio up");
   else logs.add(LOG_ERROR, "radio init failed: %s", s_radioFault);
   if (s_radioOk) keepEssentials();
@@ -2713,12 +2739,12 @@ static void radioDeafWatch() {
   }
 }
 
+static uint32_t s_bootAdvert = 8000, s_lastAdvert = 0;   // ECO wakes for them (loop)
 static void autoAdvertTick() {
-  static uint32_t bootAdvert = 8000, last = 0;
   if (!g_node) return;
-  if (bootAdvert && millis() > bootAdvert) { bootAdvert = 0; g_node->advertZeroHop(); last = millis(); }
-  if (ui_settings.autoAdvertHours && millis() - last > ui_settings.autoAdvertHours * 3600000UL) {
-    last = millis();
+  if (s_bootAdvert && millis() > s_bootAdvert) { s_bootAdvert = 0; g_node->advertZeroHop(); s_lastAdvert = millis(); }
+  if (ui_settings.autoAdvertHours && millis() - s_lastAdvert > ui_settings.autoAdvertHours * 3600000UL) {
+    s_lastAdvert = millis();
     g_node->advertFlood();
     logs.add(LOG_INFO, "auto flood advert");
   }
@@ -2814,6 +2840,7 @@ void loop() {
     }
     while (!skipFeed && gestures.feed(down, tx, ty, millis(), te)) {
       if (dimmer.asleep()) {
+        s_darkTouchAt = millis() | 1;   // ECO stays awake a moment, for the second tap
         // Double tap to wake, if it's on (Settings > Display): two taps close together.
         static uint32_t lastTap = 0;
         if (ui_settings.tapWake && te.type == TouchEvent::Tap) {
@@ -3177,5 +3204,56 @@ void loop() {
   // 80 MHz clock doesn't change). Back to 240 the moment the screen wakes.
   if (idleDark != s_cpuSlow) { setCpuFrequencyMhz(idleDark ? 80 : 240); s_cpuSlow = idleDark; }
 #endif
-  delay(idleDark ? 30 : 2);
+  // ECO (experimental, Settings > Battery; from the pager, PR #13): with the screen dark
+  // and nothing else going on, the chip sleeps between messages instead of looking every
+  // 30 ms. The radio's "packet ready" line, the trackball click and the touchscreen wake
+  // it at once; otherwise it wakes for the next thing scheduled (a DM retry, an advert,
+  // a contacts save), at most 30 s on. Off, the T-Deck runs exactly as before.
+  bool slept = false;
+  if (idleDark && power::eco()) {
+    const uint32_t now = millis();
+    SleepDeadline deadline(now);
+    if (g_node) deadline.limit(g_node->sleepBudgetMs(now));
+    if (s_bootAdvert) deadline.at(s_bootAdvert + 1);
+    if (ui_settings.autoAdvertHours) deadline.after(s_lastAdvert, ui_settings.autoAdvertHours * 3600000UL + 1);
+    if (s_hizUntil) deadline.at(s_hizUntil + 1);
+    if (g_shotAt) deadline.at(g_shotAt);
+    using SleepReason = power::SleepReason;
+#if BOARD_HAS_TOUCH
+    // A touch on the dark screen may be the first of a double tap: stay up for the second.
+    const bool touching = s_darkTouchAt && millis() - s_darkTouchAt < 700;
+#else
+    const bool touching = false;
+#endif
+    const bool foreground = !s_panelOff || backlight.fading() || nav.overlayActive() ||
+      s_kbFlashUntil || s_prefsDirtyAt || s_uiDirtyAt || field::wantsGps() || touching;
+    power::sleepDiagnosticContext(touching ? SleepReason::Input : !s_panelOff ? SleepReason::Panel : backlight.fading() ? SleepReason::Fade :
+      nav.overlayActive() ? SleepReason::Overlay : s_kbFlashUntil ? SleepReason::KeyboardEffect :
+      s_prefsDirtyAt ? SleepReason::PrefsSave : s_uiDirtyAt ? SleepReason::UiSave :
+      field::wantsGps() ? SleepReason::Field : SleepReason::Background);
+    const uint8_t meshBlock = g_node ? g_node->radioSleepBlock() : 0;
+    const bool radioReceiving = radio_driver.isInRecvMode();
+    power::sleepDiagnosticMeshContext(meshBlock == 1 ? SleepReason::MeshPoolInvalid :
+      meshBlock == 2 ? SleepReason::MeshTxQueue : meshBlock == 3 ? SleepReason::MeshAllocated :
+      SleepReason::RadioNotRx);
+    power::SleepInputs idle{true, jingle.playing(), false, bleEnabled(), wifi::enabled(), s_gpsRail,
+      g_node && (meshBlock != 0 || !radioReceiving), s_radioOk, false, foreground, false, false,
+      now + deadline.ms()};
+    bool storeHeld = false;
+    if (!idle.audio && !idle.bluetooth && !idle.wifi && !idle.gps && idle.radioReady && !idle.meshBusy &&
+        !idle.background && deadline.ms() >= 2 && now >= 120000) {
+      // Plugged into a computer: never (a sleeping chip can't answer it).
+      idle.usb = battery.pluggedIn() || HWCDC::isPlugged() || (bool)Serial;
+      if (!idle.usb) {
+        idle.bluetooth = !blePrepareLightSleep();
+        if (!idle.bluetooth) {
+          storeHeld = inwStoreBeginSleep(); idle.background = !storeHeld;
+          if (!storeHeld) power::sleepDiagnosticContext(SleepReason::StoreQueue);
+        }
+      }
+    }
+    slept = power::idleLightSleep(idle);
+    if (storeHeld) inwStoreEndSleep();
+  }
+  if (!slept) delay(idleDark ? 30 : 2);
 }

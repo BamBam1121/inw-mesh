@@ -25,4 +25,12 @@ namespace power {
   int  predictedUnplugMin();      // local minute-of-day, or -1 if not learned yet
   uint8_t unplugSamples();
   const char* chargeStatus();     // one line for the Battery page
+
+  // ECO's CPU half (cpu_power.cpp). A board that already runs at 80 MHz with the screen
+  // dark (BOARD_SLOW_CPU_WHEN_DARK: the T-Deck, the M9) leaves the clock to the loop,
+  // so ECO there is the light sleep alone (cpu_sleep.cpp, eco_power.h).
+  bool cpuSaving();
+  bool setCpuSaving(bool on);     // false if the preference could not be saved
+  void updateCpu(bool screenOff); // screen state only; false restores the boot clock
+  uint32_t cpuClockMhz();
 }
