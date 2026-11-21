@@ -3242,8 +3242,11 @@ void loop() {
     bool storeHeld = false;
     if (!idle.audio && !idle.bluetooth && !idle.wifi && !idle.gps && idle.radioReady && !idle.meshBusy &&
         !idle.background && deadline.ms() >= 2 && now >= 120000) {
-      // Plugged into a computer: never (a sleeping chip can't answer it).
-      idle.usb = battery.pluggedIn() || HWCDC::isPlugged() || (bool)Serial;
+      // Plugged into a computer: never (a sleeping chip can't answer it). Asked of the USB
+      // port itself (the host's 1 ms frames), not the battery pin: that pin's "on USB" stays
+      // set after the cable comes out while the cell reads high (2026-11-20: 67 min unplugged,
+      // ECO on, radios off, not one nap). A wall charger is no computer: naps there are fine.
+      idle.usb = HWCDC::isPlugged() || (bool)Serial;
       if (!idle.usb) {
         idle.bluetooth = !blePrepareLightSleep();
         if (!idle.bluetooth) {
