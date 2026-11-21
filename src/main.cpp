@@ -1003,7 +1003,23 @@ static void usbCommands() {
       else if (!strcmp(what, "break inv")) { p->startWrite(); p->writeCommand(0x20, 1); p->endWrite(); }
       else if (!strcmp(what, "break sleep")) { p->startWrite(); p->writeCommand(0x10, 1); p->endWrite(); }
       else if (!strcmp(what, "wake")) { s_panelOff = true; panelWake(); }
+      else if (!strcmp(what, "init")) { display.init(); display.setRotation(TFT_ROTATION); nav.invalidate(); }
       Serial.printf("[panel] %s: refreshed on %lu wakes\n", *what ? what : "state", (unsigned long)s_panelRefreshes);
+      continue;
+    }
+    // Black-screen hunt (2026-11-20): what the pager believes about its screen, changing
+    // nothing - then "bl resync" (backlight chip off for real and back) or "bl N".
+    if (!strcmp(line, "screen")) {
+      Serial.printf("[screen] dimmer=%s light=%u (full %u) fading=%d panel=%s cpu=%lu MHz up=%lus idle=%lus top='%s'\n",
+                    dimmer.asleep() ? "asleep" : dimmer.dimmed() ? "dim" : "full", backlight.level(), dimmer.full(),
+                    backlight.fading() ? 1 : 0, s_panelOff ? "asleep" : "awake", (unsigned long)getCpuFrequencyMhz(),
+                    (unsigned long)(millis() / 1000), (unsigned long)(dimmer.idleFor() / 1000), g_screenTitle);
+      continue;
+    }
+    if (!strncmp(line, "bl ", 3)) {
+      if (!strcmp(line + 3, "resync")) backlight.resync();
+      else backlight.setNow((uint8_t)atoi(line + 3));
+      Serial.printf("[screen] light now %u\n", backlight.level());
       continue;
     }
     if (!strncmp(line, "radio ", 6) && !strcmp(radio_chip, "SX1262")) {

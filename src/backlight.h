@@ -52,6 +52,14 @@ public:
     }
 
     uint8_t level() const { return _level; }
+    // Diagnostics: shut the chip down for real, then bring it back to the level it
+    // is meant to be at - whatever state the chip itself had got into.
+    void resync() {
+        const uint8_t want = _level;
+        _fading = false;
+        digitalWrite(_pin, LOW); _level = 0; _offAt = micros();
+        if (want) setLevel(want);
+    }
 
     // Non-blocking fade: one level per step, since 16 levels is all there is.
     void fadeTo(uint8_t target, uint16_t durationMs = 300) {
