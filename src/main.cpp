@@ -443,12 +443,19 @@ static void panelRefresh() {
   s_panelRefreshes++;
 }
 
+// Every wake sets the panel up from scratch: software reset and LovyanGFX's whole init list (sleep out, power, gamma,
+// pixel format, display on), the rotation, then the screen is drawn - and only after that does the light come up
+// (the dimmer ticks after this in the loop; screenWakeAnimated lights it after its first frame). A bare Sleep Out
+// trusted that one command got through: when it didn't, the light came on over a panel still asleep - the grey,
+// blank screen with the keyboard lit that came back after two or three more wakes (2026-11-19..21; the user's
+// photo, and "you're turning on the screen without turning on the chip"). A full set-up takes ~0.3 s, the radio on
+// the same bus kept receiving through it (measured: dev "panel init", recv 286 -> 288)
 static void panelWake() {
   if (!s_panelOff) return;
   const uint32_t since = millis() - s_panelAt;
   if (since < 120) delay(120 - since);
-  display.wakeup();
-  delay(120);
+  display.init();
+  display.setRotation(TFT_ROTATION);
   panelRefresh();
   s_panelAt = millis();
   s_panelOff = false;
