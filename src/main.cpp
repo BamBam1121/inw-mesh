@@ -669,6 +669,11 @@ const char* app::fmtDistance(double km) {
 // someone is using it. If the screen has somehow been on for a whole day, go ahead
 // rather than sit on a day of changes.
 static uint32_t s_lastDarkAt = 0;
+// Someone is pressing something: a background job (the auto backup) stops so the screen can wake.
+bool inwInputPending() {
+  return digitalRead(PIN_BUTTON) == LOW || digitalRead(PIN_ROTARY_PRESS) == LOW || keyboard.pending();
+}
+
 bool inwCanSaveNow() {
   return dimmer.asleep() || millis() - s_lastDarkAt > 24UL * 3600UL * 1000UL;
 }

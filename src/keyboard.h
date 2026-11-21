@@ -39,6 +39,8 @@ public:
     }
 
     // Pops one event from the chip's FIFO. Returns false when it is empty.
+    // A key event is waiting (nothing taken off the queue).
+    bool pending() { return _ok && (_read(REG_KEY_LCK_EC) & 0x0F) != 0; }
     bool read(KeyEvent& ev) {
         if (!_ok || (_read(REG_KEY_LCK_EC) & 0x0F) == 0) return false;
 

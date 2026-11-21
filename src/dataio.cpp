@@ -308,6 +308,9 @@ const char* sdTest(const char* what) {
 
 void inwProgress(const char* what, uint32_t done, uint32_t total);   // main.cpp
 static const char* s_progress = nullptr;   // set while a backup runs: copies show a progress screen
+// The automatic backup runs with the screen off and gives way to any press (main.cpp).
+bool inwInputPending();
+static bool s_autoBackup = false, s_autoStopped = false;
 
 static size_t copyFileImpl(fs::FS& from, const char* src, fs::FS& to, const char* dst);
 static const char* const HIST_KEEP = "/inw/hist.keep.log";   // the card's messages, set aside (sdBackupNow)
@@ -331,12 +334,15 @@ static size_t copyFileImpl(fs::FS& from, const char* src, fs::FS& to, const char
   size_t total = 0;
   bool failed = false;
   int n;
+  bool stopped = false;
   while ((n = in.read(buf, sizeof(buf))) > 0) {
+    if (s_autoBackup && inwInputPending()) { stopped = true; s_autoStopped = true; break; }   // a press: let the screen wake
     if (out.write(buf, n) != (size_t)n) { total = 0; failed = true; break; }
     total += n;
     if (s_progress && size) inwProgress(s_progress, total, size);
   }
   in.close(); out.close();
+  if (stopped) { to.remove(tmp); return 0; }   // the old copy stays as it was
   if (failed && &to == &SD) { sdWriteFailed("copy"); return 0; }   // the card went: not worth a remove
   if (!total) { to.remove(tmp); return 0; }
   to.remove(dst);
@@ -1047,6 +1053,7 @@ const char* sdBackupNow(bool force) {
   s_progress = nullptr;
   inwProgress(nullptr, 0, 0);
   if (!sd) return "flash copy done, no sd card";
+  if (s_autoStopped) return "stopped";        // not done: it runs again within the hour
   ui_settings.lastSdBackup = rtc_clock.getCurrentTime();
   ui_settings.save();
   static char msg[32];
@@ -1088,7 +1095,13 @@ void sdBackupTick() {
   if (!due) return;
   if (lastRun && millis() - lastRun < 3600000UL) return;   // failed recently (no card): hourly at most
   lastRun = millis();
+  // No card: nothing to back up to. The flash-side copy of 2000 contacts took ~2 minutes and
+  // held the pager the whole time, so a key press woke the keyboard light over a blank screen.
+  if (!sdMount()) return;
+  s_autoBackup = true; s_autoStopped = false;
   const char* r = sdBackupNow(false);
+  s_autoBackup = false;
+  if (s_autoStopped) { logs.add(LOG_INFO, "auto backup: stopped for a key press, tries again later"); return; }
   logs.add(LOG_INFO, "auto backup: %s", r);
 }
 
