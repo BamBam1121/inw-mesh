@@ -1871,6 +1871,12 @@ static void bootNote(const char* msg) {      // a long step the user should know
 }
 
 void setup() {
+  // Backlight dark until the panel is set up and drawn on (backlight.begin() after the
+  // boot logo). GPIO42 is also the chip's JTAG MTMS pin and isn't driven by anything
+  // until then, so where it rests at power-on decides whether the light comes on over
+  // a panel that hasn't been set up yet. Low long enough is also the AW9364's shutdown.
+  pinMode(PIN_TFT_BL, OUTPUT);
+  digitalWrite(PIN_TFT_BL, LOW);
   clearForceDownloadBoot();     // first thing: one trip into flash mode stays one trip
   s_bootT0 = millis();
   Serial.begin(115200);
