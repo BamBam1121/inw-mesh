@@ -142,6 +142,32 @@ uint32_t lightSleepMaxMs() { return s_maxMs; }
 uint64_t lightSleepMicros() { return s_micros; }
 uint32_t lightSleepWakeCause() { return s_wake; }
 
+// Output pins keep their level through a nap. By default the chip may switch a pad to its sleep configuration in
+// light sleep, and a released GPIO42 (the backlight: the chip's JTAG MTMS pad, pulled up) lit the backlight at full
+// while the panel slept: the screen glowed grey and blank with the firmware sure the light was off (pager, 2026-11-21,
+// screen=asleep light=0 read back while the user photographed it glowing; ECO had napped 196 times). The panel's and
+// radio's selects, the radio's reset, the SD and NFC selects, the keyboard light and the T-Deck's peripheral power
+// are held the same way
+static void keepOutputsInSleep() {
+  static bool done = false;
+  if (done) return;
+  done = true;
+  static const int pins[] = { PIN_TFT_BL, PIN_TFT_CS, PIN_TFT_DC, PIN_LORA_CS, PIN_LORA_RST, PIN_SD_CS,
+#ifdef PIN_KB_BL
+    PIN_KB_BL,
+#endif
+#ifdef PIN_NFC_CS
+    PIN_NFC_CS,
+#endif
+#ifdef PIN_POWER_ON
+    PIN_POWER_ON,
+#endif
+  };
+  for (int p : pins) {
+    if (p >= 0) gpio_sleep_sel_dis((gpio_num_t)p);
+  }
+}
+
 bool idleLightSleep(const SleepInputs& in) {
   // Manual light sleep is deliberately separate from the working 80 MHz policy.
   // Never suspend I2S, GPS UART, a wireless stack or an outbound mesh operation.
@@ -163,6 +189,7 @@ bool idleLightSleep(const SleepInputs& in) {
   updateCpu(true);
   if (cpuClockMhz() != 80) return blocked(R::Clock, in.screenOff);
 
+  keepOutputsInSleep();
   // Like MeshCore's ESP32 repeater: mask this core's ISR servicing while the
   // radio GPIO has a level wake trigger, then restore its rising-edge IRQ.
   // Sleep until an IRQ or the earliest useful deadline, up to 30 seconds.
