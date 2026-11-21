@@ -7,6 +7,7 @@
 #include "logstore.h"
 #include "netwifi.h"
 #include "power.h"
+#include "eco_power.h"
 #include <time.h>
 #include "emoji_data.h"
 #include "regional.h"
@@ -164,6 +165,11 @@ void drawStatusBar(lgfx::LovyanGFX& d, const Theme& t, bool withClock) {
     rx -= smallW() + 5;
     s_sigX = rx;
     smallSignal(d, t, rx, 16);
+  }
+  if (power::eco()) {                    // experimental ECO mode (Settings > Battery)
+    rx -= d.textWidth("ECO") + 6;
+    d.setTextColor(t.green, t.panel);
+    d.drawString("ECO", rx, 1);
   }
   if (power::saver()) {
     rx -= 44;
@@ -360,6 +366,9 @@ int richWidth(lgfx::LovyanGFX& g, const char* s, int n) {
 }
 
 // Draw sanitized text; returns the x after the last glyph.
+static int s_emojiDrop = 0;
+void richEmojiDrop(int px) { s_emojiDrop = px; }
+
 int drawRich(lgfx::LovyanGFX& g, const char* s, int x, int y, int n) {
   if (n < 0) n = strlen(s);
   int i = 0;
@@ -367,7 +376,7 @@ int drawRich(lgfx::LovyanGFX& g, const char* s, int x, int y, int n) {
   int rl = 0;
   auto flush = [&]() { if (rl) { run[rl] = 0; x += g.drawString(run, x, y); rl = 0; } };
   while (i < n) {
-    if (isMarker(s[i]) && i + 1 < n) { flush(); blitEmoji(g, markerGlyph(s + i), x, y); x += EMOJI_W; i += 2; continue; }
+    if (isMarker(s[i]) && i + 1 < n) { flush(); blitEmoji(g, markerGlyph(s + i), x, y + s_emojiDrop); x += EMOJI_W; i += 2; continue; }
     if (rl < (int)sizeof(run) - 1) run[rl++] = s[i];
     i++;
   }

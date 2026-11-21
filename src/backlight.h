@@ -76,6 +76,12 @@ private:
 // `sleepMs`. Feed it activity (a key, the rotary) via note().
 class IdleDimmer {
 public:
+    // Notify synchronously, before waking the backlight. CPU policy follows
+    // logical screen state, independently of audio, overlays or mesh activity.
+    void onScreenState(void (*fn)(bool asleep)) {
+        _screenState = fn;
+        if (_screenState) _screenState(asleep());
+    }
     void begin(Backlight* bl, uint8_t full = 12, uint8_t dim = 3,
                uint32_t idleMs = 15000, uint32_t sleepMs = 60000) {
         _bl = bl; _full = full; _dim = dim; _idleMs = idleMs; _sleepMs = sleepMs;
@@ -85,21 +91,21 @@ public:
 
     void note() {
         _lastActivity = millis();
-        if (_state != FULL) { _state = FULL; _bl->fadeTo(_full, 150); }
+        if (_state != FULL) { _state = FULL; notifyScreen(); _bl->fadeTo(_full, 150); }
     }
 
     void tick() {
         _bl->tick();
         const uint32_t idle = millis() - _lastActivity;
         if (_state == FULL && idle > _idleMs)  { _state = DIM;   _bl->fadeTo(_dim, 600); }
-        if (_state == DIM  && idle > _sleepMs) { _state = SLEEP; _bl->fadeTo(0,   800); }
+        if (_state == DIM  && idle > _sleepMs) { _state = SLEEP; notifyScreen(); _bl->fadeTo(0,   800); }
     }
 
     // Screen off now, the way the side button works on a phone.
-    void sleepNow() { if (_state != SLEEP) { _state = SLEEP; _bl->fadeTo(0, 250); } }
+    void sleepNow() { if (_state != SLEEP) { _state = SLEEP; notifyScreen(); _bl->fadeTo(0, 250); } }
     // No fade: an animation has already done the turning on or off.
-    void wakeInstant()  { _lastActivity = millis(); _state = FULL; _bl->setNow(_full); }
-    void sleepInstant() { _state = SLEEP; _bl->setNow(0); }
+    void wakeInstant()  { _lastActivity = millis(); _state = FULL; notifyScreen(); _bl->setNow(_full); }
+    void sleepInstant() { _state = SLEEP; notifyScreen(); _bl->setNow(0); }
 
     bool asleep() const { return _state == SLEEP; }
     bool dimmed() const { return _state == DIM; }
@@ -120,6 +126,8 @@ public:
     uint32_t idleFor() const { return millis() - _lastActivity; }
 
 private:
+    void notifyScreen() { if (_screenState) _screenState(asleep()); }
+    void (*_screenState)(bool asleep) = nullptr;
     enum State { FULL, DIM, SLEEP };
     Backlight* _bl = nullptr;
     State    _state = FULL;

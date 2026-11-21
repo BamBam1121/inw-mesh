@@ -11,6 +11,11 @@
 #include <Preferences.h>
 #include <soc/rtc_cntl_reg.h>
 #include "power.h"
+#include "eco_power.h"
+#include "cpu_sleep.h"
+#include "nfcapp.h"
+#include "sleep_deadline.h"
+#include "battery_schedule.h"
 #include "notify.h"
 #include "statusbar.h"
 #include "ota.h"
@@ -115,7 +120,19 @@ uint32_t g_shotAt = 0;
 extern char g_screenTitle[32];   // ui.cpp: the last header drawn
 static uint32_t s_prefsDirtyAt = 0, s_uiDirtyAt = 0;
 static uint32_t s_kbFlashUntil = 0;
+static uint32_t s_battFlashAt = 0;
 static bool s_radioOk = false;
+static uint16_t s_radioKicks = 0;   // radioIrqWatch(): missed radio interrupts picked up since start
+static uint16_t s_radioRxKicks = 0; // radioDeafWatch(): chip found in standby while "listening"
+static uint16_t s_radioSetups = 0;  // radioDeafWatch(): radio set up again from scratch
+static char s_radioSetupWhy[48] = "";   // ... and why, the last time
+bool inwRadioFlagPending();         // MeshCore RadioLibWrappers.cpp (tools/patch_meshcore.py)
+static void radioChipState(char* out, size_t n);   // below: what the radio chip says it is doing
+void inwRadioSetIdle();             // MeshCore RadioLibWrappers.cpp (tools/patch_meshcore.py)
+unsigned char inwRadioState();      // MeshCore RadioLibWrappers.cpp (tools/patch_meshcore.py)
+extern RADIO_CLASS radio;           // variants/inw_pager/target.cpp
+static void radioSetupAgain(const char* why);   // below
+static uint16_t radioSyncWord();
 #if INW_DEV
 static regions::Scan s_usbScan;    // USB "regions scan"
 #endif
@@ -227,6 +244,8 @@ void app::applyTheme() {
 // these wait for it, and report what it finished.
 bool inwStoreFlush(uint32_t ms);
 void inwStoreTick();
+bool inwStoreBeginSleep();
+void inwStoreEndSleep();
 void inwSetUserBusy(bool busy);
 
 static uint32_t s_hizUntil = 0;   // "batt hiz" test running until then
@@ -404,12 +423,33 @@ static uint32_t s_panelAt = 0;   // millis of the last Sleep In or Sleep Out sen
 // only comes up after this returns. Lit while the panel was still asleep or just woken,
 // it showed rainbow static, mostly when a message woke the screen: the light came on
 // first and the panel was told to wake after.
+// ---- panel: the screen chip not in the state it was put in ---------------------------------
+// 2026-11-19: now and then the screen woke black (light on, keyboard lit) and came back
+// only after two or three more sleeps and wakes. The radio on the same bus was caught the
+// same day holding settings nobody sent it. Asking the panel what state it is in can't
+// work on the pager (tried 2026-11-20: its reads come back as noise that changes every
+// time), so each wake simply tells it again how it should be: normal mode, display on,
+// inversion, pixel format and rotation - the same bytes LovyanGFX sends at start-up.
+// A dozen bytes, well under a millisecond; its memory is redrawn on wake anyway.
+static uint32_t s_panelRefreshes = 0;
+static void panelRefresh() {
+  auto* p = display.getPanel();
+  p->startWrite();
+  p->writeCommand(0x13, 1);                       // normal display mode (not partial)
+  p->writeCommand(0x29, 1);                       // display on
+  p->endWrite();
+  p->setInvert(false);                            // INVON: this IPS panel is set up inverted
+  display.setRotation(TFT_ROTATION);              // pixel format (0x3A) + memory access (0x36)
+  s_panelRefreshes++;
+}
+
 static void panelWake() {
   if (!s_panelOff) return;
   const uint32_t since = millis() - s_panelAt;
   if (since < 120) delay(120 - since);
   display.wakeup();
   delay(120);
+  panelRefresh();
   s_panelAt = millis();
   s_panelOff = false;
   nav.invalidate();
@@ -534,6 +574,7 @@ bool app::animationsOk() { return s_uiReady && !dimmer.asleep() && !s_panelOff; 
 // The side button waking the screen: the theme's turn-on animation, revealing
 // whatever is on top (usually the lock screen), then back to normal drawing.
 static void screenWakeAnimated() {
+  power::updateCpu(false);          // ECO: full speed before the wake animation (no-op otherwise)
   panelWake();
   nav.cancelTransition();                        // the wake animation is the transition
   nav.tick();                                    // let the top view catch up (the clock, say)
@@ -629,13 +670,19 @@ void nfcPower(bool on) {
 // on; with the screen off, give it a two-minute window every half hour so the
 // clock and the advert position stay fresh.
 static void gpsSchedule() {
+  const bool window = millis() % 1800000UL < 120000UL;
+  if (power::eco()) {
+    // ECO: reconcile the rail every loop, including after settings are restored,
+    // since a rail left on keeps it out of light sleep. Field tools still win.
+    gpsPower(field::wantsGps() || (ui_settings.gpsOn && !power::saver() && (!dimmer.asleep() || window)));
+    return;
+  }
   // Range test, SOS and the trail need a live position whatever the settings say.
   // When the last of them stops, hand the rail back to the normal rules.
   static bool fieldHad = false;
   if (field::wantsGps()) { fieldHad = true; gpsPower(true); return; }
   if (fieldHad) { fieldHad = false; if (!ui_settings.gpsOn || power::saver()) gpsPower(false); }
   if (!ui_settings.gpsOn || power::saver()) return;   // those paths switch it themselves
-  const bool window = millis() % 1800000UL < 120000UL;
   gpsPower(!dimmer.asleep() || window);
 }
 
@@ -657,6 +704,7 @@ static void alert(const char* title, const char* text, AlertKind kind, bool sile
   const Jingle* sound = kind == AlertKind::Dm ? th.dm : kind == AlertKind::Mention ? th.mention : th.msg;
   const VibePattern& vibe = kind == AlertKind::Dm ? th.vibeDm : kind == AlertKind::Mention ? th.vibeMention : th.vibeMsg;
   // Face down on a table (with that setting on): no light, no sound, no buzz.
+  motion::refreshForAlert(dimmer.asleep());
   const bool faceDown = motion::faceDown();
   if (ui_settings.wakeOnMessage && !silent && !faceDown) dimmer.wake();
   nav.banner(title, text);
@@ -765,6 +813,7 @@ static void takeScreenshot() {
 //   key C       press a key (\n for enter)
 //   home, lock, wheel +N / -N, press
 //   ext         what is plugged into the top header, and what IO9 is doing
+//   cpu         CPU saver state and actual clock (does not wake the screen)
 //   dfu         restart into the ROM's USB download mode, ready for esptool or
 //               the web installer (flash with --before no_reset)
 
@@ -875,6 +924,37 @@ static void usbCommands() {
                     g_node ? g_node->getNumContacts() : -1);
       continue;
     }
+#if INW_DEV   // ECO / radio diagnostics: developer build only
+    if (!strcmp(line, "cpu reset")) {
+      power::resetSleepDiagnostics(dimmer.asleep());
+      Serial.printf("[diag] counters reset; unplug USB, test, reconnect without reboot, then cpu\r\n");
+      continue;
+    }
+    if (!strcmp(line, "cpu")) {
+      Serial.printf("[cpu] saving=%d clock=%lu MHz screen=%s\r\n", power::cpuSaving() ? 1 : 0,
+                    (unsigned long)power::cpuClockMhz(), dimmer.asleep() ? "off" : "on");
+      Serial.printf("[sleep] enabled=%d state=%s cycles=%lu elapsed_ms=%llu wake=%lu\r\n",
+                    power::lightSleep() ? 1 : 0, power::lightSleepStatus(),
+                    (unsigned long)power::lightSleepCount(),
+                    (unsigned long long)(power::lightSleepMicros() / 1000),
+                    (unsigned long)power::lightSleepWakeCause());
+      Serial.printf("[sleep] last_ms=%lu max_ms=%lu\r\n",
+                    (unsigned long)power::lightSleepLastMs(), (unsigned long)power::lightSleepMaxMs());
+      motion::debugPrint();
+      power::printSleepDiagnostics();
+      Serial.printf("[radio] dio1=%d flag=%d missed_irq_picked_up=%u standby_restarts=%u set_up_again=%u (%s) meshcore_state=%u sync=%04X\r\n",
+                    digitalRead(PIN_LORA_DIO1), inwRadioFlagPending() ? 1 : 0, (unsigned)s_radioKicks,
+                    (unsigned)s_radioRxKicks, (unsigned)s_radioSetups, s_radioSetupWhy[0] ? s_radioSetupWhy : "-",
+                    (unsigned)inwRadioState(), (unsigned)radioSyncWord());
+      { char st[160]; radioChipState(st, sizeof(st)); Serial.printf("[radio] chip %s\r\n", st); }
+      uint8_t railOut[2] = {}, railCfg[2] = {};
+      const bool railsRead = expander.regs(railOut, railCfg);
+      Serial.printf("[peripherals] gps_setting=%d gps_rail_requested=%d nfc_active=%d haptic_standby=%d expander_ok=%d out=%02X%02X cfg=%02X%02X\r\n",
+        ui_settings.gpsOn, s_gpsRail, app::nfcActive(), haptic.standby(),
+        railsRead, railOut[1], railOut[0], railCfg[1], railCfg[0]);
+      continue;
+    }
+#endif
     // The browser installer sends this before it resets the pager, so nothing
     // learned since the last lazy write is lost to the flash. Cheap enough to
     // run on demand: contacts are only written if there is something pending.
@@ -908,6 +988,44 @@ static void usbCommands() {
     if (themeCommand(line)) continue;
 #if INW_DEV   // the rest is for the developer build (pio run -e t-lora-pager-dev), never a release:
               // diagnostics, remote control for screenshots, test commands
+    // Radio repair tests: knock the chip out of its settings the way it was found
+    // (2026-11-19: standby, packet type 16, MeshCore idle and unable to start receive)
+    // and watch radioDeafWatch() put it right. "radio setup" sets it up again at once.
+    // Panel repair test: "panel break off|rot|fmt|inv|sleep" sends a stray display-off /
+    // rotation / pixel format / inversion-off / sleep-in; then lock and wake (or "panel
+    // wake") and look: panelRefresh() should have put it right.
+    if (!strcmp(line, "panel") || !strncmp(line, "panel ", 6)) {
+      const char* what = line[5] ? line + 6 : "";
+      auto* p = display.getPanel();
+      if (!strcmp(what, "break off")) { p->startWrite(); p->writeCommand(0x28, 1); p->endWrite(); }
+      else if (!strcmp(what, "break rot")) { p->startWrite(); p->writeCommand(0x36, 1); p->writeData(0x00, 1); p->endWrite(); }
+      else if (!strcmp(what, "break fmt")) { p->startWrite(); p->writeCommand(0x3A, 1); p->writeData(0x66, 1); p->endWrite(); }
+      else if (!strcmp(what, "break inv")) { p->startWrite(); p->writeCommand(0x20, 1); p->endWrite(); }
+      else if (!strcmp(what, "break sleep")) { p->startWrite(); p->writeCommand(0x10, 1); p->endWrite(); }
+      else if (!strcmp(what, "wake")) { s_panelOff = true; panelWake(); }
+      Serial.printf("[panel] %s: refreshed on %lu wakes\n", *what ? what : "state", (unsigned long)s_panelRefreshes);
+      continue;
+    }
+    if (!strncmp(line, "radio ", 6) && !strcmp(radio_chip, "SX1262")) {
+      const char* what = line + 6;
+      uint8_t v;
+      if (!strcmp(what, "setup")) radioSetupAgain("usb command");
+      else if (!strcmp(what, "break stby")) { radio.standby(); }
+      else if (!strcmp(what, "break gfsk")) {
+        radio.standby(); v = RADIOLIB_SX126X_PACKET_TYPE_GFSK;
+        radio.getMod()->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_PACKET_TYPE, &v, 1);
+      } else if (!strcmp(what, "break 16")) {
+        radio.standby(); v = 0x10;
+        radio.getMod()->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_PACKET_TYPE, &v, 1, true, false);
+        inwRadioSetIdle();
+      } else if (!strcmp(what, "break sync")) {
+        const uint8_t sw[2] = {0x34, 0x44};             // the public LoRaWAN sync word
+        radio.writeRegister(RADIOLIB_SX126X_REG_LORA_SYNC_WORD_MSB, (uint8_t*)sw, 2);
+      } else { Serial.println("[radio] radio setup | radio break stby|gfsk|16|sync"); continue; }
+      char st[160]; radioChipState(st, sizeof(st));
+      Serial.printf("[radio] %s -> chip %s sync=%04X\r\n", what, st, (unsigned)radioSyncWord());
+      continue;
+    }
     // Anyone with a USB cable could send "press" or "key" to get past the lock
     // screen, or "shot" to read what's on it. While locked (or dark, which locks)
     // only commands that don't reveal or unlock anything are accepted.
@@ -1766,6 +1884,7 @@ void setup() {
   logs.add(rr == ESP_RST_POWERON || rr == ESP_RST_SW ? LOG_INFO : LOG_WARN, "boot %s, last reset: %s",
            FW_VERSION, rr < 11 ? RESET[rr] : "?");
   ui_settings.load();
+  const bool ecoOk = power::initEco();
   themes::load();
   if (!themes::valid(ui_settings.themeId)) ui_settings.themeId = 0;   // one of the owner's that is no longer here
 
@@ -1806,6 +1925,7 @@ void setup() {
   bootAnimStart();
   backlight.begin(PIN_TFT_BL);
   dimmer.begin(&backlight, ui_settings.brightness, 3, ui_settings.dimSecs * 1000UL, ui_settings.sleepSecs * 1000UL);
+  dimmer.onScreenState(power::updateCpu);
 
   bootStep("power rails", railsOk);
   haptic.begin(Wire);
@@ -1856,6 +1976,7 @@ void setup() {
       app::applyTheme();
       app::applyDisplay();
       app::applySound();
+      if (power::eco()) gpsPower(ui_settings.gpsOn && !power::saver());   // ECO: rail matches the restored setting
       dimmer.setFull(ui_settings.brightness);
       keyboard.setBacklight(ui_settings.kbBacklight);
       logs.add(LOG_WARN, "settings were empty, restored from %s", from);
@@ -1919,6 +2040,7 @@ void setup() {
 
   nav.begin(&display, &theme);
   nav.push(makeHomeView());
+  if (!ecoOk) nav.toast("could not restore ECO setting", 4000);
   ota::announce();                                // "Updated, now on X" after an update restarted it
   if (history.rescued()) {
     char msg[48];
@@ -1991,31 +2113,190 @@ static void gpsTick() {
   }
 }
 
+// ---- radio: a "packet ready" interrupt the processor missed ------------------------------
+// The radio raises DIO1 when a packet has arrived or a send has finished, and its rising
+// edge sets MeshCore's flag. If that edge is missed, DIO1 stays high, no new edge ever
+// comes, and the pager hears and sends nothing until a restart (seen 2026-11-18 with ECO
+// on: 10 radio wakes in 2.7 hours; the same symptom was reported before ECO). Anything
+// that leaves DIO1 high with no flag for half a second gets the flag set by hand, so
+// MeshCore reads the radio and starts listening again. Each one is logged.
+bool inwRadioFlagPending();   // MeshCore's RadioLibWrappers.cpp, via tools/patch_meshcore.py
+void inwRadioKick();
+static void radioIrqWatch() {
+  static uint32_t highSince = 0;
+  if (!s_radioOk || digitalRead(PIN_LORA_DIO1) != HIGH || inwRadioFlagPending()) { highSince = 0; return; }
+  if (!highSince) { highSince = millis() | 1; return; }
+  if (millis() - highSince < 500) return;
+  highSince = 0;
+  inwRadioKick();
+  s_radioKicks++;
+  logs.add(LOG_WARN, "radio: missed irq picked up #%u", s_radioKicks);   // log lines hold 44 characters
+}
+
+// ---- radio: the chip in standby while MeshCore thinks it is listening ----------------------
+// 2026-11-19: deaf with DIO1 low, no flag pending, rail on, on USB all night (so ECO never
+// slept): the SX1262 had dropped to standby and MeshCore never started receive again.
+// radioDeafWatch() below spots that and hands it back; what the chip said is logged.
+extern RADIO_CLASS radio;     // variants/inw_pager/target.cpp
+static void radioChipState(char* out, size_t n) {
+  const unsigned dio1 = digitalRead(PIN_LORA_DIO1), busy = digitalRead(PIN_LORA_BUSY);
+  if (strcmp(radio_chip, "SX1262")) {
+    snprintf(out, n, "%s dio1=%u busy=%u rx=%d recv=%lu", radio_chip, dio1, busy,
+             radio_driver.isInRecvMode() ? 1 : 0, (unsigned long)radio_driver.getPacketsRecv());
+    return;
+  }
+  // RadioLib's getStatus() asks for zero bytes and always returns 0; read the status
+  // byte the chip sends after the GetStatus opcode instead.
+  uint8_t st = 0;
+  radio.getMod()->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATUS, &st, 1);   // bits 6:4 mode (2/3 standby, 4 fs, 5 rx, 6 tx), 3:1 last command
+  snprintf(out, n, "mode=%u cmd=%u modem=%u irq=%04lX err=%04X dio1=%u busy=%u rx=%d recv=%lu rxerr=%lu sent=%lu",
+           (st >> 4) & 7, (st >> 1) & 7, radio.getPacketType(), (unsigned long)radio.getIrqFlags(),
+           radio.getDeviceErrors(), dio1, busy, radio_driver.isInRecvMode() ? 1 : 0,
+           (unsigned long)radio_driver.getPacketsRecv(), (unsigned long)radio_driver.getPacketsRecvErrors(),
+           (unsigned long)radio_driver.getPacketsSent());
+}
+// The same in a few characters, for the on-device log: mode, irq flags, device errors,
+// received / receive errors.
+static void radioChipShort(char* out, size_t n) {
+  if (strcmp(radio_chip, "SX1262")) { snprintf(out, n, "r%lu", (unsigned long)radio_driver.getPacketsRecv()); return; }
+  uint8_t st = 0;
+  radio.getMod()->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATUS, &st, 1);
+  snprintf(out, n, "m%u p%u i%lX e%X r%lu x%lu", (st >> 4) & 7, radio.getPacketType(),
+           (unsigned long)radio.getIrqFlags(), radio.getDeviceErrors(),
+           (unsigned long)radio_driver.getPacketsRecv(), (unsigned long)radio_driver.getPacketsRecvErrors());
+}
+
+// The LoRa sync word the chip holds (MeshCore's private one reads 1424).
+static uint16_t radioSyncWord() {
+  if (strcmp(radio_chip, "SX1262")) return 0;
+  uint8_t b[2] = {0, 0};
+  radio.readRegister(RADIOLIB_SX126X_REG_LORA_SYNC_WORD_MSB, b, 2);
+  return (uint16_t)(b[0] << 8 | b[1]);
+}
+static uint16_t s_syncExpect = 0;   // what it held once it was listening properly (learned)
+
+// The radio from scratch, as at boot: a hardware reset and MeshCore's own set-up
+// (std_init), MeshCore's radio start (interrupt, preamble, idle), then the saved
+// frequency, bandwidth, SF, CR, power and gain. MeshCore starts receive on its next pass.
+static void radioSetupAgain(const char* why) {
+  static uint32_t loggedAt = 0;
+  char was[48], st[160];
+  radioChipShort(was, sizeof(was));
+  radioChipState(st, sizeof(st));
+  Serial.printf("[radio] setting the radio up again (%s): was %s sync=%04X meshcore_state=%u\n", why, st,
+                (unsigned)radioSyncWord(), (unsigned)inwRadioState());
+  const bool ok = radio.std_init(&inw_spi);
+  radio_driver.begin();
+  if (g_node) g_node->applyRadio();
+  s_radioSetups++;
+  snprintf(s_radioSetupWhy, sizeof(s_radioSetupWhy), "%s", why);
+  s_syncExpect = 0;
+  radioChipState(st, sizeof(st));
+  Serial.printf("[radio] %s: now %s sync=%04X\n", ok ? "set up again" : "SET-UP FAILED", st, (unsigned)radioSyncWord());
+  // The first few, then at most one pair of lines every 10 minutes (log lines hold 44 characters).
+  if (s_radioSetups <= 5 || !loggedAt || millis() - loggedAt > 600000UL) {
+    loggedAt = millis() | 1;
+    logs.add(ok ? LOG_WARN : LOG_ERROR, "radio set up again #%u: %s", (unsigned)s_radioSetups, why);
+    logs.add(LOG_WARN, "radio was %s", was);
+  }
+}
+
+// ---- radio: the chip not doing what MeshCore thinks it is doing ----------------------------
+// Every 2 s, from what the chip itself says (never from what MeshCore believes):
+//  - MeshCore idle for 8 s. It starts receive on every loop pass, so idle that lasts means
+//    the chip keeps refusing. Caught 2026-11-19: chip in standby with packet type 16 (not
+//    LoRa), every startReceive failing, deaf and silent for over an hour. 8 s is MeshCore's
+//    own "radio stuck" rule (Dispatcher ERR_EVENT_STARTRX_TIMEOUT), which only sets a flag.
+//  - "Listening" but the chip no longer set for LoRa, or its sync word changed: deaf to
+//    the mesh with receive still on. Twice running.
+//  Each of those: the radio is set up again from scratch (radioSetupAgain), at most every 20 s.
+//  - "Listening" with the chip in standby, settings intact (caught 2026-11-19 too: mode 2,
+//    irq RxDone+Timeout): MeshCore is told it is idle and starts receive again.
+static void radioDeafWatch() {
+  if (!s_radioOk || !g_node || strcmp(radio_chip, "SX1262")) return;
+  const uint32_t now = millis();
+  static uint32_t checkAt = 0, idleSince = 0, setupAt = 0, rxKickLoggedAt = 0;
+  static uint8_t standbyReads = 0, wrongReads = 0;
+  if (now - checkAt < 2000) return;
+  checkAt = now;
+  const unsigned char ms = inwRadioState();     // 0 idle, 1 listening, 3 sending; +16 flag pending
+  const char* setup = nullptr;
+
+  if (ms == 0) {
+    if (!idleSince) idleSince = now | 1;
+    else if (now - idleSince >= 8000) setup = "not listening 8 s";
+  } else idleSince = 0;
+
+  if (ms == 1) {
+    uint8_t s = 0;
+    radio.getMod()->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATUS, &s, 1);
+    const uint8_t mode = (s >> 4) & 7;           // 2/3 standby, 4 fs, 5 rx, 6 tx
+    const uint8_t type = radio.getPacketType();
+    const uint16_t sync = radioSyncWord();
+    const bool notLora = type != RADIOLIB_SX126X_PACKET_TYPE_LORA;
+    const bool syncMoved = s_syncExpect && sync != s_syncExpect;
+    wrongReads = (notLora || syncMoved) ? wrongReads + 1 : 0;
+    standbyReads = (mode == 2 || mode == 3) ? standbyReads + 1 : 0;
+    if (!notLora && !s_syncExpect && mode == 5) s_syncExpect = sync;
+    if (wrongReads >= 2) setup = notLora ? "not set for LoRa" : "sync word changed";
+    else if (standbyReads >= 2) {
+      standbyReads = 0;
+      s_radioRxKicks++;
+      if (!rxKickLoggedAt || now - rxKickLoggedAt > 60000) {   // at most one line a minute
+        rxKickLoggedAt = now | 1;
+        char t[160];
+        radioChipShort(t, sizeof(t));
+        logs.add(LOG_WARN, "radio stby->rx #%u %s", s_radioRxKicks, t);
+        radioChipState(t, sizeof(t));
+        Serial.printf("[radio] standby while listening: %s\n", t);
+      }
+      inwRadioSetIdle();              // MeshCore's next pass starts receive again
+    }
+  } else { standbyReads = 0; wrongReads = 0; }
+
+  if (setup && (!setupAt || now - setupAt >= 20000)) {
+    setupAt = now | 1;
+    idleSince = 0; wrongReads = 0; standbyReads = 0;
+    radioSetupAgain(setup);
+  }
+  // (A "nothing heard for 10 minutes -> set the radio up again" rule was here for a day:
+  // next to a noisy PC it fired 734 times in 7.6 hours and helped nothing. Removed. The
+  // checks above act only on what the chip reports, never on silence.)
+}
+
+static uint32_t s_bootAdvert = 8000, s_lastAdvert = 0;
 static void autoAdvertTick() {
-  static uint32_t bootAdvert = 8000, last = 0;
   if (!g_node) return;
-  if (bootAdvert && millis() > bootAdvert) { bootAdvert = 0; g_node->advertZeroHop(); last = millis(); }
-  if (ui_settings.autoAdvertHours && millis() - last > ui_settings.autoAdvertHours * 3600000UL) {
-    last = millis();
+  if (s_bootAdvert && millis() > s_bootAdvert) { s_bootAdvert = 0; g_node->advertZeroHop(); s_lastAdvert = millis(); }
+  if (ui_settings.autoAdvertHours && millis() - s_lastAdvert > ui_settings.autoAdvertHours * 3600000UL) {
+    s_lastAdvert = millis();
     g_node->advertFlood();
     logs.add(LOG_INFO, "auto flood advert");
   }
 }
 
 void loop() {
+  power::sleepDiagnosticPhase(power::SleepReason::Input, dimmer.asleep());
   // Anything that holds the loop long enough to feel like a freeze gets logged
   // with where the time went.
   const uint32_t tLoop = millis();
   uint32_t lapAt = tLoop;
   uint16_t laps[8] = {};
-  auto lap = [&](uint8_t i) { const uint32_t now = millis(); laps[i] = now - lapAt; lapAt = now; };
-  const int8_t detents = rotary.takeDetents();
+  auto lap = [&](uint8_t i) {
+    const uint32_t now = millis(); laps[i] = now - lapAt; lapAt = now;
+    power::sleepDiagnosticPhase(static_cast<power::SleepReason>(i + 1), dimmer.asleep());
+  };
+  int8_t detents = rotary.takeDetents();          // not const: a space-held turn moves the cursor instead
   const bool press = rotary.takePress();
   bool backspace = false, anyKey = false;
   char chars[16];
   uint8_t nchars = 0;
   KeyEvent ev;
+  // Space held while the wheel turns moves the text cursor (chats.cpp), like a phone's
+  // space-bar trackpad. The press already typed a space: the first move takes it back.
+  static bool spaceHeld = false, spaceMoved = false;
   while (nextKey(ev)) {
+    if (ev.index == KEY_IDX_SPACE) { spaceHeld = ev.pressed; if (ev.pressed) spaceMoved = false; }
     if (!ev.pressed) continue;
     anyKey = true;
     if (ev.index == KEY_IDX_BACKSPACE) backspace = true;
@@ -2056,7 +2337,10 @@ void loop() {
   // Any input means someone is there (the man-down alarm's clock), even keys
   // pressed with the screen off.
   if (detents || press || anyKey || btnDown) motion::noteActivity();
-  const bool raised = motion::takeRaise();       // taken every pass, so it can't go stale
+  // Consume old raises even on the first dark loop, before motion::tick()
+  // observes the screen transition. Saving must never wake from a stale gesture.
+  const bool raised = motion::takeRaise() &&
+    !(dimmer.asleep() && power::lightSleep() && power::cpuSaving());
 
   if (dimmer.asleep()) {
     // Screen off: only the side button wakes it, or lifting the pager into view.
@@ -2089,6 +2373,14 @@ void loop() {
       strlcpy(before, g_screenTitle, sizeof(before));
       const uint32_t tIn = millis();
       const char* what = detents ? "wheel" : press ? "press" : backspace ? "backspace" : "key";
+      if (detents && spaceHeld && nav.top()) {
+        // A space pressed in this same pass isn't typed yet: drop it here instead.
+        bool pending = false;
+        for (uint8_t i = 0; i < nchars; i++)
+          if (chars[i] == ' ') { memmove(chars + i, chars + i + 1, nchars - i - 1); nchars--; pending = true; break; }
+        if (nav.top()->moveCursor(detents, !spaceMoved && !pending)) { spaceMoved = true; detents = 0; }
+        else if (pending) chars[nchars++] = ' ';          // nothing to move: it was just a space
+      }
       if (detents) nav.rotate(detents);
       if (press) nav.press();
       for (uint8_t i = 0; i < nchars; i++) {
@@ -2144,18 +2436,21 @@ void loop() {
     }
   }
   lap(2);
-  battery.tick(millis());
-  {   // keep the battery count through restarts (RTC, every 5 s) and power loss (flash, every 30 min)
-    static uint32_t rtcAt = 0, flashAt = 0;
-    if (millis() - rtcAt > 5000) { rtcAt = millis(); battSave(false); }
-    if (millis() - flashAt > 30UL * 60UL * 1000UL) { flashAt = millis(); battSave(true); }
+  const uint32_t batteryInterval = batteryIntervalMs(
+    power::lightSleep() && power::cpuSaving(), dimmer.asleep());
+  const bool batteryUpdated = battery.tick(millis(), batteryInterval);
+  {   // RTC checkpoint shares the battery reading; flash still every 30 min.
+    if (batteryUpdated) battSave(false);
+    if (millis() - s_battFlashAt > 30UL * 60UL * 1000UL) { s_battFlashAt = millis(); battSave(true); }
   }
   if (s_hizUntil && (int32_t)(millis() - s_hizUntil) > 0) { s_hizUntil = 0; battery.setHiZ(false); Serial.println("[batt] charger input back on"); }
-  power::tick();
+  power::tick(batteryUpdated);
   ota::tick();
   report::tick();
   ext::tick();
-  motion::tick();
+  motion::tick(dimmer.asleep());
+  radioIrqWatch();
+  radioDeafWatch();
   nodeLoop();
   lap(3);
   nav.tick();
@@ -2249,8 +2544,14 @@ void loop() {
   lap(7);
   const uint32_t total = millis() - tLoop;
   if (total > 150) {
-    logs.add(LOG_WARN, "slow %lu: in%u gps%u wf%u msh%u tk%u drw%u x%u bk%u",
-             (unsigned long)total, laps[0], laps[1], laps[2], laps[3], laps[4], laps[5], laps[6], laps[7]);
+    // At most one a minute: a slow screen (the lock scene, ~700 ms a frame) wrote one
+    // every pass and pushed every other line out of the log (2026-11-19: 48 of 48).
+    static uint32_t slowLoggedAt = 0;
+    if (!slowLoggedAt || millis() - slowLoggedAt > 60000) {
+      slowLoggedAt = millis() | 1;
+      logs.add(LOG_WARN, "slow %lu: in%u gps%u wf%u msh%u tk%u drw%u x%u bk%u",
+               (unsigned long)total, laps[0], laps[1], laps[2], laps[3], laps[4], laps[5], laps[6], laps[7]);
+    }
     extern char g_screenTitle[32];
     if (laps[5] > 150) Serial.printf("[W] draw slow: %ums on '%s'%s\n", laps[5], g_screenTitle, dimmer.asleep() ? " (screen off)" : "");
   }
@@ -2258,5 +2559,59 @@ void loop() {
   // the screen dark. The radio holds a received packet until it's read, so 30 ms
   // loses nothing and the CPU idles in between. A connected phone keeps the fast
   // pace so syncing stays quick.
-  delay(dimmer.asleep() && !jingle.playing() && !bleConnected() ? 30 : 2);
+  // Screen state is the only CPU policy input. Notifications, sound and radio
+  // work all stay at 80 MHz while the screen is off, when saving is enabled.
+  power::updateCpu(dimmer.asleep());
+  // Keep the original screen-wake policy above: no keyboard/wheel wake here.
+  // Motion only blocks sleep during sampling bursts or its explicit fallback.
+  const bool peripheralSaving = power::lightSleep() && power::cpuSaving() && dimmer.asleep();
+  haptic.idlePower(peripheralSaving);
+  const uint32_t now = millis();
+  SleepDeadline deadline(now);
+  deadline.limit(battery.sleepBudgetMs(now, batteryIntervalMs(
+    power::lightSleep() && power::cpuSaving(), dimmer.asleep())));
+  deadline.limit(ext::sleepBudgetMs(now));
+  deadline.after(s_battFlashAt, 30UL * 60UL * 1000UL + 1);
+  if (g_node) deadline.limit(g_node->sleepBudgetMs(now));
+  if (s_bootAdvert) deadline.at(s_bootAdvert + 1);
+  if (ui_settings.autoAdvertHours)
+    deadline.after(s_lastAdvert, ui_settings.autoAdvertHours * 3600000UL + 1);
+  if (ui_settings.gpsOn && !power::saver() && !s_gpsRail)
+    deadline.limit(1800000UL - now % 1800000UL); // next GPS window
+  if (s_hizUntil) deadline.at(s_hizUntil + 1);
+  if (g_shotAt) deadline.at(g_shotAt);
+  using SleepReason = power::SleepReason;
+  const SleepReason foregroundReason = !s_panelOff ? SleepReason::Panel :
+    backlight.fading() ? SleepReason::Fade : nav.overlayActive() ? SleepReason::Overlay :
+    s_kbFlashUntil ? SleepReason::KeyboardEffect : s_prefsDirtyAt ? SleepReason::PrefsSave :
+    s_uiDirtyAt ? SleepReason::UiSave : field::wantsGps() ? SleepReason::Field : SleepReason::Background;
+  const bool foreground = !s_panelOff || backlight.fading() || nav.overlayActive() ||
+    s_kbFlashUntil || s_prefsDirtyAt || s_uiDirtyAt || field::wantsGps();
+  power::sleepDiagnosticContext(foregroundReason);
+  const uint8_t meshBlock = g_node ? g_node->radioSleepBlock() : 0;
+  const bool radioReceiving = radio_driver.isInRecvMode();
+  power::sleepDiagnosticMeshContext(meshBlock == 1 ? SleepReason::MeshPoolInvalid :
+    meshBlock == 2 ? SleepReason::MeshTxQueue : meshBlock == 3 ? SleepReason::MeshAllocated :
+    SleepReason::RadioNotRx);
+  power::SleepInputs idle{dimmer.asleep(), jingle.playing(), battery.pluggedIn(),
+    bleEnabled(), wifi::enabled(), s_gpsRail,
+    g_node && (meshBlock != 0 || !radioReceiving), s_radioOk,
+    motion::needsFastPolling(), foreground, app::nfcActive(), motion::irqWatch(), now + deadline.ms()};
+  const bool candidate = power::lightSleep() && power::cpuSaving() && idle.screenOff &&
+    !idle.audio && !idle.bluetooth && !idle.wifi && !idle.gps && idle.radioReady &&
+    !idle.meshBusy && !idle.motion && !idle.background && !idle.nfc && deadline.ms() >= 2 && now >= 120000;
+  bool storeHeld = false;
+  if (candidate) {
+    idle.usb = battery.pollVbus() || (bool)Serial;
+    if (!idle.usb) {
+      idle.bluetooth = !blePrepareLightSleep();
+      if (!idle.bluetooth) {
+        storeHeld = inwStoreBeginSleep(); idle.background = !storeHeld;
+        if (!storeHeld) power::sleepDiagnosticContext(SleepReason::StoreQueue);
+      }
+    }
+  }
+  const bool slept = power::idleLightSleep(idle);
+  if (storeHeld) inwStoreEndSleep();
+  if (!slept) delay(dimmer.asleep() && !jingle.playing() && !bleConnected() ? 30 : 2);
 }

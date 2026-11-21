@@ -10,6 +10,9 @@
 
 bool sdMount();
 bool sdMounted();
+// A write to the mounted card failed: the card is let go and not tried again for
+// 5 minutes (each failed try costs ~0.3 s on the bus the radio shares). what: for the log.
+void sdWriteFailed(const char* what);
 uint64_t sdFreeBytes();
 // No card, a card that answers but has no file system the pager reads (exFAT, a Mac's
 // GUID partition map), or mounted. Probes at most every 10 s.

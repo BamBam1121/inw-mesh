@@ -97,10 +97,29 @@ static SdState sdProbe() {
 // After a look that found nothing to mount, the next one waits 10 s: a look is a whole
 // card start-up, a good part of a second with no card in, and callers ask often.
 static uint32_t s_lookedAt = 0;
-static void sdLookAgain() { s_lookedAt = 0; }
+// A card that stops answering while mounted (2026-11-18: "Card Failed! cmd: 0x00" on every
+// command, "0 MB free") costs about 0.3 s per command, on the bus the radio and screen
+// share, and the message archive tried again on every loop pass while the screen was
+// dark: the mesh loop ran at a second a pass. After a failed write the card is let go
+// and left alone for 5 minutes; asking for it on purpose (formatting) tries at once.
+static uint32_t s_failedAt = 0;
+static constexpr uint32_t SD_REST_MS = 300000;
+static void sdLookAgain() { s_lookedAt = 0; s_failedAt = 0; }
+
+void sdWriteFailed(const char* what) {
+  if (!s_sd) return;
+  SD.end();
+  s_sd = false;
+  sdLetGo();
+  s_state = SD_UNREADABLE;
+  s_failedAt = millis() | 1;
+  logs.add(LOG_WARN, "sd card failed (%s), resting 5 min", what);   // log lines hold 44 characters
+}
 
 bool sdMount() {
   if (s_sd) return true;
+  if (s_failedAt && millis() - s_failedAt < SD_REST_MS) return false;
+  s_failedAt = 0;
   if (s_lookedAt && millis() - s_lookedAt < 10000) return false;
   s_state = sdProbe();
   s_lookedAt = millis() | 1;
@@ -307,16 +326,18 @@ static size_t copyFileImpl(fs::FS& from, const char* src, fs::FS& to, const char
   char tmp[64];
   snprintf(tmp, sizeof(tmp), "%s.new", dst);
   File out = to.open(tmp, FILE_WRITE);
-  if (!out) { in.close(); return 0; }
+  if (!out) { in.close(); if (&to == &SD) sdWriteFailed("copy"); return 0; }
   static uint8_t buf[2048];
   size_t total = 0;
+  bool failed = false;
   int n;
   while ((n = in.read(buf, sizeof(buf))) > 0) {
-    if (out.write(buf, n) != (size_t)n) { total = 0; break; }
+    if (out.write(buf, n) != (size_t)n) { total = 0; failed = true; break; }
     total += n;
     if (s_progress && size) inwProgress(s_progress, total, size);
   }
   in.close(); out.close();
+  if (failed && &to == &SD) { sdWriteFailed("copy"); return 0; }   // the card went: not worth a remove
   if (!total) { to.remove(tmp); return 0; }
   to.remove(dst);
   to.rename(tmp, dst);

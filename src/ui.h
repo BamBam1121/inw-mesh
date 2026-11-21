@@ -32,6 +32,10 @@ public:
   // Backspace. Return true if handled (e.g. deleted a character); false pops.
   virtual bool backspace() { return false; }
   virtual void key(char c) {}
+  // Move the text cursor `steps` characters (negative: left). firstOfHold: the start of
+  // a hold-space-and-turn, whose space press typed a space to take back. False when
+  // this screen has no text cursor to move (the wheel then does its usual).
+  virtual bool moveCursor(int steps, bool firstOfHold) { return false; }
   virtual void tick() {}                 // every loop, set dirty when needed
   virtual void resume() { dirty = true; } // revealed again after a child popped
   // Views that draw straight to the panel (the carousel) override this.
@@ -115,6 +119,7 @@ void sanitize(const char* in, char* out, size_t cap);
 // measure them as 16 px colour glyphs. drawUtf8/widthUtf8 sanitize first.
 int  richWidth(lgfx::LovyanGFX& g, const char* s, int n = -1);
 int  drawRich(lgfx::LovyanGFX& g, const char* s, int x, int y, int n = -1);
+void richEmojiDrop(int px);   // emoji drawn this much lower (bigger chat text); 0 = as before
 void richFit(lgfx::LovyanGFX& g, char* s, int maxW);
 int  drawUtf8(lgfx::LovyanGFX& g, const char* utf8, int x, int y, int maxW = 0);
 int  widthUtf8(lgfx::LovyanGFX& g, const char* utf8);

@@ -11,6 +11,31 @@ void openChannelRegionScope(const uint8_t* secret16);   // settings_ui.cpp
 
 ConvKey g_openConv;                 // the thread on screen, for notification muting
 
+// Chat text size (Settings > Display > chat text size, GitHub #14). Only the
+// messages themselves grow; names, times and the rest of the screen stay as they
+// are. Normal is the 16 px font every build has used, at the same 17 px lines.
+// Older saved settings read this byte from what was spare space: anything out of
+// range is normal.
+static uint8_t chatSize() { return ui_settings.chatText <= 2 ? ui_settings.chatText : 0; }
+static const lgfx::IFont* chatFont() {
+  switch (chatSize()) {
+    case 1:  return &fonts::DejaVu18;
+    case 2:  return &fonts::DejaVu24;
+    default: return &fonts::Font2;
+  }
+}
+// Line spacing for the font set now, and how far down an emoji (16 px) sits to
+// line up with it. Normal: 17 and 0, as before.
+static int chatLineH(lgfx::LovyanGFX& g) { return chatSize() ? g.fontHeight() + 2 : 17; }
+static int chatEmojiDrop(lgfx::LovyanGFX& g) { return chatSize() ? max(0, ((int)g.fontHeight() - 16) / 2) : 0; }
+// A bigger font fits fewer words: on a wide screen (the pager's) the bubbles may
+// then use the full width.
+static int chatBubbleMax() { return chatSize() ? max(320, L::W - 16) : 320; }
+// The box you type in grows with it, and what you type is in the same font. Normal
+// is the 24 px bar as before; the messages end 4 px above it.
+static int composeH() { return chatSize() == 2 ? 36 : chatSize() == 1 ? 30 : 24; }
+static int composeTop() { return L::H - composeH() - 4; }
+
 // ---- helpers ------------------------------------------------------------------------
 static bool channelName(const ConvKey& k, char* out, size_t cap, int* idxOut = nullptr) {
   if (!g_node) return false;
@@ -82,7 +107,15 @@ public:
     if (_revealId && millis() - _revealAt < REVEAL_MS + 60) dirty = true;   // the decrypt effect
   }
 
-  void setCompose(const String& s) { _compose = s; _sel = -1; dirty = true; }
+  void setCompose(const String& s) { _compose = s; _cur = -1; _spaceAt = -1; _sel = -1; dirty = true; }
+  // Text put in where the cursor is (an emoji from the picker).
+  void insertAtCursor(const String& s) {
+    if ((int)(_compose.length() + s.length()) > maxLen() + 4) return;
+    const int at = cursorAt();
+    _compose = _compose.substring(0, at) + s + _compose.substring(at);
+    if (_cur >= 0) _cur = at + s.length();
+    _spaceAt = -1; _sel = -1; dirty = true;
+  }
   const String& compose() const { return _compose; }
   const ConvKey& key() const { return _key; }
 
@@ -90,7 +123,11 @@ public:
     if (c == '\n') { send(); return; }
     if ((uint8_t)c < 0x20 || (uint8_t)c > 0x7E) return;
     if ((int)_compose.length() >= maxLen()) return;
-    _compose += c;
+    const int at = cursorAt();
+    if (_cur < 0) _compose += c;                      // at the end, as it always was
+    else { _compose = _compose.substring(0, at) + c + _compose.substring(at); _cur = at + 1; }
+    _spaceAt = c == ' ' ? at : -1;                    // a space a hold-and-turn may take back
+    caretOn();
     _sel = -1;
     dirty = true;
   }
@@ -98,10 +135,14 @@ public:
   bool backspace() override {
     if (_sel >= 0) { _sel = -1; dirty = true; return true; }
     if (!_compose.length()) return false;
-    // Drop a whole UTF-8 character (an emoji is 4 bytes), not one byte of it.
-    int n = _compose.length() - 1;
-    while (n > 0 && ((uint8_t)_compose[n] & 0xC0) == 0x80) n--;
-    _compose.remove(n);
+    // Drop the whole UTF-8 character before the cursor (an emoji is 4 bytes).
+    const int at = cursorAt();
+    if (at == 0) { dirty = true; return true; }      // nothing before it: the draft stays
+    const int n = prevChar(at);
+    _compose.remove(n, at - n);
+    if (_cur >= 0) _cur = n;
+    _spaceAt = -1;
+    caretOn();
     dirty = true;
     return true;
   }
@@ -115,6 +156,31 @@ public:
     else _sel = max(0, s);
     dirty = true;
   }
+
+  // The text cursor: hold space and turn the wheel (pager), or roll the trackball left
+  // and right (T-Deck). Typing, backspace and emoji then go in where it is.
+  bool moveCursor(int steps, bool firstOfHold) override {
+    if (!_compose.length() || !steps) return false;
+    if (firstOfHold && _spaceAt >= 0 && _spaceAt < (int)_compose.length() && _compose[_spaceAt] == ' ') {
+      _compose.remove(_spaceAt, 1);                    // the space that started the hold
+      if (_cur > _spaceAt) _cur--;
+    }
+    _spaceAt = -1;
+    int at = cursorAt();
+    for (; steps < 0 && at > 0; steps++) at = prevChar(at);
+    for (; steps > 0 && at < (int)_compose.length(); steps--) at = nextChar(at);
+    _cur = at >= (int)_compose.length() ? -1 : at;
+    _sel = -1;
+    caretOn();
+    dirty = true;
+    return true;
+  }
+#if BOARD_HAS_TRACKBALL
+  bool roll(int dx, int dy) override {
+    if (dy || !dx || _sel >= 0 || !_compose.length()) return false;
+    return moveCursor(dx, false);
+  }
+#endif
 
   void press() override {
     if (_sel >= 0 && _sel < _n) { openMessageActions(this, _ids[_sel]); return; }
@@ -196,7 +262,7 @@ public:
     }
     drawHeader(g, title, sub);
 
-    const int top = L::BODY_Y + 2, bottom = L::H - 28;
+    const int top = L::BODY_Y + 2, bottom = composeTop();
     g.setClipRect(0, top, L::W, bottom - top);
     if (!_n) {
       g.setTextColor(t.dim, t.bg);
@@ -205,6 +271,14 @@ public:
     // Bottom-up: the anchor is the selected message, or the newest.
     const int anchor = _sel >= 0 ? _sel : _n - 1;
     int y = bottom - 2;
+    // With bigger chat text one message can be taller than the view: show it from its
+    // first line rather than cut off at the top.
+    if (anchor >= 0 && anchor < _n && chatSize()) {
+      if (HistMsg* am = history.find(_ids[anchor])) {
+        const int ah = ui_settings.compactChat ? drawCompact(g, *am, y, false, true) : drawBubble(g, *am, y, false, true);
+        if (ah > bottom - top - 4) y = top + 2 + ah;
+      }
+    }
     _posN = 0;
     // If a selection is scrolled up, keep a little of the next message visible.
     for (int i = anchor; i >= 0 && y > top; i--) {
@@ -248,18 +322,20 @@ private:
   }
 
   // Returns the height used; draws with its bottom edge at `bottomY`.
-  int drawBubble(Canvas& g, const HistMsg& m, int bottomY, bool selected) {
+  int drawBubble(Canvas& g, const HistMsg& m, int bottomY, bool selected, bool measureOnly = false) {
     const Theme& t = nav.theme();
     const bool out = m.flags & HF_OUT;
     const bool showName = !out && (_key.type == CONV_CHANNEL || (m.flags & HF_ROOM));
     char text[200];
     sanitize(m.text, text, sizeof(text));
     uint16_t st[12]; uint8_t ln[12];
-    const int maxW = 320;
-    g.setFont(&fonts::Font2);
+    const int maxW = chatBubbleMax();
+    g.setFont(chatFont());
+    const int lh = chatLineH(g);
     const int nl = wrapText(g, text, maxW - 16, st, ln, 12);
     int textW = 0;
     for (int i = 0; i < nl; i++) textW = max(textW, richWidth(g, text + st[i], ln[i]));
+    g.setFont(&fonts::Font2);                          // names and times stay this size
     char meta[48];
     metaText(m, meta, sizeof(meta));
     char name[28] = "";
@@ -267,7 +343,8 @@ private:
     const int metaW = g.textWidth(meta);
     const int nameW = showName ? richWidth(g, name) : 0;
     const int w = min(maxW, max(max(textW, metaW), nameW) + 16);
-    const int h = 8 + (showName ? 17 : 0) + nl * 17 + 16;
+    const int h = 8 + (showName ? 17 : 0) + nl * lh + 16;
+    if (measureOnly) return h;
     const int x = out ? L::W - 8 - w : 8;
     const int y = bottomY - h;
     const bool mention = m.flags & HF_MENTION;
@@ -283,17 +360,21 @@ private:
     }
     g.setTextColor(t.white, bg);
     scrambleIfNew(m.id, text);                        // a new arrival decrypts in front of you
+    g.setFont(chatFont());
+    richEmojiDrop(chatEmojiDrop(g));
     for (int i = 0; i < nl; i++) {
       drawRich(g, text + st[i], x + 8, ty, ln[i]);
-      ty += 17;
+      ty += lh;
     }
+    richEmojiDrop(0);
+    g.setFont(&fonts::Font2);
     g.setTextColor(m.status == ST_FAILED ? t.red : t.dim, bg);
     g.drawString(meta, x + w - 8 - metaW, ty);
     notePos(m.id, x + w - 12, ty + 7);                // where its effects go: the status line
     return h;
   }
 
-  int drawCompact(Canvas& g, const HistMsg& m, int bottomY, bool selected) {
+  int drawCompact(Canvas& g, const HistMsg& m, int bottomY, bool selected, bool measureOnly = false) {
     const Theme& t = nav.theme();
     const bool out = m.flags & HF_OUT;
     char text[220];
@@ -303,14 +384,20 @@ private:
     sanitize(out ? "me" : (m.sender[0] ? m.sender : "?"), who, sizeof(who));
     snprintf(text, sizeof(text), "%s> %s", who, body);
     uint16_t st[12]; uint8_t ln[12];
+    g.setFont(chatFont());
+    const int lh = chatLineH(g);
     const int nl = wrapText(g, text, L::W - 90, st, ln, 12);
-    const int h = nl * 17 + 2;
+    const int h = nl * lh + 2;
+    if (measureOnly) { g.setFont(&fonts::Font2); return h; }
     const int y = bottomY - h;
     if (selected) g.fillRect(0, y, L::W, h, t.focus);
+    richEmojiDrop(chatEmojiDrop(g));
     for (int i = 0; i < nl; i++) {
       g.setTextColor(i == 0 ? (out ? t.green : nameInk(m.sender, t.txt)) : t.txt, selected ? t.focus : t.bg);
-      drawRich(g, text + st[i], 8, y + 1 + i * 17, ln[i]);
+      drawRich(g, text + st[i], 8, y + 1 + i * lh, ln[i]);
     }
+    richEmojiDrop(0);
+    g.setFont(&fonts::Font2);
     char meta[48];
     metaText(m, meta, sizeof(meta));
     g.setTextColor(m.status == ST_FAILED ? t.red : t.dim, selected ? t.focus : t.bg);
@@ -424,35 +511,100 @@ private:
 
   void drawCompose(Canvas& g, int y) {
     const Theme& t = nav.theme();
-    const int x = 6, w = L::W - 12, h = 24;
+    const int x = 6, w = L::W - 12, h = composeH();
     y += 2;
     g.fillRoundRect(x, y, w, h, 12, t.panel);
     g.drawRoundRect(x, y, w, h, 12, _sel < 0 ? t.greenDim : t.line);
+    // What you type is in the chat text size; the hint and the count stay small.
+    const int smallY = y + (h - 16) / 2;
+    g.setFont(chatFont());
+    const int fh = g.fontHeight(), ty = y + (h - fh) / 2, caretH = max(14, fh - 2);
     if (!_compose.length()) {
       g.setTextColor(t.dim, t.panel);
       char ph[48];
       char nm[28];
       convName(_key, nm, sizeof(nm));
       snprintf(ph, sizeof(ph), "message %s", nm);
-      drawUtf8(g, ph, x + 12, y + 4, w - 180);
+      drawUtf8(g, ph, x + 12, ty, w - 180);
+      g.setFont(&fonts::Font2);
       const char* hint = _sel >= 0 ? "press: actions" : "press: emoji + replies";
-      g.drawString(hint, x + w - 12 - g.textWidth(hint), y + 4);
-      if (_sel < 0 && _caret) g.fillRect(x + 10, y + 5, 2, 14, t.green);
+      g.drawString(hint, x + w - 12 - g.textWidth(hint), smallY);
+      if (_sel < 0 && _caret) g.fillRect(x + 10, ty + 1, 2, caretH, t.green);
       return;
     }
     char safe[200];
     sanitize(_compose.c_str(), safe, sizeof(safe));
-    // Show the end of a long draft; never start the view inside an emoji marker.
-    const char* p = safe;
-    while (*p && richWidth(g, p) > w - 70) p += (*p == 0x01 || *p == 0x02) && p[1] ? 2 : 1;
+    // The cursor's place in the shown text, and a window on a long draft that keeps it
+    // in view (the end, as before, while it is at the end). Never starts inside an
+    // emoji marker.
+    const int avail = w - 70;
+    const int sp = sanitizedLen(cursorAt());
+    int start = 0;
+    if (_cur < 0) {
+      while (safe[start] && richWidth(g, safe + start) > avail) start += stepMarked(safe, start);
+    } else {
+      start = min(_winStart, sp);
+      while (start > 0 && richWidth(g, safe + start, sp - start) < avail / 3) start = prevMarked(safe, start);
+      while (start < sp && richWidth(g, safe + start, sp - start) > avail - 4) start += stepMarked(safe, start);
+    }
+    _winStart = start;
+    _textX = x + 12;
     g.setTextColor(t.white, t.panel);
-    const int cx = drawRich(g, p, x + 12, y + 4);
-    if (_caret) g.fillRect(cx + 1, y + 5, 2, 14, t.green);
+    g.setClipRect(x + 10, y, avail + 4, h);
+    richEmojiDrop(chatEmojiDrop(g));
+    drawRich(g, safe + start, x + 12, ty);
+    richEmojiDrop(0);
+    g.clearClipRect();
+    const int cx = x + 12 + richWidth(g, safe + start, sp - start);
+    if (_caret) g.fillRect(_cur < 0 ? cx + 1 : cx - 1, ty + 1, 2, caretH, t.green);
+    g.setFont(&fonts::Font2);
     char cnt[12];
     snprintf(cnt, sizeof(cnt), "%d", maxLen() - (int)_compose.length());
     g.setTextColor((int)_compose.length() > maxLen() - 15 ? t.amber : t.dim, t.panel);
-    g.drawString(cnt, x + w - 12 - g.textWidth(cnt), y + 4);
+    g.drawString(cnt, x + w - 12 - g.textWidth(cnt), smallY);
   }
+
+  // The cursor as a byte offset in _compose (-1: at the end, where typing follows it).
+  int cursorAt() const { return _cur < 0 || _cur > (int)_compose.length() ? (int)_compose.length() : _cur; }
+  int prevChar(int at) const { int n = at - 1; while (n > 0 && ((uint8_t)_compose[n] & 0xC0) == 0x80) n--; return max(0, n); }
+  int nextChar(int at) const { int n = at + 1; while (n < (int)_compose.length() && ((uint8_t)_compose[n] & 0xC0) == 0x80) n++; return n; }
+  // How long the shown (sanitized) text of the first `bytes` of the draft is.
+  int sanitizedLen(int bytes) const {
+    char pre[200], out[200];
+    const int n = max(0, min(bytes, (int)sizeof(pre) - 1));
+    memcpy(pre, _compose.c_str(), n); pre[n] = 0;
+    sanitize(pre, out, sizeof(out));
+    return strlen(out);
+  }
+  static int stepMarked(const char* s, int at) { return (s[at] == 0x01 || s[at] == 0x02) && s[at + 1] ? 2 : 1; }
+  static int prevMarked(const char* s, int at) {
+    if (at >= 2 && (s[at - 2] == 0x01 || s[at - 2] == 0x02)) return at - 2;
+    return at - 1;
+  }
+  void caretOn() { _caret = true; _blinkAt = millis(); }
+  // A tap in the draft (T-Deck): the cursor goes to the nearest gap between characters.
+  void placeCursorAt(int px) {
+    Canvas& g = nav.canvas();
+    g.setFont(chatFont());
+    char safe[200];
+    sanitize(_compose.c_str(), safe, sizeof(safe));
+    const int len = _compose.length();
+    int best = len, bestD = 1 << 30;
+    for (int b = 0; ; b = nextChar(b)) {
+      const int sp = sanitizedLen(b);
+      if (sp >= _winStart) {
+        const int d = abs(_textX + richWidth(g, safe + _winStart, sp - _winStart) - px);
+        if (d < bestD) { bestD = d; best = b; }
+      }
+      if (b >= len) break;
+    }
+    g.setFont(&fonts::Font2);
+    _cur = best >= len ? -1 : best;
+    _spaceAt = -1; _sel = -1;
+    caretOn();
+    dirty = true;
+  }
+  int _cur = -1, _spaceAt = -1, _winStart = 0, _textX = 18;
 
   static constexpr uint16_t MAX_IDS = 200;
   ConvKey _key;
@@ -517,11 +669,11 @@ public:
     for (int i = 0; i < 11; i++) if (s_recent[i] == cp) { at = i; break; }
     for (int i = at; i > 0; i--) s_recent[i] = s_recent[i - 1];
     s_recent[0] = cp;
-    String c = _tv->compose();
+    String c;
     utf8Append(c, cp);
     ThreadView* tv = _tv;
     nav.pop();
-    tv->setCompose(c);
+    tv->insertAtCursor(c);
   }
   void draw(Canvas& g) override;
 private:

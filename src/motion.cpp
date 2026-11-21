@@ -10,6 +10,7 @@
 #include "board_pins.h"
 #include "logstore.h"
 #include "power.h"
+#include "cpu_sleep.h"
 
 extern LogStore logs;
 
@@ -21,6 +22,17 @@ bool loaded = false, failed = false, streaming = false;
 uint8_t sensorId = 0;                   // the accelerometer this image offers
 uint8_t kicks = 0;                      // restarts after it went quiet
 uint32_t kickedAt = 0;
+// Screen-off saving pauses all motion sampling: walking must never keep the
+// host awake. The loaded sensor firmware stays resident for a short alert read.
+bool screenPaused = false, pauseFailed = false, darkSaving = false;
+const char* pauseStatus = "off";
+bool alertReading = false, alertFaceDown = false;
+uint32_t alertReadMs = 0;
+const char* alertStatus = "not checked";
+uint8_t alertSamples = 0;
+uint32_t alertStartedAt = 0, alertAcceptedAt = 0;
+float alertX = 0, alertY = 0, alertZ = 0;
+
 
 bool raiseOn = true, holdOn = true, quietOn = false;
 uint8_t manMin = 0;
@@ -80,6 +92,22 @@ bool shaken = false;
 
 void sample(const Vec& a) {
   const uint32_t now = millis();
+  if (alertReading) {
+    const float norm = dot(a, a);
+    const float dx = a.x - alertX, dy = a.y - alertY, dz = a.z - alertZ;
+    const bool valid = norm >= 0.85f * 0.85f && norm <= 1.15f * 1.15f;
+    alertFaceDown = valid && unit(a).z * SCREEN_Z <= -0.8660254f;
+    // Startup samples may be zero, unsettled or belong to an old orientation.
+    // Require a NEW consecutive stable run; one bad sample must not poison all
+    // later valid samples in the same read. Never reuse a cached quiet result.
+    if (now - alertStartedAt < 120 || !valid) alertSamples = 0;
+    else if (!alertSamples || dx * dx + dy * dy + dz * dz > 0.08f * 0.08f) {
+      alertSamples = 1; alertAcceptedAt = now;
+    } else if (now - alertAcceptedAt >= 30 && alertSamples < 3) {
+      ++alertSamples; alertAcceptedAt = now;
+    }
+    alertX = a.x; alertY = a.y; alertZ = a.z;
+  }
   if (now - lastSample > 3000) movedAt = now;    // after a gap, count stillness afresh
   lastSample = now;
   kicks = 0;
@@ -200,8 +228,13 @@ void stream(bool on) {
   if (on) {
     // The corrected accelerometer, or the raw one if this image lacks it.
     for (uint8_t id : {(uint8_t)BoschSensorID::ACCEL_CORRECTED, (uint8_t)BoschSensorID::ACCEL_PASSTHROUGH}) {
-      imu.onResultEvent(id, onAccel);
-      if (imu.configure(id, RATE_HZ, 0)) { sensorId = id; streaming = true; break; }
+      if (!imu.onResultEvent(id, onAccel)) continue;
+      if (imu.configure(id, RATE_HZ, 0)) {
+        sensorId = id;
+        streaming = true;
+        failed = false; // a successful restart recovers a transient prior failure
+        break;
+      }
       imu.removeResultEvent(id, onAccel);
     }
     if (!streaming) {
@@ -221,12 +254,37 @@ void stream(bool on) {
   jitter = 0;
 }
 
+// No event detectors or GPIO8 wake source are armed. Confirm raw ODR is zero
+// before allowing long sleep; a failed stop remains visible and blocks sleep.
+bool pauseSampling() {
+  if (!loaded || !streaming) return true;
+  bhy2_virt_sensor_conf cfg{};
+  if (!imu.configure(sensorId, 0, 0) ||
+      bhy2_get_virt_sensor_cfg(sensorId, &cfg, imu.getDev()) != BHY2_OK || cfg.sample_rate != 0) {
+    imu.configure(sensorId, RATE_HZ, 0);
+    pauseFailed = true;
+    pauseStatus = "sample stop failed; polling";
+    return false;
+  }
+  imu.update(); // drain the final samples; GPIO8 is never a host wake source
+  imu.removeResultEvent(sensorId, onAccel);
+  streaming = false;
+  screenPaused = true;
+  raised = shaken = false;
+  heldAt = 0;
+  pauseStatus = "paused while screen off";
+  return true;
+}
+
 void apply() {
-  // Battery saver stops the sensor, unless the man-down alarm is on: it can't watch
-  // without it, and it is the one use here that is about safety.
+  screenPaused = false;
+  pauseFailed = false;
+  pauseStatus = "normal polling";
+  // Preserve the existing man-down alarm's sampling and timing.
   const bool want = saverOn ? manMin != 0 : (raiseOn || holdOn || quietOn || manMin);
   if (want && !loaded && !failed) load();
   stream(want);
+  if (!want) pauseStatus = "off";
 }
 
 void save() {
@@ -253,11 +311,24 @@ void begin() {
   apply();
 }
 
-void tick() {
+void tick(bool screenOff) {
   if (power::saver() != saverOn) {
     saverOn = power::saver();
     apply();
     logs.add(LOG_INFO, "motion: battery saver %s, sensor %s", saverOn ? "on" : "off", streaming ? "running" : "stopped");
+  }
+  darkSaving = power::lightSleep() && power::cpuSaving() && screenOff;
+  static bool savingWas = false;
+  if (darkSaving != savingWas) { pauseFailed = false; savingWas = darkSaving; }
+  if (manMin) pauseStatus = "man-down uses polling";
+  if (darkSaving && !manMin) {
+    raised = shaken = false;
+    if (screenPaused) return;
+    if (!pauseFailed && pauseSampling()) return;
+  } else if (screenPaused) {
+    screenPaused = false;
+    stream(true);
+    pauseStatus = failed ? "accelerometer resume failed" : "normal polling";
   }
   if (!streaming) return;
   static uint32_t polled = 0;
@@ -276,10 +347,60 @@ void tick() {
   }
 }
 
-bool running() { return streaming && millis() - lastSample < 3000; }
+bool irqWatch() { return false; }
+const char* sleepState() { return pauseStatus; }
+uint32_t eventCount() { return 0; }
+
+void refreshForAlert(bool screenOff) {
+  if (!quietOn || saverOn || manMin) return;
+  const bool savingOff = screenOff && power::lightSleep() && power::cpuSaving();
+  if (!screenPaused && !savingOff) return;
+  // A message can arrive just after the middle button darkens the screen,
+  // before tick() has paused the sensor. Pause/drain this path too.
+  if (streaming && !pauseSampling()) {
+    face = faceTiming = false;
+    alertStatus = "sample stop failed"; alertReadMs = 0;
+    return;
+  }
+  imu.update(); // discard stopped-stream FIFO data with its callback removed
+  // Never use a cached pose: it may have changed while the host was asleep.
+  face = faceTiming = false;
+  screenPaused = false;
+  stream(true);
+  if (!streaming) {
+    screenPaused = true;
+    pauseStatus = "alert read failed; retry next message";
+    alertStatus = "sensor resume failed";
+    alertReadMs = 0;
+    return;
+  }
+  alertSamples = 0;
+  alertFaceDown = false;
+  alertReading = true;
+  const uint32_t start = millis();
+  alertStartedAt = start; alertAcceptedAt = start;
+  // Ignore the first 120 ms and never accept a burst as three fresh readings.
+  // A cold sensor restart can exceed 180 ms. Finish as soon as three consecutive
+  // stable readings arrive; allow at most 500 ms including settling.
+  // This runs only for an alert, at 80 MHz while dark, never on a motion IRQ.
+  while (alertSamples < 3 && millis() - start < 500) { imu.update(); delay(5); }
+  alertReadMs = millis() - start;
+  alertReading = false;
+  const bool quiet = alertSamples >= 3 && alertFaceDown;
+  alertStatus = quiet ? "fresh face down" : alertSamples >= 3 ? "fresh other orientation" : "no stable reading";
+  if (!pauseSampling()) pauseStatus = "sample stop failed; polling";
+  face = faceTiming = quiet;
+  faceSince = millis() - 2001;
+  raised = shaken = false; // an alert read must never become raise-to-wake
+}
+
+bool needsFastPolling() { return streaming || (pauseFailed && loaded); }
+
+bool running() { return !failed && (screenPaused || (streaming && millis() - lastSample < 3000)); }
 
 const char* state() {
   if (failed) return "not responding";
+  if (screenPaused) return pauseStatus;
   if (running()) return saverOn ? "on for man-down (saver)" : "on";
   if (saverOn && (raiseOn || holdOn || quietOn)) return "paused: battery saver";
   return streaming ? "starting" : "off";
@@ -302,7 +423,8 @@ void setManDownMin(uint8_t m) { manMin = m; movedAt = millis(); if (m) failed = 
 bool takeRaise() {
   const bool r = raised;
   raised = false;
-  return r && raiseOn && !saverOn && running();
+  return r && raiseOn && !saverOn && !darkSaving &&
+    !(power::cpuSaving() && power::lightSleep()) && running();
 }
 
 uint32_t heldFor() {
@@ -337,7 +459,9 @@ bool lean(float& x, float& y) {
 }
 
 void debugPrint() {
-  Serial.printf("[motion] %s  g %.3f %.3f %.3f  tilt %.0f  shake %.3f  jitter %.3f  held %lus  still %lus  face %d  raise %d hold %d quiet %d mandown %u\n",
+  Serial.printf("[motion] sleep=%s motion_wake=off alert=%s read_ms=%lu\r\n",
+                sleepState(), alertStatus, (unsigned long)alertReadMs);
+  Serial.printf("[motion] %s  g %.3f %.3f %.3f  tilt %.0f  shake %.3f  jitter %.3f  held %lus  still %lus  face %d  raise %d hold %d quiet %d mandown %u\r\n",
                 state(), lp.x, lp.y, lp.z, tilt, shake, jitter, (unsigned long)(heldFor() / 1000),
                 (unsigned long)(stillFor() / 1000), face, raiseOn, holdOn, quietOn, manMin);
 }
