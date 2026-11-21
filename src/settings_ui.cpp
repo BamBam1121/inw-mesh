@@ -25,6 +25,7 @@
 #include "regional.h"
 #include "regions.h"
 #include "themestore.h"
+#include "qrview.h"
 #include <algorithm>
 #include <SPIFFS.h>
 #include <SD.h>
@@ -59,6 +60,7 @@ static void profileMenu() {
       });
     });
     v.info("public key", []() -> String { char h[20]; mesh::Utils::toHex(h, g_node->self_id.pub_key, 8); return String(h) + "..."; });
+    v.action("show my QR code", [] { qr::showMine(); });   // the MeshCore app scans it to add you
     v.header("position");
     v.info("advert position", []() -> String {
       if (!P().node_lat && !P().node_lon) return String("not set");
@@ -972,6 +974,12 @@ static void messagesMenu() {
             [] { ui_settings.hideHashBytes = !ui_settings.hideHashBytes; markUiDirty(); });
   tg(*m, "show signal (snr)", &ui_settings.showSnr);
   tg(*m, "compact (irc style)", &ui_settings.compactChat);
+  m->adjust("chat text size", []() -> String {      // GitHub #14
+               static const char* const N[] = {"normal", "large", "extra large"};
+               return N[ui_settings.chatText <= 2 ? ui_settings.chatText : 0];
+             },
+             [](int d) { const int now = ui_settings.chatText <= 2 ? ui_settings.chatText : 0;
+                          ui_settings.chatText = (uint8_t)constrain(now + d, 0, 2); markUiDirty(); });
   tg(*m, "ignore 1-character posts", &ui_settings.ignoreOneChar);
   tg(*m, "distances in miles", &ui_settings.miles);
   m->submenu("quick replies", [] { quickRepliesMenu(); });
