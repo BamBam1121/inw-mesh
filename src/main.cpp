@@ -936,6 +936,7 @@ static void usbCommands() {
                     g_node ? g_node->getNumContacts() : -1);
       continue;
     }
+#if INW_DEV   // ECO / radio diagnostics: developer build only
     if (!strcmp(line, "cpu reset")) {
       power::resetSleepDiagnostics(dimmer.asleep());
       Serial.printf("[diag] counters reset; unplug USB, test, reconnect without reboot, then cpu\r\n");
@@ -965,6 +966,7 @@ static void usbCommands() {
         railsRead, railOut[1], railOut[0], railCfg[1], railCfg[0]);
       continue;
     }
+#endif
     // The browser installer sends this before it resets the pager, so nothing
     // learned since the last lazy write is lost to the flash. Cheap enough to
     // run on demand: contacts are only written if there is something pending.
