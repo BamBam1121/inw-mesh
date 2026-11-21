@@ -10,6 +10,10 @@
 #include <nvs_flash.h>
 #include <Preferences.h>
 #include <soc/rtc_cntl_reg.h>
+#include <soc/soc.h>
+#include <soc/gpio_reg.h>
+#include <soc/gpio_periph.h>
+#include <soc/usb_serial_jtag_reg.h>
 #include "power.h"
 #include "eco_power.h"
 #include "cpu_sleep.h"
@@ -450,6 +454,26 @@ static void panelRefresh() {
 // blank screen with the keyboard lit that came back after two or three more wakes (2026-11-19..21; the user's
 // photo, and "you're turning on the screen without turning on the chip"). A full set-up takes ~0.3 s, the radio on
 // the same bus kept receiving through it (measured: dev "panel init", recv 286 -> 288)
+// The backlight pin (GPIO42, the chip's MTMS pad: pulled up when not driven) must read low whenever the light is off.
+// 2026-11-21 the screen glowed grey while the firmware had the light at 0 and the panel asleep: the pad was not being
+// driven low, whatever its settings had become. Checked on every loop pass the light is off: if the pad reads high,
+// what its settings were goes in the log (to find what changed them) and it is made a low output again
+static uint16_t s_blCaught = 0;
+static void blPinGuard() {
+  if (backlight.level() != 0 || backlight.fading()) return;
+  if (((REG_READ(GPIO_IN1_REG) >> (PIN_TFT_BL - 32)) & 1) == 0) return;
+  const uint32_t mux = REG_READ(GPIO_PIN_MUX_REG[PIN_TFT_BL]);
+  const uint32_t sel = REG_READ(GPIO_FUNC0_OUT_SEL_CFG_REG + 4 * PIN_TFT_BL) & 0x1FF;
+  const unsigned en = (REG_READ(GPIO_ENABLE1_REG) >> (PIN_TFT_BL - 32)) & 1, out = (REG_READ(GPIO_OUT1_REG) >> (PIN_TFT_BL - 32)) & 1;
+  s_blCaught++;
+  logs.add(LOG_WARN, "bl pin high, light off: mux %04lX sel %03lX en%u o%u", (unsigned long)(mux & 0xFFFF), (unsigned long)sel, en, out);
+  Serial.printf("[screen] bl pin HIGH while off #%u: iomux %08lX out_sel %03lX enabled %u out %u -> made a low output\n",
+                (unsigned)s_blCaught, (unsigned long)mux, (unsigned long)sel, en, out);
+  esp_rom_gpio_pad_select_gpio(PIN_TFT_BL);
+  gpio_set_level((gpio_num_t)PIN_TFT_BL, 0);
+  gpio_set_direction((gpio_num_t)PIN_TFT_BL, GPIO_MODE_OUTPUT);
+}
+
 static void panelWake() {
   if (!s_panelOff) return;
   const uint32_t since = millis() - s_panelAt;
@@ -1016,11 +1040,70 @@ static void usbCommands() {
     }
     // Black-screen hunt (2026-11-20): what the pager believes about its screen, changing
     // nothing - then "bl resync" (backlight chip off for real and back) or "bl N".
+    // Nap test (2026-11-21, the grey blank screen after ECO naps): what one light sleep does to the panel's path.
+    // Snapshot the SPI2 registers (the panel's, the radio's and the SD's bus), the IO_MUX pads and GPIO-matrix routing
+    // of the bus and panel pins, and the GPIO out/enable bits; put the panel to sleep as the dimmer does; one forced
+    // nap of 3 s (USB hidden as in ECO: the link drops and comes back); the same snapshot again. "naptest" runs it
+    // (the reply comes after USB is back: "napdiff" prints every word that changed)
+    if (!strcmp(line, "naptest") || !strcmp(line, "napdiff")) {
+      static const int pins[] = { PIN_SPI_SCK, PIN_SPI_MOSI, PIN_SPI_MISO, PIN_TFT_CS, PIN_TFT_DC, PIN_TFT_BL,
+                                  PIN_LORA_CS, PIN_SD_CS };
+      static const unsigned NSPI = 64, NP = sizeof(pins) / sizeof(pins[0]);
+      static uint32_t a[NSPI + 2 * NP + 4], b[NSPI + 2 * NP + 4];
+      static bool have = false;
+      static esp_err_t napErr = ESP_OK;
+      static uint32_t napUs = 0;
+      auto snap = [&](uint32_t* s) {
+        unsigned k = 0;
+        for (unsigned i = 0; i < NSPI; i++) s[k++] = REG_READ(DR_REG_SPI2_BASE + 4 * i);
+        for (unsigned i = 0; i < NP; i++) s[k++] = REG_READ(GPIO_PIN_MUX_REG[pins[i]]);
+        for (unsigned i = 0; i < NP; i++) s[k++] = REG_READ(GPIO_FUNC0_OUT_SEL_CFG_REG + 4 * pins[i]);
+        s[k++] = REG_READ(GPIO_OUT_REG); s[k++] = REG_READ(GPIO_OUT1_REG);
+        s[k++] = REG_READ(GPIO_ENABLE_REG); s[k++] = REG_READ(GPIO_ENABLE1_REG);
+      };
+      if (!strcmp(line, "naptest")) {
+        Serial.println("[nap] snapshot, panel to sleep, 3 s nap: USB drops now; then send napdiff");
+        Serial.flush();
+        delay(200);
+        snap(a);
+        s_panelOff = false;
+        panelSleep();
+        delay(150);
+        esp_sleep_enable_timer_wakeup(3000000ULL);
+        const uint32_t usbPads = REG_READ(USB_SERIAL_JTAG_CONF0_REG);
+        REG_WRITE(USB_SERIAL_JTAG_CONF0_REG, (usbPads | USB_SERIAL_JTAG_PAD_PULL_OVERRIDE) & ~USB_SERIAL_JTAG_DP_PULLUP);
+        const uint32_t t0 = micros();
+        napErr = esp_light_sleep_start();
+        napUs = micros() - t0;
+        REG_WRITE(USB_SERIAL_JTAG_CONF0_REG, usbPads);
+        snap(b);
+        have = true;
+        panelWake();				// the screen back for the user
+        continue;
+      }
+      if (!have) { Serial.println("[nap] no test run yet: naptest first"); continue; }
+      Serial.printf("[nap] err=%d slept_us=%lu\n", (int)napErr, (unsigned long)napUs);
+      unsigned changed = 0;
+      for (unsigned i = 0; i < NSPI + 2 * NP + 4; i++) {
+        if (a[i] == b[i]) continue;
+        changed++;
+        if (i < NSPI) Serial.printf("[nap] SPI2+0x%02X %08lX -> %08lX\n", 4 * i, (unsigned long)a[i], (unsigned long)b[i]);
+        else if (i < NSPI + NP) Serial.printf("[nap] IO_MUX gpio%d %08lX -> %08lX\n", pins[i - NSPI], (unsigned long)a[i], (unsigned long)b[i]);
+        else if (i < NSPI + 2 * NP) Serial.printf("[nap] OUT_SEL gpio%d %08lX -> %08lX\n", pins[i - NSPI - NP], (unsigned long)a[i], (unsigned long)b[i]);
+        else Serial.printf("[nap] GPIO %s %08lX -> %08lX\n", (const char*[]){"OUT", "OUT1", "ENABLE", "ENABLE1"}[i - NSPI - 2 * NP], (unsigned long)a[i], (unsigned long)b[i]);
+      }
+      Serial.printf("[nap] %u words changed\n", changed);
+      continue;
+    }
     if (!strcmp(line, "screen")) {
       Serial.printf("[screen] dimmer=%s light=%u (full %u) fading=%d panel=%s cpu=%lu MHz up=%lus idle=%lus top='%s'\n",
                     dimmer.asleep() ? "asleep" : dimmer.dimmed() ? "dim" : "full", backlight.level(), dimmer.full(),
                     backlight.fading() ? 1 : 0, s_panelOff ? "asleep" : "awake", (unsigned long)getCpuFrequencyMhz(),
                     (unsigned long)(millis() / 1000), (unsigned long)(dimmer.idleFor() / 1000), g_screenTitle);
+      Serial.printf("[screen] bl pin: level %d, out %d, enabled %d, iomux %08lX, out_sel %03lX; caught high while off %u\n",
+                    (int)((REG_READ(GPIO_IN1_REG) >> (PIN_TFT_BL - 32)) & 1), (int)((REG_READ(GPIO_OUT1_REG) >> (PIN_TFT_BL - 32)) & 1),
+                    (int)((REG_READ(GPIO_ENABLE1_REG) >> (PIN_TFT_BL - 32)) & 1), (unsigned long)REG_READ(GPIO_PIN_MUX_REG[PIN_TFT_BL]),
+                    (unsigned long)(REG_READ(GPIO_FUNC0_OUT_SEL_CFG_REG + 4 * PIN_TFT_BL) & 0x1FF), (unsigned)s_blCaught);
       continue;
     }
     if (!strncmp(line, "bl ", 3)) {
@@ -2493,6 +2576,7 @@ void loop() {
   lap(5);
   if (!dimmer.asleep()) panelWake();       // before the light can come up
   dimmer.tick();
+  blPinGuard();
   jingle.tick();
   if (const uint8_t f = jingle.takeFailure())
     logs.add(LOG_WARN, "sound failed: %s, internal RAM %u kB free, largest %u kB",
