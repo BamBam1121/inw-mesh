@@ -2015,7 +2015,11 @@ void setup() {
   const bool railsOk = expander.begin(Wire);
   if (railsOk) {
     bringup::powerAllRails(expander);
-    nfcPower(false);
+    // NFC stays powered (2026-11-22). Unpowered (1.2.16-1.2.18), the ST25R3916 still sits on
+    // the SPI bus the radio, screen and SD card share, and a chip with no supply drags the
+    // lines through its pin diodes: suspected cause of the deaf radio, the bad screen and
+    // failing SD writes. ~16 mA is the price.
+    nfcPower(true);
     expander.enableRail(EXP_LORA_EN, 20);
     if (!ui_settings.gpsOn) gpsPower(false);
   }
