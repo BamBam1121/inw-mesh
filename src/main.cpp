@@ -5,6 +5,7 @@
 #include <SPIFFS.h>
 #include <esp_system.h>
 #include <esp_sleep.h>
+#include <esp_partition.h>
 #include <esp_rom_gpio.h>
 #include <driver/gpio.h>
 #include <nvs_flash.h>
@@ -587,6 +588,7 @@ static void panelSleep() {
   s_panelOff = true;
 }
 static bool s_uiReady = false;   // set once setup() is done: no animations while booting
+static bool s_sharedStore = false;   // run from a launcher on its shared "spiffs" (setup)
 static uint32_t s_readyAt = 0;   // when that was
 // Screen-change animations can be turned off (Settings > Display): each one holds the
 // screen for about half a second, and keys typed during it are not seen. Kept in its
@@ -2431,7 +2433,36 @@ void setup() {
   (void)rtcOk;                    // no clock chip: GPS, Wi-Fi or the phone set the time
 #endif
 
-  bool fsOk = SPIFFS.begin(false);
+  // Under a multi-boot launcher (bmorcelli's Launcher) every firmware whose storage is
+  // called "spiffs" gets the same partition, and Meshtastic formats it as LittleFS: our
+  // contacts, settings and messages were wiped on every switch (Andrew, pager, 2026-11-21).
+  // Our -full.bin brings a partition of our own, "squatch", which Launcher keeps apart;
+  // use it whenever it is there. Everyone else keeps the usual "spiffs".
+  const esp_partition_t* ownStore =
+      esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "squatch");
+  const char* storeLabel = ownStore ? "squatch" : nullptr;
+  s_sharedStore = !storeLabel &&
+      esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_TEST, nullptr) != nullptr &&
+      esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, nullptr) != nullptr;
+  if (storeLabel) Serial.println("[boot] storage: our own partition (\"squatch\", launcher image)");
+  else if (s_sharedStore) Serial.println("[boot] storage: launcher's shared \"spiffs\": another firmware can erase it");
+  if (ownStore) {
+    // Launcher only creates a partition from an image that carries something for it, so
+    // the -full.bin carries a 16-byte marker. Launcher writes it over the start of the
+    // partition without clearing the rest: whatever was there (another firmware's files,
+    // or ours from before a reinstall) would mount half-broken. Seeing the marker, clear
+    // the whole partition first; the store then comes back from the SD card and the
+    // safety copy like any fresh store (dataio.cpp).
+    static const char MARK[16] = {'S','Q','U','A','T','C','H','-','N','E','W','S','T','O','R','E'};
+    char head[16] = {0};
+    if (esp_partition_read(ownStore, 0, head, sizeof(head)) == ESP_OK && !memcmp(head, MARK, sizeof(head))) {
+      bootNote(L::W < 400 ? "first start: preparing storage" : "first start: preparing storage, this takes a few minutes");
+      const esp_err_t e = esp_partition_erase_range(ownStore, 0, ownStore->size);
+      Serial.printf("[boot] storage: new launcher partition (%u kB) cleared: %s\n",
+                    (unsigned)(ownStore->size / 1024), esp_err_to_name(e));
+    }
+  }
+  bool fsOk = SPIFFS.begin(false, "/spiffs", 10, storeLabel);
   int carried = 0;                  // files brought across from MeshCore's store
   if (!fsOk) {
     // First boot on this partition table: the store has to be formatted once.
@@ -2440,7 +2471,7 @@ void setup() {
     carried = fsmigrate::rescue();
     bootNote(carried ? "found MeshCore's data: bringing it across"
                      : L::W < 400 ? "first start: preparing storage" : "first start: preparing storage, this takes a few minutes");
-    fsOk = SPIFFS.begin(true);
+    fsOk = SPIFFS.begin(true, "/spiffs", 10, storeLabel);
     if (fsOk && carried) carried = fsmigrate::restore();
     BootBusLock lock;
     display.fillRect(0, boot::ERR_Y0 - 2, L::W, 28, theme.bg);
@@ -2561,6 +2592,12 @@ void setup() {
   }
   nav.invalidate();
   s_uiReady = true;                               // from here on, screen changes animate
+  // Run from a launcher on its shared storage: say once per start that another firmware
+  // can erase it, and what to install instead (the -full.bin has its own partition).
+  if (s_sharedStore) {
+    logs.add(LOG_WARN, "launcher: on the shared storage, another firmware can erase it");
+    nav.banner("Launcher", "install the -full.bin to keep your data", 10000);
+  }
   s_readyAt = millis();
 }
 
