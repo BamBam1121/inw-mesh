@@ -51,7 +51,10 @@ public:
       pcnt_counter_clear(UNIT);
       _last = 0;
     }
-    const int32_t d = _acc / 4;
+    // Nearest detent, not toward zero: with "/ 4" a leftover of +3 had to be undone
+    // before a turn the other way counted, so reversing took two clicks (2026-11-22).
+    // Rounding keeps what's left in -2..+1, so every click counts both ways.
+    const int32_t d = (_acc + 2 >= 0) ? (_acc + 2) / 4 : -((-(_acc + 2) + 3) / 4);
     _acc -= d * 4;
     return (int8_t)constrain(d, -100, 100);
   }
