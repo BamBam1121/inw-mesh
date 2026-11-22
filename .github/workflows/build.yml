@@ -80,12 +80,11 @@ jobs:
             python tools/sign_ota.py "$F/firmware.bin" "$F/ota.json" "$VERSION" "$NOTES"
             echo "${GITHUB_REF_NAME} ${GITHUB_SHA::7}" > "$F/version.txt"
             STABLE="$VERSION"
-            # One image with everything at 0x0, for Launcher's catalog.
+            # One image with everything at 0x0, for Launcher (its catalog, SD and web
+            # installs) and esptool. Its own "squatch" data partition, so firmwares
+            # sharing Launcher's "spiffs" (Meshtastic) can't format our store.
             mkdir -p release
-            python tools/pager_full_bin.py "$F" "release/squatch-mesh-tlorapager-$VERSION-full.bin"
-            # For installing from bmorcelli's Launcher next to other firmwares: its own
-            # "squatch" data partition, so Meshtastic etc. can't format our store.
-            python tools/make_launcher_bin.py "$B" "release/squatch-mesh-tlorapager-$VERSION-launcher.bin"
+            python tools/make_launcher_bin.py "$B" "release/squatch-mesh-tlorapager-$VERSION-full.bin"
           else
             # stable: the latest release, carried along
             TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)
@@ -197,7 +196,6 @@ jobs:
             site/firmware/otadata-blank.bin
             site/firmware/bootloader.bin
             release/squatch-mesh-tlorapager-*-full.bin
-            release/squatch-mesh-tlorapager-*-launcher.bin
 
       # Pages only deploys from main, so hand over to a main run, which picks up
       # this release as stable.

@@ -1,27 +1,28 @@
-"""Build squatch-mesh-tlorapager-<version>-launcher.bin: the image to install from
-bmorcelli's Launcher (SD card or web UI) next to other firmwares.
+"""Build squatch-mesh-tlorapager-<version>-full.bin: the one-file image for
+bmorcelli's Launcher (its LauncherHub catalog, its SD card and web installs) and for
+writing at 0x0 with esptool. The web installer doesn't use it (separate parts).
 
 Why it exists: Launcher gives every firmware whose data partition is called "spiffs"
 the SAME partition. Meshtastic (LittleFS) and Squatch Mesh (SPIFFS) both call theirs
 "spiffs", so each wiped the other's storage on every switch. This image declares a data
 partition named "squatch" instead; Launcher creates it separately and keeps it (it
 reuses a partition with the same label on later installs). The firmware mounts
-"squatch" whenever it exists (main.cpp setup).
+"squatch" whenever it exists (main.cpp setup). Launcher only takes the first app
+entry; the second (app1) is for esptool installs, so Wi-Fi updates still work there.
 
 Launcher only gives a data partition its declared size when the image carries data for
 it (an empty one gets Launcher's small default, 128-448 kB), so the partition starts
 with a 16-byte marker. The firmware sees the marker on its first start, clears the
-whole partition and formats it. The marker overwrites the start of an existing
-partition on a reinstall, so updates should use the plain firmware.bin (app only);
-reinstalling this image starts the store fresh and it comes back from the SD card.
+whole partition and formats it. On a reinstall over an existing "squatch" partition
+the store starts fresh and comes back from the SD card and the NVS safety copy.
 
 Layout (offsets inside this file = flash offsets, as Launcher reads them):
   0x0000    bootloader
-  0x8000    partition table: nvs, otadata, app0 (ota_0), squatch (spiffs, 4 MB)
+  0x8000    partition table: nvs, otadata, app0 (ota_0), squatch (spiffs, 4 MB), app1 (ota_1)
   0x10000   app
   0x3D0000  marker (the start of the "squatch" partition), file ends after 4 kB
 
-usage: python tools/make_launcher_bin.py <build dir> <out.bin>
+usage: python tools/make_launcher_bin.py <build dir> <out-full.bin>
 """
 import hashlib
 import struct
@@ -44,6 +45,7 @@ def table():
         entry("otadata", 1, 0x00, 0xE000, 0x2000),
         entry("app0", 0, 0x10, APP_OFF, APP_SIZE),
         entry("squatch", 1, 0x82, DATA_OFF, DATA_SIZE),
+        entry("app1", 0, 0x11, DATA_OFF + DATA_SIZE, APP_SIZE),
     ]
     body = b"".join(rows)
     md5 = b"\xeb\xeb" + b"\xff" * 14 + hashlib.md5(body).digest()

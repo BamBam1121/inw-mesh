@@ -1969,7 +1969,7 @@ void setup() {
   // Under a multi-boot launcher (bmorcelli's Launcher) every firmware whose storage is
   // called "spiffs" gets the same partition, and Meshtastic formats it as LittleFS: our
   // contacts, settings and messages were wiped on every switch (Andrew, 2026-11-21).
-  // The Launcher image brings a partition of our own, "squatch", which Launcher keeps
+  // Our -full.bin brings a partition of our own, "squatch", which Launcher keeps
   // apart; use it whenever it is there. Everyone else keeps the usual "spiffs".
   const esp_partition_t* ownStore =
       esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "squatch");
@@ -1980,7 +1980,7 @@ void setup() {
   else if (s_sharedStore) Serial.println("[boot] storage: launcher's shared \"spiffs\": another firmware can erase it");
   if (ownStore) {
     // Launcher only creates a partition from an image that carries something for it, so
-    // the launcher image carries a 16-byte marker. Launcher writes it over the start of
+    // the -full.bin carries a 16-byte marker. Launcher writes it over the start of
     // the partition without clearing the rest: whatever was there (another firmware's
     // files, or ours from before a reinstall) would mount half-broken. Seeing the
     // marker, clear the whole partition first; the store then comes back from the SD
@@ -2114,10 +2114,10 @@ void setup() {
   nav.invalidate();
   s_uiReady = true;                               // from here on, screen changes animate
   // Run from a launcher on its shared storage: say once per start that another firmware
-  // can erase it, and what to install instead (the launcher image has its own partition).
+  // can erase it, and what to install instead (the -full.bin has its own partition).
   if (s_sharedStore) {
     logs.add(LOG_WARN, "launcher: on the shared storage, another firmware can erase it");
-    nav.banner("Launcher", "install the -launcher.bin to keep your data", 10000);
+    nav.banner("Launcher", "install the -full.bin to keep your data", 10000);
   }
 }
 
