@@ -9,7 +9,7 @@ OUT_DIR gets what the site serves under /m9/:
     firmware/partitions.bin
     firmware/otadata-blank.bin   0xFF: the bootloader starts app0 after a USB install
     firmware/firmware.bin
-    squatch-mesh-thinknode-m9-VERSION-full.bin   all of the above in one image, written
+    squatch-mesh-thinknode-m9-VERSION-full.bin   bootloader + app + Launcher's table in one image, written
                                                  at 0x0 (esptool, or Espressif's web tool)
 
 The same layout and checks as the T-Deck's (tools/package_tdeck.py).
@@ -20,6 +20,8 @@ import os
 import re
 import shutil
 import sys
+
+import launcher_image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD = os.path.join(ROOT, ".pio", "build", "thinknode-m9")
@@ -59,10 +61,9 @@ def main():
     assert ver.encode() in app, "firmware.bin was not built as " + ver
     open(os.path.join(fw, "firmware.bin"), "wb").write(app)
 
-    full = bytearray(b"\xff" * (0x10000 + len(app)))
-    for name, off in OFFSETS:
-        data = open(os.path.join(fw, name), "rb").read()
-        full[off:off + len(data)] = data
+    # Launcher's own layout (tools/launcher_image.py): our own "squatch" storage, so
+    # Meshtastic on the same launcher can't wipe it. Not used by the web installer.
+    full = launcher_image.image(boot, app)
     full_name = "squatch-mesh-thinknode-m9-%s-full.bin" % ver
     open(os.path.join(out, full_name), "wb").write(full)
 
