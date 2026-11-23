@@ -19,23 +19,47 @@ public:
         _level = MAX_LEVEL;
     }
 
+    // 2026-11-20: the screen now and then woke black with the keyboard lit, and came
+    // back after a few more sleeps and wakes. The pulses used to be bare digitalWrite
+    // pairs (~0.1 us low, under the chip's 0.5 us minimum) with nothing stopping the
+    // CPU in between - and a flash write on the other core (contacts, settings: they
+    // wait for the screen to go dark, so they are busy right at a wake) pauses BOTH
+    // cores with the pin wherever it was. Held low past ~2.5 ms the chip shuts down,
+    // dark, while _level says lit. Now each train runs with interrupts off (a flash
+    // write has to wait for it: it needs this core to answer first) and is timed to
+    // the chip's own figures. Coming on from off waits out the shutdown time first,
+    // so a quick off-on can't be read as one extra pulse.
     void setLevel(uint8_t level) {
         if (level > MAX_LEVEL) level = MAX_LEVEL;
         if (level == _level) return;
 
-        if (level == 0) { digitalWrite(_pin, LOW); _level = 0; return; }
+        if (level == 0) { digitalWrite(_pin, LOW); _level = 0; _offAt = micros(); return; }
 
-        // Coming back from off lands on 16, so the pulse count below starts there.
-        if (_level == 0) { digitalWrite(_pin, HIGH); _level = MAX_LEVEL; }
-
-        for (uint8_t i = pulsesTo(level); i > 0; i--) {
-            digitalWrite(_pin, LOW);
-            digitalWrite(_pin, HIGH);
+        if (_level == 0) {                     // coming back from off lands on 16
+            const uint32_t off = micros() - _offAt;
+            if (off < OFF_US) delayMicroseconds(OFF_US - off);
         }
+        const uint8_t from = _level == 0 ? MAX_LEVEL : _level;
+        const uint8_t pulses = (uint8_t)((MAX_LEVEL + from - level) % MAX_LEVEL);
+        portENTER_CRITICAL(&_mux);
+        if (_level == 0) { digitalWrite(_pin, HIGH); delayMicroseconds(ON_US); }
+        for (uint8_t i = pulses; i > 0; i--) {
+            digitalWrite(_pin, LOW);  delayMicroseconds(PULSE_US);
+            digitalWrite(_pin, HIGH); delayMicroseconds(PULSE_US);
+        }
+        portEXIT_CRITICAL(&_mux);
         _level = level;
     }
 
     uint8_t level() const { return _level; }
+    // Diagnostics: shut the chip down for real, then bring it back to the level it
+    // is meant to be at - whatever state the chip itself had got into.
+    void resync() {
+        const uint8_t want = _level;
+        _fading = false;
+        digitalWrite(_pin, LOW); _level = 0; _offAt = micros();
+        if (want) setLevel(want);
+    }
 
     // Non-blocking fade: one level per step, since 16 levels is all there is.
     void fadeTo(uint8_t target, uint16_t durationMs = 300) {
@@ -65,6 +89,11 @@ private:
         return (uint8_t)((MAX_LEVEL + _level - target) % MAX_LEVEL);
     }
 
+    static constexpr uint32_t OFF_US   = 3000;  // low this long = shut down (chip: > 2.5 ms)
+    static constexpr uint32_t ON_US    = 50;    // first high after shutdown, before counting
+    static constexpr uint32_t PULSE_US = 2;     // each low and high (chip: 0.5 .. 500 us)
+    portMUX_TYPE _mux = portMUX_INITIALIZER_UNLOCKED;
+    uint32_t _offAt = 0;
     uint8_t  _pin = 0;
     uint8_t  _level = 0;
     bool     _fading = false;

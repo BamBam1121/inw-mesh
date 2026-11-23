@@ -121,9 +121,7 @@ void stop() {
     s_rf->rfalListenStop();
     s_rf->rfalFieldOff();
   }
-  s_mode = Mode::Off;
-  s_ready = false;     // unpowered from here; the next start() initialises it again
-  nfcPower(false);
+  s_mode = Mode::Off;   // the chip stays powered and set up (main.cpp setup: NFC stays on)
 }
 
 // Closed screens are deleted a loop later; by then the next NFC screen may
