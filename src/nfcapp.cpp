@@ -134,8 +134,10 @@ void stopSession(uint32_t session) { if (session == s_session) stop(); }
 bool start(Mode m) {
   s_session++;
   stop();
-  nfcPower(true);
-  if (!ensureInit()) { nfcPower(false); return false; }
+  // The chip stays powered now (main.cpp setup), so a fresh start means initialising it again here; a failed
+  // start leaves it powered too (unpowered, it drags the SPI bus the radio shares)
+  s_ready = false;
+  if (!ensureInit()) return false;
   s_mode = m;
   s_handled = s_primed = false;
   if (m == Mode::Emulate) { configListen(); demoCeInit(s_ceNfcid2); }
